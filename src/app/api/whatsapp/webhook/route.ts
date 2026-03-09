@@ -42,27 +42,53 @@ export async function POST(req: NextRequest) {
         // 1. Achar o dono desse WhatsApp no SaaS
         const { data: instanceRecord } = await supabase
             .from('whatsapp_instances')
-            .select('user_id')
+            .select('id, user_id')
             .eq('instance_name', instanceName)
             .single()
 
         if (!instanceRecord) {
+            console.warn(`Instância não encontrada no banco: ${instanceName}`)
             return NextResponse.json({ success: false, reason: 'instance_not_found' })
         }
 
         const userId = instanceRecord.user_id
+        const instanceId = instanceRecord.id
 
-        // 2. Buscar Configuração de IA e API Key do dono
-        const [configRes, profileRes] = await Promise.all([
-            supabase.from('ai_configurations').select('*').eq('user_id', userId).eq('instance_id', null).single(), // Global config
-            supabase.from('profiles').select('openai_api_key').eq('id', userId).single()
-        ])
+        // 2. Buscar Configuração de IA (Tenta específica da instância, depois global) e API Key do dono
+        const { data: profile } = await supabase.from('profiles').select('openai_api_key').eq('id', userId).single()
 
-        const aiConfig = configRes.data
-        const profile = profileRes.data
+        // Tenta buscar config específica desta instância
+        let { data: aiConfig } = await supabase
+            .from('ai_configurations')
+            .select('*')
+            .eq('user_id', userId)
+            .eq('instance_id', instanceId)
+            .eq('is_active', true)
+            .maybeSingle()
 
-        if (!aiConfig || !aiConfig.is_active || !profile?.openai_api_key) {
-            return NextResponse.json({ success: true, reason: 'ai_inactive_or_no_key' })
+        // Se não achar específica, tenta a global
+        if (!aiConfig) {
+            const { data: globalConfig } = await supabase
+                .from('ai_configurations')
+                .select('*')
+                .eq('user_id', userId)
+                .eq('instance_id', null)
+                .eq('is_active', true)
+                .maybeSingle()
+            aiConfig = globalConfig
+        }
+
+        console.log(`IA Config: ${aiConfig?.instance_id ? 'Específica' : 'Global'}, Tem API Key: ${!!profile?.openai_api_key}`)
+
+        if (!aiConfig || !profile?.openai_api_key) {
+            return NextResponse.json({
+                success: true,
+                reason: 'ai_inactive_or_no_key',
+                details: {
+                    hasConfig: !!aiConfig,
+                    hasKey: !!profile?.openai_api_key
+                }
+            })
         }
 
         // 3. Montar a requisição pra OpenAI
