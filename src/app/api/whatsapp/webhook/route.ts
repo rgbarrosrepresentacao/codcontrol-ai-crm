@@ -29,6 +29,16 @@ export async function POST(req: NextRequest) {
 
         const remoteJid = key.remoteJid // Número do cliente final
 
+        // Ignora mensagens de grupos
+        if (remoteJid.endsWith('@g.us')) {
+            return NextResponse.json({ success: true, reason: 'group_message_ignored' })
+        }
+
+        // Extrai número de telefone limpo
+        const phone = remoteJid.replace('@s.whatsapp.net', '').replace('@lid', '')
+        const pushName = body.data?.pushName || null
+        const messageType = body.data?.messageType || 'text'
+
         // 1. Achar o dono desse WhatsApp no SaaS
         const { data: instanceRecord, error: instanceError } = await supabase
             .from('whatsapp_instances')
@@ -43,6 +53,47 @@ export async function POST(req: NextRequest) {
 
         const userId = instanceRecord.user_id
         const instanceId = instanceRecord.id
+
+        // 2. Salvar/Atualizar contato no CRM
+        const { data: contact } = await supabase
+            .from('contacts')
+            .upsert({
+                user_id: userId,
+                instance_id: instanceId,
+                whatsapp_id: remoteJid,
+                phone: phone,
+                push_name: pushName,
+                name: pushName,
+                status: 'active',
+                last_message_at: new Date().toISOString(),
+            }, {
+                onConflict: 'user_id,whatsapp_id',
+                ignoreDuplicates: false
+            })
+            .select('id')
+            .single()
+
+        const contactId = contact?.id || null
+
+        // 3. Atualizar/Criar conversa no CRM
+        let conversationId: string | null = null
+        if (contactId) {
+            const { data: conversation } = await supabase
+                .from('conversations')
+                .upsert({
+                    user_id: userId,
+                    instance_id: instanceId,
+                    contact_id: contactId,
+                    status: 'open',
+                    last_message_at: new Date().toISOString(),
+                }, {
+                    onConflict: 'user_id,contact_id',
+                    ignoreDuplicates: false
+                })
+                .select('id')
+                .single()
+            conversationId = conversation?.id || null
+        }
 
         // 2. Buscar Configuração de IA (Tenta específica da instância, depois global) e API Key do dono
         const { data: profile } = await supabase.from('profiles').select('openai_api_key').eq('id', userId).single()
@@ -141,7 +192,49 @@ export async function POST(req: NextRequest) {
         }
 
         if (!textMessage) {
+            // Mesmo sem resposta da IA, salva a mensagem recebida no CRM
+            if (contactId && conversationId) {
+                const msgType = messageData.audioMessage ? 'audio' : messageData.imageMessage ? 'image' : messageData.documentMessage ? 'document' : 'text'
+                await supabase.from('messages').insert({
+                    user_id: userId,
+                    conversation_id: conversationId,
+                    instance_id: instanceId,
+                    contact_id: contactId,
+                    message_id: key.id,
+                    from_me: false,
+                    content: '[mídia]',
+                    type: msgType,
+                    ai_generated: false,
+                    status: 'delivered',
+                })
+                // Incrementa contador de mensagens recebidas
+                await supabase.rpc('increment_messages_received', { instance_id_param: instanceId })
+            }
             return NextResponse.json({ success: true, reason: 'no_content_to_process' })
+        }
+
+        // Salvar a mensagem recebida do cliente no CRM
+        if (contactId && conversationId) {
+            const msgType = messageData.audioMessage ? 'audio' : 'text'
+            await supabase.from('messages').insert({
+                user_id: userId,
+                conversation_id: conversationId,
+                instance_id: instanceId,
+                contact_id: contactId,
+                message_id: key.id,
+                from_me: false,
+                content: textMessage,
+                type: msgType,
+                ai_generated: false,
+                status: 'delivered',
+            })
+            // Atualiza última mensagem na conversa
+            await supabase.from('conversations').update({
+                last_message: textMessage,
+                last_message_at: new Date().toISOString(),
+            }).eq('id', conversationId)
+            // Incrementa contador de mensagens recebidas
+            await supabase.rpc('increment_messages_received', { instance_id_param: instanceId })
         }
 
         // 4. Montar a requisição pra OpenAI (GPT)
@@ -173,6 +266,28 @@ export async function POST(req: NextRequest) {
 
         // 5. Enviar a resposta via Evolution API
         await evolutionApi.sendTextMessage(instanceName, remoteJid, botReply)
+
+        // 6. Salvar a resposta da IA no CRM
+        if (contactId && conversationId) {
+            await supabase.from('messages').insert({
+                user_id: userId,
+                conversation_id: conversationId,
+                instance_id: instanceId,
+                contact_id: contactId,
+                from_me: true,
+                content: botReply,
+                type: 'text',
+                ai_generated: true,
+                status: 'sent',
+            })
+            // Atualiza última mensagem (resposta da IA)
+            await supabase.from('conversations').update({
+                last_message: botReply,
+                last_message_at: new Date().toISOString(),
+            }).eq('id', conversationId)
+            // Incrementa contador de mensagens enviadas
+            await supabase.rpc('increment_messages_sent', { instance_id_param: instanceId })
+        }
 
         return NextResponse.json({ success: true, message_sent: true, transcribed: !!messageData.audioMessage })
 
