@@ -85,44 +85,55 @@ export async function POST(req: NextRequest) {
             messageData.extendedTextMessage?.text ||
             messageData.imageMessage?.caption
 
-        // Se for áudio, vamos transcrever
+        // Se for áudio, vamos transcrever usando a Evolution API para descriptografar
         if (!textMessage && messageData.audioMessage) {
-            console.log('Detectado mensagem de áudio, iniciando transcrição...')
+            console.log('Detectado mensagem de áudio, baixando via Evolution API...')
             try {
-                // Tenta pegar o base64 se estiver disponível, senão tenta baixar pela URL
-                let audioData: Buffer
+                const EVOLUTION_URL = process.env.EVOLUTION_API_URL || 'https://api.codcontrolpro.bond'
+                const EVOLUTION_KEY = process.env.EVOLUTION_API_KEY || ''
 
-                if (body.data.base64) {
-                    audioData = Buffer.from(body.data.base64, 'base64')
-                } else if (messageData.audioMessage.url) {
-                    const audioRes = await fetch(messageData.audioMessage.url)
-                    audioData = Buffer.from(await audioRes.arrayBuffer())
-                } else {
-                    throw new Error('Não foi possível obter o conteúdo do áudio')
-                }
-
-                // Criar FormData usando o formato que o Node/Next entende melhor para OpenAI
-                const formData = new FormData()
-                const file = new File([audioData as any], 'audio.mp3', { type: 'audio/mpeg' })
-                formData.append('file', file)
-                formData.append('model', 'whisper-1')
-                formData.append('language', 'pt')
-
-                const whisperResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+                // A Evolution API descriptografa o áudio do WhatsApp e retorna em base64
+                const mediaRes = await fetch(`${EVOLUTION_URL}/chat/getBase64FromMediaMessage/${instanceName}`, {
                     method: 'POST',
                     headers: {
-                        'Authorization': `Bearer ${profile.openai_api_key}`
+                        'Content-Type': 'application/json',
+                        'apikey': EVOLUTION_KEY
                     },
-                    body: formData
+                    body: JSON.stringify({ message: body.data, convertToMp4: false })
                 })
 
-                if (whisperResponse.ok) {
-                    const whisperData = await whisperResponse.json()
-                    textMessage = whisperData.text
-                    console.log('Transcrição concluída:', textMessage)
+                if (!mediaRes.ok) {
+                    const err = await mediaRes.text()
+                    console.error('Erro ao buscar mídia na Evolution:', err)
                 } else {
-                    const errorData = await whisperResponse.json()
-                    console.error('Erro na transcrição Whisper:', errorData)
+                    const mediaData = await mediaRes.json()
+                    const base64Audio = mediaData.base64 || mediaData.base64Data || mediaData.data
+
+                    if (base64Audio) {
+                        const audioBuffer = Buffer.from(base64Audio, 'base64')
+                        const formData = new FormData()
+                        const file = new File([audioBuffer as any], 'audio.ogg', { type: 'audio/ogg' })
+                        formData.append('file', file)
+                        formData.append('model', 'whisper-1')
+                        formData.append('language', 'pt')
+
+                        const whisperResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+                            method: 'POST',
+                            headers: { 'Authorization': `Bearer ${profile.openai_api_key}` },
+                            body: formData
+                        })
+
+                        if (whisperResponse.ok) {
+                            const whisperData = await whisperResponse.json()
+                            textMessage = whisperData.text
+                            console.log('Transcrição concluída:', textMessage)
+                        } else {
+                            const errorData = await whisperResponse.json()
+                            console.error('Erro na transcrição Whisper:', errorData)
+                        }
+                    } else {
+                        console.error('Base64 não encontrado na resposta da Evolution:', mediaData)
+                    }
                 }
             } catch (err) {
                 console.error('Falha ao processar áudio:', err)
