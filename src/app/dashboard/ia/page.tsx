@@ -124,6 +124,53 @@ export default function IAPage() {
         })
     }
 
+    const handleToggleActive = async () => {
+        const newValue = !currentConfig.is_active
+        updateConfig('is_active', newValue)
+
+        try {
+            const { data: { user } } = await supabase.auth.getUser()
+            if (!user) return
+            const config = currentConfig
+
+            if (config.id) {
+                // Já existe no banco, atualiza diretamente
+                const { error } = await supabase
+                    .from('ai_configurations')
+                    .update({ is_active: newValue })
+                    .eq('id', config.id)
+                if (error) throw error
+            } else {
+                // Cria um novo registro já com o estado correto
+                const { data, error } = await supabase
+                    .from('ai_configurations')
+                    .insert({
+                        user_id: user.id,
+                        instance_id: config.instance_id,
+                        bot_name: config.bot_name,
+                        system_prompt: config.system_prompt,
+                        tone: config.tone,
+                        language: config.language,
+                        is_active: newValue,
+                    })
+                    .select()
+                    .single()
+                if (error) throw error
+                setConfigs(prev => {
+                    const idx = prev.findIndex(c => c.instance_id === config.instance_id)
+                    if (idx >= 0) { const updated = [...prev]; updated[idx] = { ...updated[idx], id: data.id }; return updated }
+                    return [...prev, data]
+                })
+            }
+
+            toast.success(newValue ? 'IA ativada! Respondendo mensagens.' : 'IA desativada. Não vai mais responder.')
+        } catch (error: any) {
+            // Reverte o estado visual em caso de erro
+            updateConfig('is_active', !newValue)
+            toast.error(`Erro ao alterar estado: ${error.message}`)
+        }
+    }
+
     const handleSaveKey = async () => {
         setSavingKey(true)
         try {
@@ -214,8 +261,8 @@ export default function IAPage() {
                         {activeTab === 'global' ? '🌐 Configuração Global' : instances.find(i => i.id === activeTab)?.display_name || 'Instância'}
                     </h2>
                     <button
-                        onClick={() => updateConfig('is_active', !currentConfig.is_active)}
-                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${currentConfig.is_active ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'border border-border text-muted-foreground'}`}
+                        onClick={handleToggleActive}
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${currentConfig.is_active ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-red-500/10 text-red-400 border border-red-500/30'}`}
                     >
                         {currentConfig.is_active ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}
                         {currentConfig.is_active ? 'IA Ativa' : 'IA Inativa'}
