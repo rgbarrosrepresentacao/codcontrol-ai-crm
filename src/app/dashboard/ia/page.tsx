@@ -128,11 +128,16 @@ export default function IAPage() {
         setSavingKey(true)
         try {
             const { data: { user } } = await supabase.auth.getUser()
-            if (!user) return
-            await supabase.from('profiles').update({ openai_api_key: openaiKey }).eq('id', user.id)
+            if (!user) {
+                toast.error('Usuário não autenticado')
+                return
+            }
+            const { error } = await supabase.from('profiles').update({ openai_api_key: openaiKey }).eq('id', user.id)
+            if (error) throw error
             toast.success('API Key salva com sucesso!')
-        } catch {
-            toast.error('Erro ao salvar API Key')
+        } catch (error: any) {
+            console.error('Erro ao salvar chave:', error)
+            toast.error(`Erro ao salvar API Key: ${error.message}`)
         } finally {
             setSavingKey(false)
         }

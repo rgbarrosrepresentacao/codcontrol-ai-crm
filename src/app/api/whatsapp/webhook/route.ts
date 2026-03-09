@@ -40,15 +40,15 @@ export async function POST(req: NextRequest) {
         const remoteJid = key.remoteJid // Número do cliente final
 
         // 1. Achar o dono desse WhatsApp no SaaS
-        const { data: instanceRecord } = await supabase
+        const { data: instanceRecord, error: instanceError } = await supabase
             .from('whatsapp_instances')
             .select('id, user_id')
             .eq('instance_name', instanceName)
             .single()
 
-        if (!instanceRecord) {
-            console.warn(`Instância não encontrada no banco: ${instanceName}`)
-            return NextResponse.json({ success: false, reason: 'instance_not_found' })
+        if (instanceError || !instanceRecord) {
+            console.error(`Erro ao buscar instância ${instanceName}:`, instanceError)
+            return NextResponse.json({ success: false, reason: 'instance_not_found', error: instanceError })
         }
 
         const userId = instanceRecord.user_id
