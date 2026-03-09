@@ -80,48 +80,9 @@ export default async function DashboardPage() {
             </div>
 
             {/* Middle Row */}
-            <div className="grid lg:grid-cols-3 gap-6">
-                {/* AI Usage */}
-                <div className="gradient-card border border-border rounded-xl p-6">
-                    <div className="flex items-center justify-between mb-4">
-                        <h2 className="font-semibold text-foreground flex items-center gap-2">
-                            <Brain className="w-4 h-4 text-primary" />Uso de IA
-                        </h2>
-                        <span className="text-xs text-muted-foreground">Mensal</span>
-                    </div>
-                    <div className="mb-3">
-                        <div className="flex items-center justify-between text-sm mb-1.5">
-                            <span className="text-muted-foreground">Mensagens usadas</span>
-                            <span className="text-foreground font-medium">
-                                {messagesUsed} / {maxMessages === -1 ? '∞' : maxMessages.toLocaleString()}
-                            </span>
-                        </div>
-                        {maxMessages !== -1 && (
-                            <div className="h-2 bg-secondary rounded-full overflow-hidden">
-                                <div
-                                    className="h-full gradient-primary rounded-full transition-all duration-500"
-                                    style={{ width: `${Math.min((messagesUsed / maxMessages) * 100, 100)}%` }}
-                                />
-                            </div>
-                        )}
-                        {maxMessages === -1 && (
-                            <div className="h-2 bg-primary/30 rounded-full overflow-hidden">
-                                <div className="h-full gradient-primary rounded-full w-1/3 animate-pulse-soft" />
-                            </div>
-                        )}
-                    </div>
-                    {maxMessages !== -1 && (
-                        <p className="text-xs text-muted-foreground">
-                            {Math.max(0, maxMessages - messagesUsed).toLocaleString()} mensagens restantes
-                        </p>
-                    )}
-                    {maxMessages === -1 && (
-                        <p className="text-xs text-primary">✓ Mensagens ilimitadas</p>
-                    )}
-                </div>
-
+            <div className="grid lg:grid-cols-1 gap-6">
                 {/* WhatsApp Status */}
-                <div className="gradient-card border border-border rounded-xl p-6 lg:col-span-2">
+                <div className="gradient-card border border-border rounded-xl p-6">
                     <div className="flex items-center justify-between mb-4">
                         <h2 className="font-semibold text-foreground flex items-center gap-2">
                             <Smartphone className="w-4 h-4 text-primary" />Instâncias WhatsApp
@@ -137,7 +98,7 @@ export default async function DashboardPage() {
                             </a>
                         </div>
                     ) : (
-                        <div className="space-y-3">
+                        <div className="grid md:grid-cols-2 gap-3">
                             {instances.map((inst: any) => (
                                 <div key={inst.id} className="flex items-center justify-between bg-secondary/50 rounded-lg px-4 py-3">
                                     <div className="flex items-center gap-3">
