@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { evolutionApi } from '@/lib/evolution'
 
-// Usamos um cliente normal do Supabase com Service Role Key para ignorar RLS nesta rota de background
+// Usamos um cliente do Supabase com Service Role Key para ignorar RLS nesta rota de background e poder buscar os dados do usuário
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY! // Idealmente, usar SERVICE_ROLE_KEY aqui em produção
+    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
 export async function POST(req: NextRequest) {
