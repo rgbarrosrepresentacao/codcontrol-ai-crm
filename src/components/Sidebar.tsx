@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import {
     Bot, LayoutDashboard, Smartphone, Brain, Users,
-    Settings, LogOut, ChevronRight, Shield, X, Menu, CreditCard
+    Settings, LogOut, ChevronRight, Shield, X, Menu, CreditCard, MessageCircle
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -96,6 +96,19 @@ export function Sidebar({ isAdmin, userName, userEmail, planName }: SidebarProps
                         </Link>
                     )
                 })}
+
+                {/* Suporte WhatsApp */}
+                <div className="mt-3 pt-3 border-t border-sidebar-border">
+                    <a
+                        href="https://wa.me/5598985086010?text=Ol%C3%A1!%20Preciso%20de%20suporte%20com%20o%20CodControl%20AI%20CRM."
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-3 px-3 py-2.5 text-sm font-medium text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 rounded-lg transition-all"
+                    >
+                        <MessageCircle className="w-4 h-4 flex-shrink-0" />
+                        <span>Suporte</span>
+                    </a>
+                </div>
 
                 {isAdmin && (
                     <>
