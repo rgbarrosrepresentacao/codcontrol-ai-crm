@@ -104,9 +104,10 @@ export async function POST(req: NextRequest) {
 
                 // Criar FormData para enviar para a OpenAI (Whisper)
                 const formData = new FormData()
-                formData.append('file', blob, 'audio.ogg')
+                // IMPORTANTE: O arquivo PRECISA ter uma extensão válida para o Whisper aceitar
+                formData.append('file', blob, 'audio.oga')
                 formData.append('model', 'whisper-1')
-                formData.append('language', 'pt') // Opcional: forçar português
+                formData.append('language', 'pt')
 
                 const whisperResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
                     method: 'POST',
