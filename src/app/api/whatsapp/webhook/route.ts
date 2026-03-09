@@ -93,7 +93,7 @@ export async function POST(req: NextRequest) {
         const botReply = gptData.choices[0].message.content
 
         // 4. Enviar a resposta via Evolution API
-        await evolutionApi.sendMessage(instanceName, remoteJid, botReply)
+        await evolutionApi.sendTextMessage(instanceName, remoteJid, botReply)
 
         return NextResponse.json({ success: true, message_sent: true })
 
