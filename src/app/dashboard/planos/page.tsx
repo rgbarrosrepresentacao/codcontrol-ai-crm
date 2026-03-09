@@ -71,15 +71,11 @@ export default async function PlanosPage() {
                                 </div>
                             </div>
 
-                            {/* Key metrics */}
-                            <div className="grid grid-cols-2 gap-2 mb-6">
-                                <div className="bg-secondary/50 rounded-lg p-2.5 text-center">
-                                    <div className="text-lg font-bold text-primary">{plan.max_whatsapp}</div>
-                                    <div className="text-xs text-muted-foreground">WhatsApps</div>
-                                </div>
-                                <div className="bg-secondary/50 rounded-lg p-2.5 text-center">
-                                    <div className="text-lg font-bold text-primary">{plan.max_messages === -1 ? '∞' : plan.max_messages.toLocaleString()}</div>
-                                    <div className="text-xs text-muted-foreground">Msgs IA/mês</div>
+                            {/* Key metrics - só WhatsApps */}
+                            <div className="mb-6">
+                                <div className="bg-secondary/50 rounded-lg p-4 text-center">
+                                    <div className="text-3xl font-bold text-primary">{plan.max_whatsapp}</div>
+                                    <div className="text-sm text-muted-foreground mt-1">{plan.max_whatsapp === 1 ? 'WhatsApp conectado' : 'WhatsApps conectados'}</div>
                                 </div>
                             </div>
 
@@ -108,22 +104,16 @@ export default async function PlanosPage() {
                 })}
             </div>
 
-            {/* Payment Note */}
+            {/* Payment methods */}
             <div className="gradient-card border border-border rounded-xl p-6 text-center">
-                <h3 className="font-semibold text-foreground mb-2">💳 Integração de Pagamento</h3>
-                <p className="text-muted-foreground text-sm max-w-md mx-auto">
-                    Sistema preparado para integração com <strong className="text-foreground">Stripe</strong> ou <strong className="text-foreground">Mercado Pago</strong>.
-                    Entre em contato para ativar a cobrança automática.
-                </p>
-                <div className="mt-4 flex gap-3 justify-center">
-                    <div className="px-4 py-2 border border-border rounded-lg text-sm text-muted-foreground flex items-center gap-2">
-                        🔒 Pagamento seguro
+                <h3 className="font-semibold text-foreground mb-1">💳 Formas de Pagamento</h3>
+                <p className="text-muted-foreground text-sm mb-4">Entre em contato para assinar ou fazer upgrade do seu plano.</p>
+                <div className="flex gap-4 justify-center">
+                    <div className="flex items-center gap-2 px-5 py-3 border border-border rounded-xl text-sm text-foreground font-medium">
+                        📱 <span>PIX</span>
                     </div>
-                    <div className="px-4 py-2 border border-border rounded-lg text-sm text-muted-foreground flex items-center gap-2">
-                        📱 Pix disponível
-                    </div>
-                    <div className="px-4 py-2 border border-border rounded-lg text-sm text-muted-foreground flex items-center gap-2">
-                        💳 Cartão de crédito
+                    <div className="flex items-center gap-2 px-5 py-3 border border-border rounded-xl text-sm text-foreground font-medium">
+                        💳 <span>Cartão de crédito</span>
                     </div>
                 </div>
             </div>
