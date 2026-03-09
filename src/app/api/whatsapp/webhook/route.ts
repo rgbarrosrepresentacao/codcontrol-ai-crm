@@ -90,22 +90,21 @@ export async function POST(req: NextRequest) {
             console.log('Detectado mensagem de áudio, iniciando transcrição...')
             try {
                 // Tenta pegar o base64 se estiver disponível, senão tenta baixar pela URL
-                let blob: Blob
+                let audioData: Buffer
 
                 if (body.data.base64) {
-                    const buffer = Buffer.from(body.data.base64, 'base64')
-                    blob = new Blob([buffer as any], { type: messageData.audioMessage.mimetype || 'audio/ogg' })
+                    audioData = Buffer.from(body.data.base64, 'base64')
                 } else if (messageData.audioMessage.url) {
                     const audioRes = await fetch(messageData.audioMessage.url)
-                    blob = await audioRes.blob()
+                    audioData = Buffer.from(await audioRes.arrayBuffer())
                 } else {
                     throw new Error('Não foi possível obter o conteúdo do áudio')
                 }
 
-                // Criar FormData para enviar para a OpenAI (Whisper)
+                // Criar FormData usando o formato que o Node/Next entende melhor para OpenAI
                 const formData = new FormData()
-                // IMPORTANTE: O arquivo PRECISA ter uma extensão válida para o Whisper aceitar
-                formData.append('file', blob, 'audio.oga')
+                const file = new File([audioData as any], 'audio.mp3', { type: 'audio/mpeg' })
+                formData.append('file', file)
                 formData.append('model', 'whisper-1')
                 formData.append('language', 'pt')
 
