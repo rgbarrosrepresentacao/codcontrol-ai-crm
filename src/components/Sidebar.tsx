@@ -53,8 +53,11 @@ export function Sidebar({ isAdmin, userName, userEmail, planName, trialEndsAt, s
                         <Bot className="w-5 h-5 text-white" />
                     </div>
                     <div>
-                        <div className="font-bold text-sm text-foreground leading-tight">CodControl</div>
-                        <div className="text-xs text-primary leading-tight">AI CRM</div>
+                        <div className="flex items-center gap-1.5">
+                            <div className="font-bold text-sm text-foreground leading-tight">CodControl</div>
+                            <span className="text-[10px] bg-primary/20 text-primary font-black px-1 rounded-md border border-primary/30 uppercase tracking-tighter">BETA</span>
+                        </div>
+                        <div className="text-xs text-primary leading-tight font-medium">AI CRM</div>
                     </div>
                 </Link>
             </div>
@@ -152,6 +155,10 @@ export function Sidebar({ isAdmin, userName, userEmail, planName, trialEndsAt, s
                     <LogOut className="w-4 h-4" />
                     <span>Sair</span>
                 </button>
+                <div className="mt-4 px-3 flex items-center justify-between text-[10px] text-muted-foreground font-mono">
+                    <span>Versão</span>
+                    <span className="text-primary/70">v1.0.0-beta</span>
+                </div>
             </div>
         </div>
     )

@@ -7,12 +7,15 @@ export default function HomePage() {
       {/* Header */}
       <header className="glass sticky top-0 z-50 border-b border-border/50">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl gradient-primary flex items-center justify-center glow-primary">
               <Bot className="w-6 h-6 text-black" />
             </div>
             <div className="flex flex-col">
-              <span className="font-bold text-xl tracking-tight text-foreground">CodControl</span>
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-xl tracking-tight text-foreground">CodControl</span>
+                <span className="text-[10px] bg-primary/20 text-primary font-black px-1.5 py-0.5 rounded-md border border-primary/30 uppercase tracking-tighter">BETA</span>
+              </div>
               <span className="text-[10px] text-primary font-bold tracking-widest uppercase -mt-1">AI SALES CRM</span>
             </div>
           </div>
@@ -347,7 +350,7 @@ export default function HomePage() {
             </div>
             <span className="font-bold text-lg text-foreground tracking-tight italic">CodControl AI</span>
           </div>
-          <p className="text-muted-foreground text-xs font-medium italic">© 2026 CodControl. Todos os direitos reservados. Feito para quem quer vender.</p>
+          <p className="text-muted-foreground text-xs font-medium italic">© 2026 CodControl. Todos os direitos reservados. v1.0.0-beta</p>
           <div className="flex gap-8 text-xs font-bold uppercase tracking-widest text-muted-foreground">
             <a href="#" className="hover:text-primary transition-colors">Termos</a>
             <a href="#" className="hover:text-primary transition-colors">Privacidade</a>
