@@ -13,6 +13,7 @@ export default function ConfiguracoesPage() {
     const [newPassword, setNewPassword] = useState('')
     const [showPassword, setShowPassword] = useState(false)
     const [changingPassword, setChangingPassword] = useState(false)
+    const [isAdmin, setIsAdmin] = useState(false)
 
     useEffect(() => {
         const load = async () => {
@@ -22,6 +23,7 @@ export default function ConfiguracoesPage() {
             setProfile(p)
             setName(p?.name || '')
             setEmail(user.email || '')
+            setIsAdmin(p?.is_admin === true)
             setLoading(false)
         }
         load()
@@ -127,28 +129,30 @@ export default function ConfiguracoesPage() {
                 </button>
             </div>
 
-            {/* Integrations Info */}
-            <div className="gradient-card border border-border rounded-xl p-6 space-y-3">
-                <h2 className="font-semibold text-foreground flex items-center gap-2"><Bell className="w-4 h-4 text-primary" />Integrações</h2>
-                <div className="space-y-2">
-                    {[
-                        { label: 'Evolution API', value: 'api.codcontrolpro.bond', status: true },
-                        { label: 'n8n Webhook', value: 'n8n.codcontrolpro.bond', status: true },
-                        { label: 'Supabase', value: 'jzbsutrmprzfuvaripwb.supabase.co', status: true },
-                    ].map(i => (
-                        <div key={i.label} className="flex items-center justify-between bg-secondary/50 rounded-lg px-4 py-2.5">
-                            <div>
-                                <div className="text-sm font-medium text-foreground">{i.label}</div>
-                                <div className="text-xs text-muted-foreground">{i.value}</div>
+            {/* Integrations Info - só admin */}
+            {isAdmin && (
+                <div className="gradient-card border border-border rounded-xl p-6 space-y-3">
+                    <h2 className="font-semibold text-foreground flex items-center gap-2"><Bell className="w-4 h-4 text-primary" />Integrações</h2>
+                    <div className="space-y-2">
+                        {[
+                            { label: 'Evolution API', value: 'api.codcontrolpro.bond', status: true },
+                            { label: 'n8n Webhook', value: 'n8n.codcontrolpro.bond', status: true },
+                            { label: 'Supabase', value: 'jzbsutrmprzfuvaripwb.supabase.co', status: true },
+                        ].map(i => (
+                            <div key={i.label} className="flex items-center justify-between bg-secondary/50 rounded-lg px-4 py-2.5">
+                                <div>
+                                    <div className="text-sm font-medium text-foreground">{i.label}</div>
+                                    <div className="text-xs text-muted-foreground">{i.value}</div>
+                                </div>
+                                <div className={`flex items-center gap-1.5 text-xs font-medium ${i.status ? 'text-emerald-400' : 'text-red-400'}`}>
+                                    <div className={`w-1.5 h-1.5 rounded-full ${i.status ? 'bg-emerald-400' : 'bg-red-400'}`} />
+                                    {i.status ? 'Conectado' : 'Desconectado'}
+                                </div>
                             </div>
-                            <div className={`flex items-center gap-1.5 text-xs font-medium ${i.status ? 'text-emerald-400' : 'text-red-400'}`}>
-                                <div className={`w-1.5 h-1.5 rounded-full ${i.status ? 'bg-emerald-400' : 'bg-red-400'}`} />
-                                {i.status ? 'Conectado' : 'Desconectado'}
-                            </div>
-                        </div>
-                    ))}
+                        ))}
+                    </div>
                 </div>
-            </div>
+            )}
         </div>
     )
 }

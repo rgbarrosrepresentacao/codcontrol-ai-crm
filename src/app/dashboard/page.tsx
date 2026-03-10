@@ -17,6 +17,7 @@ export default async function DashboardPage() {
     ])
 
     const profile = profileRes.data as any
+    const isAdmin = profile?.is_admin === true
     const instances = instancesRes.data || []
     const contactCount = contactsRes.count || 0
     const openConversations = conversationsRes.count || 0
@@ -145,23 +146,25 @@ export default async function DashboardPage() {
                 </div>
             </div>
 
-            {/* System Status */}
-            <div className="grid md:grid-cols-3 gap-4">
-                {[
-                    { label: 'Evolution API', status: 'online', desc: 'api.codcontrolpro.bond' },
-                    { label: 'n8n Webhook', status: 'online', desc: 'n8n.codcontrolpro.bond' },
-                    { label: 'Banco de dados', status: 'online', desc: 'Supabase PostgreSQL' },
-                ].map((s) => (
-                    <div key={s.label} className="gradient-card border border-border rounded-xl p-4 flex items-center gap-3">
-                        <div className={`w-2.5 h-2.5 rounded-full ${s.status === 'online' ? 'status-connected' : 'status-disconnected'}`} />
-                        <div>
-                            <div className="text-sm font-medium text-foreground">{s.label}</div>
-                            <div className="text-xs text-muted-foreground">{s.desc}</div>
+            {/* System Status - visível apenas para administradores */}
+            {isAdmin && (
+                <div className="grid md:grid-cols-3 gap-4">
+                    {[
+                        { label: 'Evolution API', status: 'online', desc: 'api.codcontrolpro.bond' },
+                        { label: 'n8n Webhook', status: 'online', desc: 'n8n.codcontrolpro.bond' },
+                        { label: 'Banco de dados', status: 'online', desc: 'Supabase PostgreSQL' },
+                    ].map((s) => (
+                        <div key={s.label} className="gradient-card border border-border rounded-xl p-4 flex items-center gap-3">
+                            <div className={`w-2.5 h-2.5 rounded-full ${s.status === 'online' ? 'status-connected' : 'status-disconnected'}`} />
+                            <div>
+                                <div className="text-sm font-medium text-foreground">{s.label}</div>
+                                <div className="text-xs text-muted-foreground">{s.desc}</div>
+                            </div>
+                            <CheckCircle2 className="w-4 h-4 text-emerald-400 ml-auto" />
                         </div>
-                        <CheckCircle2 className="w-4 h-4 text-emerald-400 ml-auto" />
-                    </div>
-                ))}
-            </div>
+                    ))}
+                </div>
+            )}
         </div>
     )
 }
