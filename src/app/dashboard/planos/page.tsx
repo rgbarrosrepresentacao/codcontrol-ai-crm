@@ -2,6 +2,7 @@ import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 import { CreditCard, CheckCircle2, ArrowRight, Zap, Star } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
+import { CheckoutButton } from '@/components/CheckoutButton'
 
 export default async function PlanosPage() {
     const supabase = await createSupabaseServerClient()
@@ -89,15 +90,17 @@ export default async function PlanosPage() {
                             </ul>
 
                             {isCurrent ? (
-                                <div className="w-full text-center py-3 rounded-xl border border-emerald-500/30 text-emerald-400 text-sm font-semibold">
+                                <div className="w-full text-center py-3 rounded-xl border border-emerald-500/30 text-emerald-400 text-sm font-semibold mt-auto">
                                     ✓ Plano atual
                                 </div>
                             ) : (
-                                <button className={`w-full font-semibold py-3 rounded-xl transition-all flex items-center justify-center gap-2 text-sm ${isPopular ? 'gradient-primary text-black hover:opacity-90' : 'border border-border hover:bg-secondary text-foreground'}`}>
-                                    {plan.slug === 'agencia' ? '🚀' : plan.price > (plans.find((p: any) => p.slug === currentPlanSlug)?.price || 0) ? '⬆️' : '⬇️'}
-                                    {plan.price > (plans.find((p: any) => p.slug === currentPlanSlug)?.price || 0) ? 'Fazer upgrade' : 'Fazer downgrade'}
-                                    <ArrowRight className="w-4 h-4" />
-                                </button>
+                                <div className="mt-auto">
+                                    <CheckoutButton
+                                        priceId={plan.stripe_price_id}
+                                        isPopular={isPopular}
+                                        label={plan.slug === 'agencia' ? 'Entrar em contato' : plan.price > (plans.find((p: any) => p.slug === currentPlanSlug)?.price || 0) ? 'Fazer upgrade' : 'Fazer downgrade'}
+                                    />
+                                </div>
                             )}
                         </div>
                     )
