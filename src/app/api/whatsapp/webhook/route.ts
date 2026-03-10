@@ -11,13 +11,27 @@ const supabase = createClient(
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json()
-        console.log('Webhook Evolution Recebido:', JSON.stringify(body))
+        console.log('Webhook Evolution Recebido:', body.event, body.instance)
 
         // Validar se é uma mensagem nova
         if (body.event !== 'messages.upsert') {
             return NextResponse.json({ success: true, reason: 'ignored_event' })
         }
 
+        // Inicia processamento em background (Assíncrono) para liberar a Evolution API e evitar repetições
+        processWebhookInBackground(body).catch(err => {
+            console.error('Erro CRÍTICO no processamento do webhook:', err)
+        })
+
+        // Retorna status 200 IMEDIATAMENTE (Nenhuma mensagem em loop mais)
+        return NextResponse.json({ success: true, status: 'processing_background' })
+    } catch (e: any) {
+        return NextResponse.json({ error: e.message }, { status: 500 })
+    }
+}
+
+async function processWebhookInBackground(body: any) {
+    try {
         const messageData = body.data?.message
         const key = body.data?.key
         const instanceName = body.instance

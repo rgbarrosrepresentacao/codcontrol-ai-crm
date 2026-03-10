@@ -3,7 +3,7 @@ import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { evolutionApi } from '@/lib/evolution'
 import { generateInstanceName } from '@/lib/utils'
 
-const N8N_WEBHOOK_URL = process.env.N8N_WEBHOOK_URL || 'https://n8n.codcontrolpro.bond/webhook/rafaelwhtssap'
+const WEBHOOK_URL = process.env.APP_URL || 'https://codcontrolpro.bond/api/whatsapp/webhook'
 
 export async function POST(req: NextRequest) {
     try {
@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
 
         // Configure webhook asynchronously
         try {
-            await evolutionApi.setWebhook(instanceName, N8N_WEBHOOK_URL)
+            await evolutionApi.setWebhook(instanceName, WEBHOOK_URL)
             await supabase.from('whatsapp_instances').update({ webhook_configured: true }).eq('id', instance.id)
         } catch (webhookErr) {
             console.error('Webhook setup error:', webhookErr)
