@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
 import { Shield, Users, Smartphone, BarChart3, Search, Ban, CheckCircle2, Loader2 } from 'lucide-react'
 import { formatDate } from '@/lib/utils'
+import { toggleUserStatusAction } from './actions'
 
 interface AdminPanelProps {
     users: any[]
@@ -24,7 +25,7 @@ export default function AdminPanel({ users, instances, plans }: AdminPanelProps)
     const toggleUser = async (userId: string, isActive: boolean) => {
         setToggling(userId)
         try {
-            await supabase.from('profiles').update({ is_active: !isActive }).eq('id', userId)
+            await toggleUserStatusAction(userId, isActive)
             setLocalUsers(prev => prev.map(u => u.id === userId ? { ...u, is_active: !isActive } : u))
             toast.success(isActive ? 'Usuário bloqueado' : 'Usuário ativado')
         } catch {
