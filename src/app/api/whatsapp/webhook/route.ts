@@ -109,8 +109,16 @@ async function processWebhookInBackground(body: any) {
             conversationId = conversation?.id || null
         }
 
-        // 2. Buscar Configuração de IA (Tenta específica da instância, depois global) e API Key do dono
-        const { data: profile } = await supabase.from('profiles').select('openai_api_key').eq('id', userId).single()
+        // 2. Buscar Configuração de IA e Dados do Trial
+        const { data: profile } = await supabase.from('profiles').select('openai_api_key, is_admin, trial_ends_at, stripe_subscription_status').eq('id', userId).single()
+
+        // Verifica o trial antes de permitir rodar a IA
+        if (profile && !profile.is_admin && profile.stripe_subscription_status !== 'active' && profile.stripe_subscription_status !== 'trialing') {
+            if (profile.trial_ends_at && new Date(profile.trial_ends_at) < new Date()) {
+                console.log(`[BLOQUEIO] Usuário ${userId} está com o Trial Vencido. IA não irá responder.`)
+                return NextResponse.json({ success: true, reason: 'trial_expired_or_not_paid' })
+            }
+        }
 
         // Tenta buscar config específica desta instância
         let { data: aiConfig } = await supabase
