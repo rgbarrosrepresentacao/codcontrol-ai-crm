@@ -261,7 +261,7 @@ async function processWebhookInBackground(body: any) {
             body: JSON.stringify({
                 model: 'gpt-3.5-turbo',
                 messages: [
-                    { role: 'system', content: `${aiConfig.system_prompt}\n\nAja no tom de conversa: ${aiConfig.tone}.\nResponda em: ${aiConfig.language}. Você é o assistente ${aiConfig.bot_name}.` },
+                    { role: 'system', content: `${aiConfig.system_prompt}\n\nAja no tom de conversa: ${aiConfig.tone}.\nResponda em: ${aiConfig.language}. Você é o assistente ${aiConfig.bot_name}.\n\nREGRA ABSOLUTA DE COMPORTAMENTO HUMANO: Seja extremamente humano, direto e informal. Não envie mensagens robóticas, não use listas exageradas e não escreva textos muito longos (máximo 2-3 frases curtas por mensagem). Aja como uma pessoa comum digitando no WhatsApp de forma rápida e casual.` },
                     { role: 'user', content: textMessage }
                 ],
                 temperature: 0.7,
@@ -279,6 +279,10 @@ async function processWebhookInBackground(body: any) {
         const botReply = gptData.choices[0].message.content
 
         // 5. Enviar a resposta via Evolution API
+        // Simular comportamento humano: Mostra 'digitando...' e aguarda 3 segundos
+        await evolutionApi.sendPresence(instanceName, remoteJid, 'composing')
+        await new Promise(resolve => setTimeout(resolve, 3000))
+
         await evolutionApi.sendTextMessage(instanceName, remoteJid, botReply)
 
         // 6. Salvar a resposta da IA no CRM

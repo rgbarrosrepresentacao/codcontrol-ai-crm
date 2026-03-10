@@ -102,6 +102,23 @@ export const evolutionApi = {
         return res.json()
     },
 
+    async sendPresence(instanceName: string, to: string, presence: 'composing' | 'recording' | 'available' | 'unavailable' = 'composing') {
+        const res = await fetch(`${EVOLUTION_URL}/chat/sendPresence/${instanceName}`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+                number: to,
+                delay: 1200,
+                presence,
+            }),
+        })
+        if (!res.ok) {
+            console.error(`Failed to send presence: ${res.statusText}`)
+            return null
+        }
+        return res.json()
+    },
+
     async fetchInstances() {
         const res = await fetch(`${EVOLUTION_URL}/instance/fetchInstances`, {
             method: 'GET',
