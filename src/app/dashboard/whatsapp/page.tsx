@@ -107,12 +107,19 @@ export default function WhatsAppPage() {
     const deleteInstance = async (instanceName: string, instanceId: string) => {
         if (!confirm('Tem certeza que deseja remover esta instância?')) return
         try {
+            // Tenta remover na Evolution API primeiro
             await fetch(`/api/whatsapp/delete?instance=${instanceName}`, { method: 'DELETE' })
+        } catch (err) {
+            console.warn('Erro ao deletar na Evolution, mas continuaremos com a remoção local:', err)
+        }
+
+        try {
+            // Sempre tenta remover localmente no Supabase, independente da Evolution
             await supabase.from('whatsapp_instances').delete().eq('id', instanceId)
-            toast.success('Instância removida')
+            toast.success('Instância removida do painel')
             await fetchInstances()
         } catch {
-            toast.error('Erro ao remover instância')
+            toast.error('Erro ao remover instância do banco de dados')
         }
     }
 

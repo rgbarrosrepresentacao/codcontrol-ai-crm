@@ -11,11 +11,12 @@ const supabase = createClient(
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json()
-        console.log('Webhook Evolution Recebido:', body.event, body.instance)
+        const eventType = (body.event || body.eventType || '').toLowerCase()
+        console.log(`[Webhook] Event: ${eventType} | Instance: ${body.instance}`)
 
-        // Validar se é uma mensagem nova
-        if (body.event !== 'messages.upsert') {
-            return NextResponse.json({ success: true, reason: 'ignored_event' })
+        // Validar se é uma mensagem nova (suporta messages.upsert e MESSAGES_UPSERT)
+        if (eventType !== 'messages.upsert' && eventType !== 'messages_upsert') {
+            return NextResponse.json({ success: true, reason: 'ignored_event', event: eventType })
         }
 
         // Inicia processamento em background (Assíncrono) para liberar a Evolution API e evitar repetições
@@ -53,16 +54,15 @@ async function processWebhookInBackground(body: any) {
         const pushName = body.data?.pushName || null
         const messageType = body.data?.messageType || 'text'
 
-        // 1. Achar o dono desse WhatsApp no SaaS
         const { data: instanceRecord, error: instanceError } = await supabase
             .from('whatsapp_instances')
             .select('id, user_id')
-            .eq('instance_name', instanceName)
+            .eq('instance_name', instanceName.trim())
             .single()
 
         if (instanceError || !instanceRecord) {
-            console.error(`Erro ao buscar instância ${instanceName}:`, instanceError)
-            return NextResponse.json({ success: false, reason: 'instance_not_found', error: instanceError })
+            console.error(`[Webhook] Instância não encontrada ou erro RLS: ${instanceName}`, instanceError)
+            return NextResponse.json({ success: false, reason: 'instance_not_found_or_rls', error: instanceError })
         }
 
         const userId = instanceRecord.user_id
@@ -121,24 +121,28 @@ async function processWebhookInBackground(body: any) {
         }
 
         // Tenta buscar config específica desta instância
-        let { data: aiConfig } = await supabase
+        let { data: aiConfigs } = await supabase
             .from('ai_configurations')
             .select('*')
             .eq('user_id', userId)
             .eq('instance_id', instanceId)
             .eq('is_active', true)
-            .maybeSingle()
+            .order('updated_at', { ascending: false })
+            .limit(1)
+
+        let aiConfig = aiConfigs && aiConfigs.length > 0 ? aiConfigs[0] : null
 
         // Se não achar específica, tenta a global
         if (!aiConfig) {
-            const { data: globalConfig } = await supabase
+            const { data: globalConfigs } = await supabase
                 .from('ai_configurations')
                 .select('*')
                 .eq('user_id', userId)
-                .eq('instance_id', null)
+                .is('instance_id', null)
                 .eq('is_active', true)
-                .maybeSingle()
-            aiConfig = globalConfig
+                .order('updated_at', { ascending: false })
+                .limit(1)
+            aiConfig = globalConfigs && globalConfigs.length > 0 ? globalConfigs[0] : null
         }
 
         if (!aiConfig || !profile?.openai_api_key) {
@@ -259,8 +263,25 @@ async function processWebhookInBackground(body: any) {
             await supabase.rpc('increment_messages_received', { instance_id_param: instanceId })
         }
 
+        // 4. Buscar histórico da conversa para dar memória à IA (Últimas 15 mensagens)
+        const { data: history } = await supabase
+            .from('messages')
+            .select('role:from_me, content')
+            .eq('conversation_id', conversationId)
+            .order('created_at', { ascending: false })
+            .limit(15)
+
+        // Formata o histórico para o formato da OpenAI
+        const chatMessages = (history || [])
+            .reverse()
+            .map(m => ({
+                role: m.role ? 'assistant' : 'user' as 'assistant' | 'user',
+                content: m.content || ''
+            }))
+
         const currentDate = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
-        // 4. Montar a requisição pra OpenAI (GPT)
+
+        // 5. Montar a requisição pra OpenAI (Upgrade para GPT-4o-mini para MAIS inteligência)
         const openAiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
             headers: {
@@ -268,13 +289,16 @@ async function processWebhookInBackground(body: any) {
                 'Authorization': `Bearer ${profile.openai_api_key}`
             },
             body: JSON.stringify({
-                model: 'gpt-3.5-turbo',
+                model: 'gpt-4o-mini', // Modelo muito mais inteligente e rápido que o 3.5
                 messages: [
-                    { role: 'system', content: `[DATA E HORA ATUAL DO SISTEMA: ${currentDate}]\n\n${aiConfig.system_prompt}\n\nAja no tom de conversa: ${aiConfig.tone}.\nResponda em: ${aiConfig.language}. Você é o assistente ${aiConfig.bot_name}.\n\nREGRA ABSOLUTA DE COMPORTAMENTO HUMANO: Seja extremamente humano, direto e informal. Não envie mensagens robóticas, não use listas exageradas e não escreva textos muito longos (máximo 2-3 frases curtas por mensagem). Aja como uma pessoa comum digitando no WhatsApp de forma rápida e casual.` },
-                    { role: 'user', content: textMessage }
+                    {
+                        role: 'system',
+                        content: `[DATA E HORA ATUAL DO SISTEMA: ${currentDate}]\n\n${aiConfig.system_prompt}\n\nAja no tom de conversa: ${aiConfig.tone}.\nResponda em: ${aiConfig.language}. Você é o assistente ${aiConfig.bot_name}.\n\nREGRA ABSOLUTA DE COMPORTAMENTO HUMANO: Seja extremamente humano, direto e informal. Não envie mensagens robóticas, não use listas exageradas e não escreva textos muito longos (máximo 2-3 frases curtas por mensagem). Aja como uma pessoa comum digitando no WhatsApp de forma rápida e casual.`
+                    },
+                    ...chatMessages // Inclui a memória da conversa aqui
                 ],
-                temperature: 0.7,
-                max_tokens: 300
+                temperature: 0.8, // Um pouco mais de criatividade para vendas
+                max_tokens: 400
             })
         })
 

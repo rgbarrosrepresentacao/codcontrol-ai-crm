@@ -104,7 +104,11 @@ export default function IAPage() {
                     is_active: config.is_active,
                 }).select().single()
                 if (error) throw error
-                setConfigs(prev => [...prev, data])
+                setConfigs(prev => {
+                    const idx = prev.findIndex(c => c.instance_id === config.instance_id)
+                    if (idx >= 0) { const updated = [...prev]; updated[idx] = data; return updated }
+                    return [...prev, data]
+                })
             }
             toast.success('Configuração de IA salva!')
         } catch (error: any) {
