@@ -54,12 +54,7 @@ export default async function DashboardPage() {
                     <div className="px-3 py-1.5 bg-primary/10 border border-primary/20 rounded-lg">
                         <span className="text-primary text-sm font-medium">Plano {planName}</span>
                     </div>
-                    {profile?.plan_expires_at && (
-                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                            <Clock className="w-3.5 h-3.5" />
-                            Expira em {formatDate(profile.plan_expires_at)}
-                        </div>
-                    )}
+
                 </div>
             </div>
 
