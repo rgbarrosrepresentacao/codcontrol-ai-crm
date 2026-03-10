@@ -27,6 +27,8 @@ export default async function DashboardPage() {
     const connectedInstances = instances.filter((i: any) => i.status === 'connected')
 
     const planName = profile?.plans?.name || 'Básico'
+    const trialEndsAt = profile?.trial_ends_at
+    const subscriptionStatus = profile?.stripe_subscription_status
     const maxWhatsapps = profile?.plans?.max_whatsapp || 1
     const maxMessages = profile?.plans?.max_messages || 1000
     const messagesUsed = profile?.messages_used || 0
@@ -52,9 +54,17 @@ export default async function DashboardPage() {
                 </div>
                 <div className="flex items-center gap-3">
                     <div className="px-3 py-1.5 bg-primary/10 border border-primary/20 rounded-lg">
-                        <span className="text-primary text-sm font-medium">Plano {planName}</span>
+                        {(!isAdmin && subscriptionStatus !== 'active' && trialEndsAt) ? (
+                            <span className="text-orange-400 text-sm font-bold flex items-center gap-2">
+                                Modo Teste (7 Dias)
+                                <span className="text-xs font-normal text-muted-foreground bg-black/20 px-2 py-0.5 rounded-md">
+                                    Expira em {new Date(trialEndsAt).toLocaleDateString('pt-BR')}
+                                </span>
+                            </span>
+                        ) : (
+                            <span className="text-primary text-sm font-medium">Plano {planName}</span>
+                        )}
                     </div>
-
                 </div>
             </div>
 

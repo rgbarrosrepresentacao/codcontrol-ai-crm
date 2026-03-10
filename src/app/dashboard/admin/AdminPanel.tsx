@@ -128,9 +128,15 @@ export default function AdminPanel({ users, instances, plans }: AdminPanelProps)
                                         </div>
                                     </td>
                                     <td className="px-4 py-3">
-                                        <span className="px-2 py-0.5 bg-primary/10 border border-primary/20 text-primary text-xs rounded-full">
-                                            {user.plans?.name || 'Básico'}
-                                        </span>
+                                        {(!user.is_admin && user.stripe_subscription_status !== 'active' && user.trial_ends_at) ? (
+                                            <span className="px-2 py-0.5 bg-orange-500/10 border border-orange-500/20 text-orange-400 text-xs rounded-full font-bold">
+                                                Modo Teste
+                                            </span>
+                                        ) : (
+                                            <span className="px-2 py-0.5 bg-primary/10 border border-primary/20 text-primary text-xs rounded-full">
+                                                {user.plans?.name || 'Básico'}
+                                            </span>
+                                        )}
                                     </td>
                                     <td className="px-4 py-3">
                                         <span className={`flex items-center gap-1 text-xs font-medium ${user.is_active ? 'text-emerald-400' : 'text-red-400'}`}>

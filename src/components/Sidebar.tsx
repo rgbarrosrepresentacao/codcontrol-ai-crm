@@ -28,9 +28,11 @@ interface SidebarProps {
     userName?: string
     userEmail?: string
     planName?: string
+    trialEndsAt?: string | null
+    subscriptionStatus?: string | null
 }
 
-export function Sidebar({ isAdmin, userName, userEmail, planName }: SidebarProps) {
+export function Sidebar({ isAdmin, userName, userEmail, planName, trialEndsAt, subscriptionStatus }: SidebarProps) {
     const pathname = usePathname()
     const router = useRouter()
     const [mobileOpen, setMobileOpen] = useState(false)
@@ -70,7 +72,14 @@ export function Sidebar({ isAdmin, userName, userEmail, planName }: SidebarProps
                 </div>
                 {planName && (
                     <div className="mt-3 px-3 py-1.5 bg-primary/10 border border-primary/20 rounded-lg">
-                        <span className="text-xs text-primary font-medium">Plano {planName}</span>
+                        {(!isAdmin && subscriptionStatus !== 'active' && trialEndsAt) ? (
+                            <div className="flex flex-col gap-0.5">
+                                <span className="text-xs text-orange-400 font-bold">Modo Teste (7 Dias)</span>
+                                <span className="text-[10px] text-muted-foreground">Expira em: {new Date(trialEndsAt).toLocaleDateString('pt-BR')}</span>
+                            </div>
+                        ) : (
+                            <span className="text-xs text-primary font-medium">Plano {planName}</span>
+                        )}
                     </div>
                 )}
             </div>

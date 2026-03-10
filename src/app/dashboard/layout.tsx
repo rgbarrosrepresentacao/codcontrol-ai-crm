@@ -22,6 +22,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
                 userName={profile?.name || user.email?.split('@')[0]}
                 userEmail={user.email}
                 planName={(profile as any)?.plans?.name || 'Básico'}
+                trialEndsAt={profile?.trial_ends_at}
+                subscriptionStatus={profile?.stripe_subscription_status}
             />
             <main className="flex-1 overflow-y-auto relative">
                 <TrialWall
