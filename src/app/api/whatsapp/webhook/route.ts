@@ -259,6 +259,7 @@ async function processWebhookInBackground(body: any) {
             await supabase.rpc('increment_messages_received', { instance_id_param: instanceId })
         }
 
+        const currentDate = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
         // 4. Montar a requisição pra OpenAI (GPT)
         const openAiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
@@ -269,7 +270,7 @@ async function processWebhookInBackground(body: any) {
             body: JSON.stringify({
                 model: 'gpt-3.5-turbo',
                 messages: [
-                    { role: 'system', content: `${aiConfig.system_prompt}\n\nAja no tom de conversa: ${aiConfig.tone}.\nResponda em: ${aiConfig.language}. Você é o assistente ${aiConfig.bot_name}.\n\nREGRA ABSOLUTA DE COMPORTAMENTO HUMANO: Seja extremamente humano, direto e informal. Não envie mensagens robóticas, não use listas exageradas e não escreva textos muito longos (máximo 2-3 frases curtas por mensagem). Aja como uma pessoa comum digitando no WhatsApp de forma rápida e casual.` },
+                    { role: 'system', content: `[DATA E HORA ATUAL DO SISTEMA: ${currentDate}]\n\n${aiConfig.system_prompt}\n\nAja no tom de conversa: ${aiConfig.tone}.\nResponda em: ${aiConfig.language}. Você é o assistente ${aiConfig.bot_name}.\n\nREGRA ABSOLUTA DE COMPORTAMENTO HUMANO: Seja extremamente humano, direto e informal. Não envie mensagens robóticas, não use listas exageradas e não escreva textos muito longos (máximo 2-3 frases curtas por mensagem). Aja como uma pessoa comum digitando no WhatsApp de forma rápida e casual.` },
                     { role: 'user', content: textMessage }
                 ],
                 temperature: 0.7,
