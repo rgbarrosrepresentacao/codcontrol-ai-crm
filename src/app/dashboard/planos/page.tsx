@@ -14,8 +14,10 @@ export default async function PlanosPage() {
         supabase.from('profiles').select('*, plans(slug)').eq('id', user.id).single(),
     ])
 
+    const profile = profileRes.data as any
+    const isTrial = profile?.status === 'trial'
     const plans = plansRes.data || []
-    const currentPlanSlug = (profileRes.data as any)?.plans?.slug || 'basico'
+    const currentPlanSlug = profile?.plans?.slug || 'basico'
 
     return (
         <div className="p-6 md:p-8 space-y-8 animate-fade-in">
@@ -89,7 +91,7 @@ export default async function PlanosPage() {
                                 ))}
                             </ul>
 
-                            {isCurrent ? (
+                            {isCurrent && !isTrial ? (
                                 <div className="w-full text-center py-3 rounded-xl border border-emerald-500/30 text-emerald-400 text-sm font-semibold mt-auto">
                                     ✓ Plano atual
                                 </div>
@@ -98,7 +100,7 @@ export default async function PlanosPage() {
                                     <CheckoutButton
                                         priceId={plan.stripe_price_id}
                                         isPopular={isPopular}
-                                        label={plan.slug === 'agencia' ? 'Entrar em contato' : plan.price > (plans.find((p: any) => p.slug === currentPlanSlug)?.price || 0) ? 'Fazer upgrade' : 'Fazer downgrade'}
+                                        label={isTrial && isCurrent ? 'Assinar Agora' : plan.slug === 'agencia' ? 'Entrar em contato' : plan.price > (plans.find((p: any) => p.slug === currentPlanSlug)?.price || 0) ? 'Fazer upgrade' : 'Fazer downgrade'}
                                     />
                                 </div>
                             )}

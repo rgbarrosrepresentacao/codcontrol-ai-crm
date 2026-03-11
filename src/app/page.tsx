@@ -240,7 +240,7 @@ export default function HomePage() {
                 <li className="flex items-center gap-3 text-sm text-muted-foreground font-medium"><CheckCircle2 className="w-5 h-5 text-primary" /> CRM Completo</li>
                 <li className="flex items-center gap-3 text-sm text-muted-foreground font-medium"><CheckCircle2 className="w-5 h-5 text-primary" /> Dashboard Simples</li>
               </ul>
-              <Link href="/register" className="w-full text-center border border-border text-foreground font-bold py-4 rounded-xl hover:bg-secondary transition-all">
+              <Link href="/register?plan=basico" className="w-full text-center border border-border text-foreground font-bold py-4 rounded-xl hover:bg-secondary transition-all">
                 COMEÇAR AGORA
               </Link>
             </div>
@@ -263,7 +263,7 @@ export default function HomePage() {
                 <li className="flex items-center gap-3 text-sm text-foreground/80 font-medium"><CheckCircle2 className="w-5 h-5 text-primary" /> Relatórios de Performance</li>
                 <li className="flex items-center gap-3 text-sm text-foreground/80 font-medium"><CheckCircle2 className="w-5 h-5 text-primary" /> Suporte Prioritário</li>
               </ul>
-              <Link href="/register" className="w-full text-center gradient-primary text-black font-black py-5 rounded-2xl hover:scale-[1.02] transition-all shadow-xl shadow-primary/20">
+              <Link href="/register?plan=pro" className="w-full text-center gradient-primary text-black font-black py-5 rounded-2xl hover:scale-[1.02] transition-all shadow-xl shadow-primary/20">
                 GARANTIR MINHA VAGA
               </Link>
             </div>
@@ -286,7 +286,7 @@ export default function HomePage() {
                 <li className="flex items-center gap-3 text-sm text-muted-foreground font-medium"><CheckCircle2 className="w-5 h-5 text-primary" /> API de Integração</li>
                 <li className="flex items-center gap-3 text-sm text-muted-foreground font-medium"><CheckCircle2 className="w-5 h-5 text-primary" /> Gerente Dedicado</li>
               </ul>
-              <Link href="/register" className="w-full text-center border border-border text-foreground font-bold py-4 rounded-xl hover:bg-secondary transition-all">
+              <Link href="/register?plan=agencia" className="w-full text-center border border-border text-foreground font-bold py-4 rounded-xl hover:bg-secondary transition-all">
                 FALAR COM TIME ELITE
               </Link>
             </div>
