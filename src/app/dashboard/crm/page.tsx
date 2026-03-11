@@ -19,7 +19,11 @@ const aiTagConfig: Record<string, { label: string, color: string, bg: string, do
     INTERESSADO:        { label: '👀 Interessado',         color: 'text-blue-400',    bg: 'bg-blue-500/15 border-blue-500/30',      dot: 'bg-blue-400' },
     LEAD_FRIO:          { label: '🧊 Lead Frio',           color: 'text-slate-400',   bg: 'bg-slate-500/15 border-slate-500/30',    dot: 'bg-slate-400' },
     CANCELADO:          { label: '❌ Cancelado',           color: 'text-red-400',     bg: 'bg-red-500/15 border-red-500/30',        dot: 'bg-red-400' },
+    HUMANO:             { label: '👤 Atend. Humano',       color: 'text-violet-400',  bg: 'bg-violet-500/15 border-violet-500/30',  dot: 'bg-violet-400' },
 }
+
+// Tags que bloqueiam a IA (handoff para humano)
+const HANDOFF_TAGS = ['PEDIDO_FECHADO', 'HUMANO']
 
 interface Contact {
     id: string
@@ -43,6 +47,7 @@ export default function CRMPage() {
     const [selectedContact, setSelectedContact] = useState<Contact | null>(null)
     const [editNotes, setEditNotes] = useState('')
     const [editStatus, setEditStatus] = useState<string>('')
+    const [editAiTag, setEditAiTag] = useState<string | null>(null)
     const [savingContact, setSavingContact] = useState(false)
     const [reactivating, setReactivating] = useState(false)
 
@@ -72,6 +77,7 @@ export default function CRMPage() {
         setSelectedContact(contact)
         setEditNotes(contact.notes || '')
         setEditStatus(contact.status)
+        setEditAiTag(contact.ai_tag)
     }
 
     const reactivateAI = async () => {
@@ -80,14 +86,15 @@ export default function CRMPage() {
         await supabase.from('contacts').update({ ai_tag: null }).eq('id', selectedContact.id)
         setContacts(prev => prev.map(c => c.id === selectedContact.id ? { ...c, ai_tag: null } : c))
         setSelectedContact(prev => prev ? { ...prev, ai_tag: null } : null)
+        setEditAiTag(null)
         setReactivating(false)
     }
 
     const saveContact = async () => {
         if (!selectedContact) return
         setSavingContact(true)
-        await supabase.from('contacts').update({ notes: editNotes, status: editStatus as any }).eq('id', selectedContact.id)
-        setContacts(prev => prev.map(c => c.id === selectedContact.id ? { ...c, notes: editNotes, status: editStatus as any } : c))
+        await supabase.from('contacts').update({ notes: editNotes, status: editStatus as any, ai_tag: editAiTag }).eq('id', selectedContact.id)
+        setContacts(prev => prev.map(c => c.id === selectedContact.id ? { ...c, notes: editNotes, status: editStatus as any, ai_tag: editAiTag } : c))
         setSavingContact(false)
         setSelectedContact(null)
     }
@@ -255,17 +262,18 @@ export default function CRMPage() {
                                 {selectedContact.ai_tag && aiTagConfig[selectedContact.ai_tag] && (
                                     <span className={`inline-flex items-center gap-1 mt-1 px-2.5 py-1 rounded-full text-xs font-bold border ${aiTagConfig[selectedContact.ai_tag].bg} ${aiTagConfig[selectedContact.ai_tag].color}`}>
                                         <Bot className="w-3 h-3" /> {aiTagConfig[selectedContact.ai_tag].label}
-                                        {selectedContact.ai_tag === 'PEDIDO_FECHADO' && <span className="opacity-70 ml-1">· IA pausada</span>}
+                                        {HANDOFF_TAGS.includes(selectedContact.ai_tag) && <span className="opacity-70 ml-1">· IA pausada</span>}
                                     </span>
                                 )}
                             </div>
                         </div>
 
-                        {selectedContact.ai_tag === 'PEDIDO_FECHADO' && (
+                        {/* Aviso de handoff (PEDIDO_FECHADO ou HUMANO) */}
+                        {HANDOFF_TAGS.includes(selectedContact.ai_tag || '') && (
                             <div className="mb-4 space-y-2">
-                                <div className="flex items-center gap-2 px-4 py-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-xs text-emerald-400 font-medium">
+                                <div className="flex items-center gap-2 px-4 py-3 bg-violet-500/10 border border-violet-500/30 rounded-xl text-xs text-violet-400 font-medium">
                                     <UserCheck className="w-4 h-4 flex-shrink-0" />
-                                    A IA está pausada. Atendimento humano está conduzindo esta conversa.
+                                    IA está pausada. Atendimento humano está conduzindo esta conversa.
                                 </div>
                                 <button
                                     onClick={reactivateAI}
@@ -289,6 +297,33 @@ export default function CRMPage() {
                                         </button>
                                     ))}
                                 </div>
+                            </div>
+
+                            {/* Seleção manual de Etiqueta de IA */}
+                            <div>
+                                <label className="block text-sm font-medium text-foreground mb-1.5">Etiqueta de IA <span className="text-muted-foreground font-normal text-xs">(manual)</span></label>
+                                <div className="flex gap-2 flex-wrap">
+                                    <button
+                                        onClick={() => setEditAiTag(null)}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${editAiTag === null ? 'border-primary/50 text-primary bg-primary/10' : 'border-border text-muted-foreground hover:border-primary/30'}`}
+                                    >
+                                        Sem etiqueta
+                                    </button>
+                                    {Object.entries(aiTagConfig).map(([tag, cfg]) => (
+                                        <button
+                                            key={tag}
+                                            onClick={() => setEditAiTag(tag)}
+                                            className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${editAiTag === tag ? `${cfg.bg} ${cfg.color}` : 'border-border text-muted-foreground hover:border-primary/30'}`}
+                                        >
+                                            {cfg.label}
+                                        </button>
+                                    ))}
+                                </div>
+                                {HANDOFF_TAGS.includes(editAiTag || '') && editAiTag !== selectedContact.ai_tag && (
+                                    <p className="text-xs text-violet-400 mt-1.5 flex items-center gap-1">
+                                        <UserCheck className="w-3 h-3" /> Ao salvar, a IA será pausada e o humano assume.
+                                    </p>
+                                )}
                             </div>
 
                             {selectedContact.tags?.length > 0 && (

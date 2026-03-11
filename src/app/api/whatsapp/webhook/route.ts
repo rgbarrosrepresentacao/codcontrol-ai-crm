@@ -12,6 +12,9 @@ const supabase = createClient(
 const AI_TAGS = ['PEDIDO_FECHADO', 'POSSIVEL_COMPRADOR', 'INTERESSADO', 'LEAD_FRIO', 'CANCELADO'] as const
 type AiTag = typeof AI_TAGS[number]
 
+// Tags que pausam a IA e transferem para atendimento humano
+const HANDOFF_TAGS = ['PEDIDO_FECHADO', 'HUMANO']
+
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json()
@@ -370,10 +373,10 @@ async function processWebhookInBackground(body: any) {
             }))
 
         // ====================================================
-        // BLOCO DE HANDOFF: Se o contato já foi fechado anteriormente, IA não responde mais
+        // BLOCO DE HANDOFF: Se já está em modo humano (seja por qual motivo), IA não responde
         // ====================================================
-        if (currentAiTag === 'PEDIDO_FECHADO') {
-            console.log(`[HANDOFF] Contato ${contactId} está com tag PEDIDO_FECHADO. IA silenciada — aguardando humano.`)
+        if (currentAiTag && HANDOFF_TAGS.includes(currentAiTag)) {
+            console.log(`[HANDOFF] Contato ${contactId} está com tag ${currentAiTag}. IA silenciada — aguardando humano.`)
             return
         }
 
