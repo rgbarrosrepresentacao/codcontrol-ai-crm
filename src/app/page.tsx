@@ -24,7 +24,7 @@ export default function HomePage() {
             <a href="#recursos" className="text-muted-foreground hover:text-primary transition-colors text-sm font-medium">Recursos</a>
             <a href="#planos" className="text-muted-foreground hover:text-primary transition-colors text-sm font-medium">Planos</a>
             <div className="w-px h-4 bg-border/50 mx-2" />
-            <Link href="/register?plan=basico" className="text-muted-foreground hover:text-foreground transition-colors text-sm font-medium">Entrar</Link>
+            <Link href="/login" className="text-muted-foreground hover:text-foreground transition-colors text-sm font-medium">Entrar</Link>
             <Link href="/register?plan=basico" className="gradient-primary text-black font-bold px-6 py-2.5 rounded-full text-sm hover:scale-105 transition-all shadow-lg hover:shadow-primary/20">
               Começar grátis
             </Link>
