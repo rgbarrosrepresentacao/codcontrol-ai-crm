@@ -2,22 +2,26 @@
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
-import { Shield, Users, Smartphone, BarChart3, Search, Ban, CheckCircle2, Loader2 } from 'lucide-react'
+import { Shield, Users, Smartphone, BarChart3, Search, Ban, CheckCircle2, Loader2, Megaphone, Trash2, Send, Calendar, Clock } from 'lucide-react'
 import { formatDate } from '@/lib/utils'
-import { toggleUserStatusAction, updateUserTrialAction } from './actions'
-import { Calendar, Clock } from 'lucide-react'
+import { toggleUserStatusAction, updateUserTrialAction, saveAnnouncementAction, deleteAnnouncementAction } from './actions'
 
 interface AdminPanelProps {
     users: any[]
     instances: any[]
     plans: any[]
+    initialAnnouncements: any[]
 }
 
-export default function AdminPanel({ users, instances, plans }: AdminPanelProps) {
+export default function AdminPanel({ users, instances, plans, initialAnnouncements }: AdminPanelProps) {
     const [search, setSearch] = useState('')
     const [toggling, setToggling] = useState<string | null>(null)
     const [updatingTrial, setUpdatingTrial] = useState<string | null>(null)
     const [localUsers, setLocalUsers] = useState(users)
+    const [announcement, setAnnouncement] = useState({ title: '', content: '', type: 'info' })
+    const [sending, setSending] = useState(false)
+    const [localAnnouncements, setLocalAnnouncements] = useState(initialAnnouncements)
+    const [deletingAnnouncement, setDeletingAnnouncement] = useState<string | null>(null)
 
     const filtered = localUsers.filter(u =>
         u.name?.toLowerCase().includes(search.toLowerCase()) ||
@@ -46,6 +50,33 @@ export default function AdminPanel({ users, instances, plans }: AdminPanelProps)
             toast.error('Erro ao adicionar dias')
         }
         setUpdatingTrial(null)
+    }
+
+    const handleSendAnnouncement = async () => {
+        if (!announcement.title || !announcement.content) return toast.error('Preencha título e conteúdo')
+        setSending(true)
+        try {
+            await saveAnnouncementAction(announcement.title, announcement.content, announcement.type)
+            toast.success('Comunicado disparado!')
+            setAnnouncement({ title: '', content: '', type: 'info' })
+            window.location.reload()
+        } catch (e: any) {
+            toast.error('Erro ao disparar: ' + e.message)
+        } finally {
+            setSending(false)
+        }
+    }
+
+    const handleDeleteAnnouncement = async (id: string) => {
+        setDeletingAnnouncement(id)
+        try {
+            await deleteAnnouncementAction(id)
+            setLocalAnnouncements(prev => prev.filter(a => a.id !== id))
+            toast.success('Comunicado removido')
+        } catch {
+            toast.error('Erro ao remover')
+        }
+        setDeletingAnnouncement(null)
     }
 
     const connectedCount = instances.filter(i => i.status === 'connected').length
@@ -81,6 +112,87 @@ export default function AdminPanel({ users, instances, plans }: AdminPanelProps)
                         <div className="text-muted-foreground text-xs">{stat.label}</div>
                     </div>
                 ))}
+            </div>
+
+            {/* Global Announcements Section */}
+            <div className="grid lg:grid-cols-2 gap-6">
+                <div className="gradient-card border border-border rounded-xl p-6">
+                    <h2 className="font-semibold text-foreground mb-4 flex items-center gap-2">
+                        <Megaphone className="w-5 h-5 text-primary" /> Novo Comunicado Global
+                    </h2>
+                    <div className="space-y-4">
+                        <div>
+                            <label className="text-xs text-muted-foreground mb-1 block">Título do Aviso</label>
+                            <input
+                                value={announcement.title}
+                                onChange={e => setAnnouncement({ ...announcement, title: e.target.value })}
+                                placeholder="Ex: Manutenção, Novidade..."
+                                className="w-full bg-secondary/50 border border-border rounded-lg px-4 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
+                            />
+                        </div>
+                        <div>
+                            <label className="text-xs text-muted-foreground mb-1 block">Mensagem</label>
+                            <textarea
+                                value={announcement.content}
+                                onChange={e => setAnnouncement({ ...announcement, content: e.target.value })}
+                                placeholder="Digite a mensagem para todos os usuários..."
+                                rows={3}
+                                className="w-full bg-secondary/50 border border-border rounded-lg px-4 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
+                            />
+                        </div>
+                        <div className="flex gap-4 items-end">
+                            <div className="flex-1">
+                                <label className="text-xs text-muted-foreground mb-1 block">Tipo de Alerta</label>
+                                <select
+                                    value={announcement.type}
+                                    onChange={e => setAnnouncement({ ...announcement, type: e.target.value })}
+                                    className="w-full bg-secondary/50 border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none"
+                                >
+                                    <option value="info">💡 Informativo (Azul)</option>
+                                    <option value="warning">⚠️ Aviso (Laranja)</option>
+                                    <option value="critical">⚡ Crítico (Vermelho)</option>
+                                </select>
+                            </div>
+                            <button
+                                onClick={handleSendAnnouncement}
+                                disabled={sending}
+                                className="gradient-primary text-black font-bold h-10 px-6 rounded-lg text-sm flex items-center gap-2 hover:opacity-90 transition-all disabled:opacity-50"
+                            >
+                                {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                                Disparar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="gradient-card border border-border rounded-xl p-6 flex flex-col">
+                    <h2 className="font-semibold text-foreground mb-4">📢 Comunicados Ativos</h2>
+                    <div className="space-y-3 flex-1 overflow-y-auto max-h-[250px] pr-2 custom-scrollbar">
+                        {localAnnouncements.length === 0 ? (
+                            <div className="text-center py-8 text-muted-foreground text-xs italic">Nenhum comunicado ativo</div>
+                        ) : (
+                            localAnnouncements.map(a => (
+                                <div key={a.id} className="bg-secondary/30 border border-border/50 rounded-lg p-3 flex items-start justify-between gap-3 group">
+                                    <div>
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <span className={`w-2 h-2 rounded-full ${a.type === 'critical' ? 'bg-red-500' : a.type === 'warning' ? 'bg-orange-500' : 'bg-primary'}`} />
+                                            <span className="text-xs font-bold text-foreground">[{a.title}]</span>
+                                            <span className="text-[10px] text-muted-foreground">{formatDate(a.created_at)}</span>
+                                        </div>
+                                        <p className="text-xs text-muted-foreground line-clamp-2">{a.content}</p>
+                                    </div>
+                                    <button
+                                        onClick={() => handleDeleteAnnouncement(a.id)}
+                                        disabled={deletingAnnouncement === a.id}
+                                        className="p-1.5 text-muted-foreground hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                                    >
+                                        {deletingAnnouncement === a.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+                                    </button>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </div>
             </div>
 
             {/* Plan Distribution */}

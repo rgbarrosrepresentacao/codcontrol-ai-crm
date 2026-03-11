@@ -16,10 +16,11 @@ export default async function AdminPage() {
         process.env.SUPABASE_SERVICE_ROLE_KEY!
     )
 
-    const [usersRes, instancesRes, plansRes] = await Promise.all([
+    const [usersRes, instancesRes, plansRes, announcementsRes] = await Promise.all([
         adminSupabase.from('profiles').select('*, plans(name)').order('created_at', { ascending: false }),
         adminSupabase.from('whatsapp_instances').select('id, status'),
         adminSupabase.from('plans').select('*'),
+        adminSupabase.from('announcements').select('*').order('created_at', { ascending: false })
     ])
 
     return (
@@ -27,6 +28,7 @@ export default async function AdminPage() {
             users={usersRes.data || []}
             instances={instancesRes.data || []}
             plans={plansRes.data || []}
+            initialAnnouncements={announcementsRes.data || []}
         />
     )
 }

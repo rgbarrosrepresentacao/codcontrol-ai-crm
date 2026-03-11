@@ -2,6 +2,7 @@ import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 import { Sidebar } from '@/components/Sidebar'
 import { TrialWall } from '@/components/TrialWall'
+import { AnnouncementBanner } from '@/components/AnnouncementBanner'
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
     const supabase = await createSupabaseServerClient()
@@ -26,6 +27,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
                 subscriptionStatus={profile?.stripe_subscription_status}
             />
             <main className="flex-1 overflow-y-auto relative">
+                <AnnouncementBanner />
                 <TrialWall
                     isAdmin={profile?.is_admin}
                     trialEndsAt={profile?.trial_ends_at}

@@ -35,3 +35,31 @@ export async function updateUserTrialAction(userId: string, daysToAdd: number) {
     if (error) throw new Error(error.message)
     return baseDate.toISOString()
 }
+
+export async function saveAnnouncementAction(title: string, content: string, type: string) {
+    const adminSupabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
+    
+    const { error } = await adminSupabase.from('announcements').insert({
+        title,
+        content,
+        type,
+        is_active: true
+    })
+    
+    if (error) throw new Error(error.message)
+    return true
+}
+
+export async function deleteAnnouncementAction(id: string) {
+    const adminSupabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
+    
+    const { error } = await adminSupabase.from('announcements').delete().eq('id', id)
+    if (error) throw new Error(error.message)
+    return true
+}
