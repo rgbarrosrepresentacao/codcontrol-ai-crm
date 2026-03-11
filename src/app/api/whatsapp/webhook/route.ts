@@ -8,6 +8,10 @@ const supabase = createClient(
     process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
+// Etiquetas disponíveis para classificação de contatos
+const AI_TAGS = ['PEDIDO_FECHADO', 'POSSIVEL_COMPRADOR', 'INTERESSADO', 'LEAD_FRIO', 'CANCELADO'] as const
+type AiTag = typeof AI_TAGS[number]
+
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json()
@@ -31,6 +35,105 @@ export async function POST(req: NextRequest) {
     }
 }
 
+// Classifica o contato com base no histórico de conversa usando a IA
+async function classifyContact(
+    messages: { role: 'assistant' | 'user', content: string }[],
+    openaiKey: string
+): Promise<AiTag | null> {
+    try {
+        const conversationText = messages
+            .slice(-20) // Últimas 20 mensagens para classificar
+            .map(m => `${m.role === 'user' ? 'Cliente' : 'IA'}: ${m.content}`)
+            .join('\n')
+
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${openaiKey}`
+            },
+            body: JSON.stringify({
+                model: 'gpt-4o-mini',
+                messages: [
+                    {
+                        role: 'system',
+                        content: `Você é um classificador de leads de vendas. Analise a conversa e classifique o cliente em UMA das categorias abaixo. Responda APENAS com a etiqueta, nada mais.
+
+PEDIDO_FECHADO - Cliente confirmou a compra OU enviou dados pessoais para entrega (nome completo, endereço, CEP, CPF, telefone)
+POSSIVEL_COMPRADOR - Cliente demonstrou interesse mas quer comprar depois, em outro dia ou pediu para entrar em contato mais tarde
+INTERESSADO - Cliente apenas perguntou preço, como funciona, tirou dúvidas, sem confirmar compra e sem dados de entrega
+LEAD_FRIO - Cliente parou de responder, não demonstrou interesse real ou encerrou a conversa sem avançar
+CANCELADO - Cliente desistiu da compra, cancelou pedido ou pediu para não ser mais contatado
+
+Responda APENAS com uma dessas palavras: PEDIDO_FECHADO, POSSIVEL_COMPRADOR, INTERESSADO, LEAD_FRIO ou CANCELADO`
+                    },
+                    {
+                        role: 'user',
+                        content: `Classifique esta conversa:\n\n${conversationText}`
+                    }
+                ],
+                temperature: 0.1,
+                max_tokens: 20
+            })
+        })
+
+        if (!response.ok) return null
+        const data = await response.json()
+        const tag = data.choices[0].message.content.trim().toUpperCase() as AiTag
+        return AI_TAGS.includes(tag) ? tag : null
+    } catch {
+        return null
+    }
+}
+
+// Gera mensagem de agradecimento/encerramento profissional ao fechar pedido
+async function generateClosingMessage(
+    messages: { role: 'assistant' | 'user', content: string }[],
+    aiConfig: any,
+    openaiKey: string
+): Promise<string> {
+    try {
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${openaiKey}`
+            },
+            body: JSON.stringify({
+                model: 'gpt-4o-mini',
+                messages: [
+                    {
+                        role: 'system',
+                        content: `Você é ${aiConfig.bot_name}. ${aiConfig.system_prompt}
+
+TAREFA: O cliente acabou de confirmar o pedido e agora você vai encerrar o atendimento de forma calorosa e profissional.
+
+Escreva UMA mensagem curta (2-4 linhas) que:
+1. Agradeça o cliente pelo pedido
+2. Confirme que o pedido foi anotado
+3. Informe que em breve a equipe entrará em contato com mais detalhes
+4. Use emojis discretos para soar mais pessoal
+5. Seja caloroso mas profissional
+
+NÃO faça perguntas. NÃO peça mais informações. Esta é a mensagem FINAL da IA.`
+                    },
+                    ...messages.slice(-10)
+                ],
+                temperature: 0.7,
+                max_tokens: 200
+            })
+        })
+
+        if (!response.ok) {
+            return 'Obrigada pelo seu pedido! 🎉 Recebemos todas as informações e em breve nossa equipe entrará em contato com você. Qualquer dúvida, estamos à disposição! 💛'
+        }
+        const data = await response.json()
+        return data.choices[0].message.content
+    } catch {
+        return 'Obrigada pelo seu pedido! 🎉 Recebemos todas as informações e em breve nossa equipe entrará em contato com você. Qualquer dúvida, estamos à disposição! 💛'
+    }
+}
+
 async function processWebhookInBackground(body: any) {
     try {
         const messageData = body.data?.message
@@ -39,20 +142,19 @@ async function processWebhookInBackground(body: any) {
 
         // Ignora mensagens enviadas pelo próprio robô (evitar loop infinito)
         if (!key || key.fromMe || !messageData) {
-            return NextResponse.json({ success: true, reason: 'from_me_or_empty' })
+            return
         }
 
         const remoteJid = key.remoteJid // Número do cliente final
 
         // Ignora mensagens de grupos
         if (remoteJid.endsWith('@g.us')) {
-            return NextResponse.json({ success: true, reason: 'group_message_ignored' })
+            return
         }
 
         // Extrai número de telefone limpo
         const phone = remoteJid.replace('@s.whatsapp.net', '').replace('@lid', '')
         const pushName = body.data?.pushName || null
-        const messageType = body.data?.messageType || 'text'
 
         const { data: instanceRecord, error: instanceError } = await supabase
             .from('whatsapp_instances')
@@ -62,13 +164,13 @@ async function processWebhookInBackground(body: any) {
 
         if (instanceError || !instanceRecord) {
             console.error(`[Webhook] Instância não encontrada ou erro RLS: ${instanceName}`, instanceError)
-            return NextResponse.json({ success: false, reason: 'instance_not_found_or_rls', error: instanceError })
+            return
         }
 
         const userId = instanceRecord.user_id
         const instanceId = instanceRecord.id
 
-        // 2. Salvar/Atualizar contato no CRM
+        // 2. Salvar/Atualizar contato no CRM (buscando também ai_tag atual)
         const { data: contact } = await supabase
             .from('contacts')
             .upsert({
@@ -84,10 +186,11 @@ async function processWebhookInBackground(body: any) {
                 onConflict: 'user_id,whatsapp_id',
                 ignoreDuplicates: false
             })
-            .select('id')
+            .select('id, ai_tag')
             .single()
 
         const contactId = contact?.id || null
+        const currentAiTag = contact?.ai_tag as AiTag | null
 
         // 3. Atualizar/Criar conversa no CRM
         let conversationId: string | null = null
@@ -109,14 +212,14 @@ async function processWebhookInBackground(body: any) {
             conversationId = conversation?.id || null
         }
 
-        // 2. Buscar Configuração de IA e Dados do Trial
+        // 4. Buscar Configuração de IA e Dados do Trial
         const { data: profile } = await supabase.from('profiles').select('openai_api_key, is_admin, trial_ends_at, stripe_subscription_status').eq('id', userId).single()
 
         // Verifica o trial antes de permitir rodar a IA
         if (profile && !profile.is_admin && profile.stripe_subscription_status !== 'active' && profile.stripe_subscription_status !== 'trialing') {
             if (profile.trial_ends_at && new Date(profile.trial_ends_at) < new Date()) {
                 console.log(`[BLOQUEIO] Usuário ${userId} está com o Trial Vencido. IA não irá responder.`)
-                return NextResponse.json({ success: true, reason: 'trial_expired_or_not_paid' })
+                return
             }
         }
 
@@ -146,17 +249,10 @@ async function processWebhookInBackground(body: any) {
         }
 
         if (!aiConfig || !profile?.openai_api_key) {
-            return NextResponse.json({
-                success: true,
-                reason: 'ai_inactive_or_no_key',
-                details: {
-                    hasConfig: !!aiConfig,
-                    hasKey: !!profile?.openai_api_key
-                }
-            })
+            return
         }
 
-        // 3. Extrai o texto da mensagem ou Transcreve áudio
+        // 5. Extrai o texto da mensagem ou Transcreve áudio
         let textMessage =
             messageData.conversation ||
             messageData.extendedTextMessage?.text ||
@@ -169,7 +265,6 @@ async function processWebhookInBackground(body: any) {
                 const EVOLUTION_URL = process.env.EVOLUTION_API_URL || 'https://api.codcontrolpro.bond'
                 const EVOLUTION_KEY = process.env.EVOLUTION_API_KEY || ''
 
-                // A Evolution API descriptografa o áudio do WhatsApp e retorna em base64
                 const mediaRes = await fetch(`${EVOLUTION_URL}/chat/getBase64FromMediaMessage/${instanceName}`, {
                     method: 'POST',
                     headers: {
@@ -218,7 +313,6 @@ async function processWebhookInBackground(body: any) {
         }
 
         if (!textMessage) {
-            // Mesmo sem resposta da IA, salva a mensagem recebida no CRM
             if (contactId && conversationId) {
                 const msgType = messageData.audioMessage ? 'audio' : messageData.imageMessage ? 'image' : messageData.documentMessage ? 'document' : 'text'
                 await supabase.from('messages').insert({
@@ -233,10 +327,9 @@ async function processWebhookInBackground(body: any) {
                     ai_generated: false,
                     status: 'delivered',
                 })
-                // Incrementa contador de mensagens recebidas
                 await supabase.rpc('increment_messages_received', { instance_id_param: instanceId })
             }
-            return NextResponse.json({ success: true, reason: 'no_content_to_process' })
+            return
         }
 
         // Salvar a mensagem recebida do cliente no CRM
@@ -254,24 +347,21 @@ async function processWebhookInBackground(body: any) {
                 ai_generated: false,
                 status: 'delivered',
             })
-            // Atualiza última mensagem na conversa
             await supabase.from('conversations').update({
                 last_message: textMessage,
                 last_message_at: new Date().toISOString(),
             }).eq('id', conversationId)
-            // Incrementa contador de mensagens recebidas
             await supabase.rpc('increment_messages_received', { instance_id_param: instanceId })
         }
 
-        // 4. Buscar histórico da conversa para dar memória à IA (Últimas 15 mensagens)
+        // 6. Buscar histórico da conversa para dar memória à IA (Últimas 20 mensagens)
         const { data: history } = await supabase
             .from('messages')
             .select('role:from_me, content')
             .eq('conversation_id', conversationId)
             .order('created_at', { ascending: false })
-            .limit(15)
+            .limit(20)
 
-        // Formata o histórico para o formato da OpenAI
         const chatMessages = (history || [])
             .reverse()
             .map(m => ({
@@ -279,9 +369,17 @@ async function processWebhookInBackground(body: any) {
                 content: m.content || ''
             }))
 
+        // ====================================================
+        // BLOCO DE HANDOFF: Se o contato já foi fechado anteriormente, IA não responde mais
+        // ====================================================
+        if (currentAiTag === 'PEDIDO_FECHADO') {
+            console.log(`[HANDOFF] Contato ${contactId} está com tag PEDIDO_FECHADO. IA silenciada — aguardando humano.`)
+            return
+        }
+
         const currentDate = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
 
-        // 5. Montar a requisição pra OpenAI (Upgrade para GPT-4o-mini para MAIS inteligência)
+        // 7. Chamar a OpenAI para gerar a resposta da IA
         const openAiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
             headers: {
@@ -289,15 +387,15 @@ async function processWebhookInBackground(body: any) {
                 'Authorization': `Bearer ${profile.openai_api_key}`
             },
             body: JSON.stringify({
-                model: 'gpt-4o-mini', // Modelo muito mais inteligente e rápido que o 3.5
+                model: 'gpt-4o-mini',
                 messages: [
                     {
                         role: 'system',
                         content: `[DATA E HORA ATUAL DO SISTEMA: ${currentDate}]\n\n${aiConfig.system_prompt}\n\nAja no tom de conversa: ${aiConfig.tone}.\nResponda em: ${aiConfig.language}. Você é o assistente ${aiConfig.bot_name}.\n\nREGRA ABSOLUTA DE COMPORTAMENTO HUMANO: Seja extremamente humano, direto e informal. Não envie mensagens robóticas, não use listas exageradas e não escreva textos muito longos (máximo 2-3 frases curtas por mensagem). Aja como uma pessoa comum digitando no WhatsApp de forma rápida e casual.`
                     },
-                    ...chatMessages // Inclui a memória da conversa aqui
+                    ...chatMessages
                 ],
-                temperature: 0.8, // Um pouco mais de criatividade para vendas
+                temperature: 0.8,
                 max_tokens: 400
             })
         })
@@ -305,20 +403,71 @@ async function processWebhookInBackground(body: any) {
         if (!openAiResponse.ok) {
             const gptError = await openAiResponse.json()
             console.error('Falha na OpenAI:', gptError)
-            return NextResponse.json({ error: 'OpenAI Error' }, { status: 500 })
+            return
         }
 
         const gptData = await openAiResponse.json()
         const botReply = gptData.choices[0].message.content
 
-        // 5. Enviar a resposta via Evolution API
-        // Simular comportamento humano: Mostra 'digitando...' e aguarda 3 segundos
+        // ====================================================
+        // CLASSIFICAÇÃO AUTOMÁTICA POR IA após gerar a resposta
+        // ====================================================
+        const allMessagesForClassification = [
+            ...chatMessages,
+            { role: 'user' as const, content: textMessage },
+            { role: 'assistant' as const, content: botReply }
+        ]
+
+        const newAiTag = await classifyContact(allMessagesForClassification, profile.openai_api_key)
+        console.log(`[TAG] Contato ${contactId} | Etiqueta: ${newAiTag}`)
+
+        // Salva a nova etiqueta no banco de dados
+        if (newAiTag && contactId) {
+            await supabase.from('contacts').update({ ai_tag: newAiTag }).eq('id', contactId)
+        }
+
+        // ====================================================
+        // SE O PEDIDO FOI FECHADO AGORA: Envia mensagem de agradecimento e para a IA
+        // ====================================================
+        if (newAiTag === 'PEDIDO_FECHADO') {
+            console.log(`[PEDIDO_FECHADO] Gerando mensagem de encerramento para ${phone}`)
+
+            const closingMessage = await generateClosingMessage(allMessagesForClassification, aiConfig, profile.openai_api_key)
+
+            await evolutionApi.sendPresence(instanceName, remoteJid, 'composing')
+            await new Promise(resolve => setTimeout(resolve, 2000))
+            await evolutionApi.sendTextMessage(instanceName, remoteJid, closingMessage)
+
+            if (contactId && conversationId) {
+                await supabase.from('messages').insert({
+                    user_id: userId,
+                    conversation_id: conversationId,
+                    instance_id: instanceId,
+                    contact_id: contactId,
+                    from_me: true,
+                    content: closingMessage,
+                    type: 'text',
+                    ai_generated: true,
+                    status: 'sent',
+                })
+                await supabase.from('conversations').update({
+                    last_message: closingMessage,
+                    last_message_at: new Date().toISOString(),
+                    status: 'closed', // Fecha a conversa no CRM
+                }).eq('id', conversationId)
+                await supabase.rpc('increment_messages_sent', { instance_id_param: instanceId })
+            }
+
+            console.log(`[HANDOFF] Conversa ${conversationId} encerrada pela IA. Aguardando atendimento humano.`)
+            return
+        }
+
+        // 8. Enviar a resposta normal via Evolution API
         await evolutionApi.sendPresence(instanceName, remoteJid, 'composing')
         await new Promise(resolve => setTimeout(resolve, 3000))
-
         await evolutionApi.sendTextMessage(instanceName, remoteJid, botReply)
 
-        // 6. Salvar a resposta da IA no CRM
+        // 9. Salvar a resposta da IA no CRM
         if (contactId && conversationId) {
             await supabase.from('messages').insert({
                 user_id: userId,
@@ -331,19 +480,14 @@ async function processWebhookInBackground(body: any) {
                 ai_generated: true,
                 status: 'sent',
             })
-            // Atualiza última mensagem (resposta da IA)
             await supabase.from('conversations').update({
                 last_message: botReply,
                 last_message_at: new Date().toISOString(),
             }).eq('id', conversationId)
-            // Incrementa contador de mensagens enviadas
             await supabase.rpc('increment_messages_sent', { instance_id_param: instanceId })
         }
 
-        return NextResponse.json({ success: true, message_sent: true, transcribed: !!messageData.audioMessage })
-
     } catch (error: any) {
         console.error('Webhook Error:', error)
-        return NextResponse.json({ error: error.message }, { status: 500 })
     }
 }

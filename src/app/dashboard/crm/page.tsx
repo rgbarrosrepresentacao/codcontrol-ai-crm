@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Users, Search, Tag, MessageSquare, Phone, ChevronRight, Loader2, Filter } from 'lucide-react'
+import { Users, Search, Tag, MessageSquare, Phone, ChevronRight, Loader2, Filter, Bot, UserCheck } from 'lucide-react'
 import { formatDateTime } from '@/lib/utils'
 
 const statusConfig = {
@@ -10,6 +10,15 @@ const statusConfig = {
     lead: { label: 'Lead', color: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' },
     customer: { label: 'Cliente', color: 'bg-purple-500/20 text-purple-400 border-purple-500/30' },
     inactive: { label: 'Inativo', color: 'bg-gray-500/20 text-gray-400 border-gray-500/30' },
+}
+
+// Configuração visual das etiquetas de IA
+const aiTagConfig: Record<string, { label: string, color: string, bg: string, dot: string }> = {
+    PEDIDO_FECHADO:     { label: '✅ Pedido Fechado',     color: 'text-emerald-400', bg: 'bg-emerald-500/15 border-emerald-500/30', dot: 'bg-emerald-400' },
+    POSSIVEL_COMPRADOR: { label: '🔥 Possível Comprador', color: 'text-orange-400',  bg: 'bg-orange-500/15 border-orange-500/30',  dot: 'bg-orange-400' },
+    INTERESSADO:        { label: '👀 Interessado',         color: 'text-blue-400',    bg: 'bg-blue-500/15 border-blue-500/30',      dot: 'bg-blue-400' },
+    LEAD_FRIO:          { label: '🧊 Lead Frio',           color: 'text-slate-400',   bg: 'bg-slate-500/15 border-slate-500/30',    dot: 'bg-slate-400' },
+    CANCELADO:          { label: '❌ Cancelado',           color: 'text-red-400',     bg: 'bg-red-500/15 border-red-500/30',        dot: 'bg-red-400' },
 }
 
 interface Contact {
@@ -22,6 +31,7 @@ interface Contact {
     status: keyof typeof statusConfig
     last_message_at: string | null
     whatsapp_id: string
+    ai_tag: string | null
 }
 
 export default function CRMPage() {
@@ -29,10 +39,12 @@ export default function CRMPage() {
     const [loading, setLoading] = useState(true)
     const [search, setSearch] = useState('')
     const [filterStatus, setFilterStatus] = useState<string>('all')
+    const [filterAiTag, setFilterAiTag] = useState<string>('all')
     const [selectedContact, setSelectedContact] = useState<Contact | null>(null)
     const [editNotes, setEditNotes] = useState('')
     const [editStatus, setEditStatus] = useState<string>('')
     const [savingContact, setSavingContact] = useState(false)
+    const [reactivating, setReactivating] = useState(false)
 
     useEffect(() => {
         const load = async () => {
@@ -52,13 +64,23 @@ export default function CRMPage() {
             c.phone?.includes(search)
         )
         const matchStatus = filterStatus === 'all' || c.status === filterStatus
-        return matchSearch && matchStatus
+        const matchAiTag = filterAiTag === 'all' || c.ai_tag === filterAiTag
+        return matchSearch && matchStatus && matchAiTag
     })
 
     const openContact = (contact: Contact) => {
         setSelectedContact(contact)
         setEditNotes(contact.notes || '')
         setEditStatus(contact.status)
+    }
+
+    const reactivateAI = async () => {
+        if (!selectedContact) return
+        setReactivating(true)
+        await supabase.from('contacts').update({ ai_tag: null }).eq('id', selectedContact.id)
+        setContacts(prev => prev.map(c => c.id === selectedContact.id ? { ...c, ai_tag: null } : c))
+        setSelectedContact(prev => prev ? { ...prev, ai_tag: null } : null)
+        setReactivating(false)
     }
 
     const saveContact = async () => {
@@ -72,28 +94,34 @@ export default function CRMPage() {
 
     const displayName = (c: Contact) => c.name || c.push_name || c.phone || c.whatsapp_id.split('@')[0]
 
+    // Contagens por etiqueta de IA
+    const tagCounts = Object.keys(aiTagConfig).reduce((acc, tag) => {
+        acc[tag] = contacts.filter(c => c.ai_tag === tag).length
+        return acc
+    }, {} as Record<string, number>)
+
     return (
         <div className="p-6 md:p-8 space-y-6 animate-fade-in">
             <div>
                 <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
                     <Users className="w-6 h-6 text-primary" />CRM de Atendimento
                 </h1>
-                <p className="text-muted-foreground text-sm mt-1">Gerencie seus contatos e conversas</p>
+                <p className="text-muted-foreground text-sm mt-1">Contatos classificados automaticamente pela IA</p>
             </div>
 
-            {/* Stats */}
-            <div className="grid grid-cols-3 md:grid-cols-5 gap-3">
-                {[
-                    { label: 'Total', count: contacts.length, color: 'text-foreground', bg: 'bg-secondary/50' },
-                    { label: 'Novos', count: contacts.filter(c => c.status === 'new').length, color: 'text-blue-400', bg: 'bg-blue-500/10' },
-                    { label: 'Ativos', count: contacts.filter(c => c.status === 'active').length, color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
-                    { label: 'Leads', count: contacts.filter(c => c.status === 'lead').length, color: 'text-yellow-400', bg: 'bg-yellow-500/10' },
-                    { label: 'Clientes', count: contacts.filter(c => c.status === 'customer').length, color: 'text-purple-400', bg: 'bg-purple-500/10' },
-                ].map(s => (
-                    <div key={s.label} className={`${s.bg} border border-border rounded-xl p-3 text-center`}>
-                        <div className={`text-xl font-bold ${s.color}`}>{s.count}</div>
-                        <div className="text-xs text-muted-foreground">{s.label}</div>
-                    </div>
+            {/* Stats de Etiquetas IA */}
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                {Object.entries(aiTagConfig).map(([tag, config]) => (
+                    <button
+                        key={tag}
+                        onClick={() => setFilterAiTag(filterAiTag === tag ? 'all' : tag)}
+                        className={`border rounded-xl p-3 text-left transition-all hover:scale-[1.02] ${filterAiTag === tag ? config.bg + ' border-2' : 'bg-secondary/30 border-border hover:border-primary/30'}`}
+                    >
+                        <div className={`text-xl font-bold ${config.color}`}>{tagCounts[tag] || 0}</div>
+                        <div className={`text-xs font-medium mt-0.5 ${filterAiTag === tag ? config.color : 'text-muted-foreground'}`}>
+                            {config.label}
+                        </div>
+                    </button>
                 ))}
             </div>
 
@@ -109,6 +137,16 @@ export default function CRMPage() {
                     />
                 </div>
                 <select
+                    value={filterAiTag}
+                    onChange={(e) => setFilterAiTag(e.target.value)}
+                    className="bg-input border border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm"
+                >
+                    <option value="all">🏷️ Todas as etiquetas</option>
+                    {Object.entries(aiTagConfig).map(([tag, config]) => (
+                        <option key={tag} value={tag}>{config.label}</option>
+                    ))}
+                </select>
+                <select
                     value={filterStatus}
                     onChange={(e) => setFilterStatus(e.target.value)}
                     className="bg-input border border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm"
@@ -120,6 +158,15 @@ export default function CRMPage() {
                 </select>
             </div>
 
+            {/* Resultado filtrado */}
+            {filterAiTag !== 'all' && (
+                <div className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-sm font-medium ${aiTagConfig[filterAiTag]?.bg} ${aiTagConfig[filterAiTag]?.color}`}>
+                    <Filter className="w-4 h-4" />
+                    Filtrando: {aiTagConfig[filterAiTag]?.label} — {filtered.length} contato{filtered.length !== 1 ? 's' : ''}
+                    <button onClick={() => setFilterAiTag('all')} className="ml-auto text-xs underline opacity-70 hover:opacity-100">Limpar</button>
+                </div>
+            )}
+
             {/* Contact List */}
             {loading ? (
                 <div className="space-y-3">
@@ -129,10 +176,10 @@ export default function CRMPage() {
                 <div className="gradient-card border border-border rounded-xl p-12 text-center">
                     <Users className="w-16 h-16 text-muted-foreground mx-auto mb-4 opacity-40" />
                     <h3 className="text-foreground font-semibold text-lg mb-2">
-                        {search ? 'Nenhum contato encontrado' : 'Nenhum contato ainda'}
+                        {search || filterAiTag !== 'all' ? 'Nenhum contato encontrado' : 'Nenhum contato ainda'}
                     </h3>
                     <p className="text-muted-foreground text-sm max-w-sm mx-auto">
-                        {search ? 'Tente outros termos de busca.' : 'Os contatos aparecem aqui quando seu WhatsApp receber mensagens.'}
+                        {search || filterAiTag !== 'all' ? 'Tente outros termos ou remova o filtro.' : 'Os contatos aparecem aqui quando seu WhatsApp receber mensagens.'}
                     </p>
                 </div>
             ) : (
@@ -140,27 +187,46 @@ export default function CRMPage() {
                     <div className="divide-y divide-border">
                         {filtered.map((contact) => {
                             const s = statusConfig[contact.status] || statusConfig.new
+                            const aiTag = contact.ai_tag ? aiTagConfig[contact.ai_tag] : null
+                            const isHandoff = contact.ai_tag === 'PEDIDO_FECHADO'
                             return (
                                 <button
                                     key={contact.id}
                                     onClick={() => openContact(contact)}
                                     className="w-full flex items-center gap-4 px-5 py-4 hover:bg-secondary/50 transition-colors text-left group"
                                 >
-                                    <div className="w-10 h-10 rounded-full gradient-primary flex items-center justify-center text-black font-bold text-sm flex-shrink-0">
-                                        {displayName(contact).slice(0, 2).toUpperCase()}
+                                    {/* Avatar */}
+                                    <div className="relative flex-shrink-0">
+                                        <div className="w-10 h-10 rounded-full gradient-primary flex items-center justify-center text-black font-bold text-sm">
+                                            {displayName(contact).slice(0, 2).toUpperCase()}
+                                        </div>
+                                        {isHandoff && (
+                                            <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full flex items-center justify-center border-2 border-background">
+                                                <UserCheck className="w-2.5 h-2.5 text-white" />
+                                            </div>
+                                        )}
                                     </div>
+
                                     <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2">
+                                        <div className="flex items-center gap-2 flex-wrap">
                                             <span className="font-medium text-foreground text-sm truncate">{displayName(contact)}</span>
-                                            <span className={`px-2 py-0.5 rounded-full text-xs border ${s.color} hidden sm:inline-block`}>{s.label}</span>
+                                            {/* Etiqueta da IA */}
+                                            {aiTag && (
+                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${aiTag.bg} ${aiTag.color}`}>
+                                                    {aiTag.label}
+                                                </span>
+                                            )}
                                         </div>
                                         <div className="flex items-center gap-3 mt-0.5">
                                             {contact.phone && <span className="text-xs text-muted-foreground flex items-center gap-1"><Phone className="w-3 h-3" />{contact.phone}</span>}
-                                            {contact.tags?.length > 0 && (
-                                                <span className="text-xs text-muted-foreground flex items-center gap-1"><Tag className="w-3 h-3" />{contact.tags.join(', ')}</span>
+                                            {isHandoff && (
+                                                <span className="text-xs text-emerald-400 font-medium flex items-center gap-1">
+                                                    <UserCheck className="w-3 h-3" /> Aguardando atendimento humano
+                                                </span>
                                             )}
                                         </div>
                                     </div>
+
                                     <div className="text-right flex-shrink-0">
                                         {contact.last_message_at && (
                                             <div className="text-xs text-muted-foreground">{formatDateTime(contact.last_message_at)}</div>
@@ -182,11 +248,35 @@ export default function CRMPage() {
                             <div className="w-14 h-14 rounded-full gradient-primary flex items-center justify-center text-black font-bold text-lg">
                                 {displayName(selectedContact).slice(0, 2).toUpperCase()}
                             </div>
-                            <div>
+                            <div className="flex-1">
                                 <h2 className="text-lg font-bold text-foreground">{displayName(selectedContact)}</h2>
                                 <p className="text-muted-foreground text-sm">{selectedContact.phone || selectedContact.whatsapp_id}</p>
+                                {/* Etiqueta IA no modal */}
+                                {selectedContact.ai_tag && aiTagConfig[selectedContact.ai_tag] && (
+                                    <span className={`inline-flex items-center gap-1 mt-1 px-2.5 py-1 rounded-full text-xs font-bold border ${aiTagConfig[selectedContact.ai_tag].bg} ${aiTagConfig[selectedContact.ai_tag].color}`}>
+                                        <Bot className="w-3 h-3" /> {aiTagConfig[selectedContact.ai_tag].label}
+                                        {selectedContact.ai_tag === 'PEDIDO_FECHADO' && <span className="opacity-70 ml-1">· IA pausada</span>}
+                                    </span>
+                                )}
                             </div>
                         </div>
+
+                        {selectedContact.ai_tag === 'PEDIDO_FECHADO' && (
+                            <div className="mb-4 space-y-2">
+                                <div className="flex items-center gap-2 px-4 py-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-xs text-emerald-400 font-medium">
+                                    <UserCheck className="w-4 h-4 flex-shrink-0" />
+                                    A IA está pausada. Atendimento humano está conduzindo esta conversa.
+                                </div>
+                                <button
+                                    onClick={reactivateAI}
+                                    disabled={reactivating}
+                                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-primary/10 hover:bg-primary/20 border border-primary/30 text-primary rounded-xl text-xs font-bold transition-all disabled:opacity-50"
+                                >
+                                    {reactivating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bot className="w-3.5 h-3.5" />}
+                                    {reactivating ? 'Reativando...' : '🤖 Reativar IA neste contato'}
+                                </button>
+                            </div>
+                        )}
 
                         <div className="space-y-4">
                             <div>
@@ -203,7 +293,7 @@ export default function CRMPage() {
 
                             {selectedContact.tags?.length > 0 && (
                                 <div>
-                                    <label className="block text-sm font-medium text-foreground mb-1.5">Tags</label>
+                                    <label className="block text-sm font-medium text-foreground mb-1.5">Tags manuais</label>
                                     <div className="flex gap-2 flex-wrap">
                                         {selectedContact.tags.map(tag => (
                                             <span key={tag} className="px-2 py-1 bg-primary/10 border border-primary/20 text-primary rounded-lg text-xs">{tag}</span>
