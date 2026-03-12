@@ -358,6 +358,29 @@ async function processWebhookInBackground(body: any) {
             await supabase.rpc('increment_messages_received', { instance_id_param: instanceId })
         }
 
+        // ====================================================
+        // GAVETA DE ESPERA (ANTI-ATROPELAMENTO)
+        // Aguarda 7 segundos para ver se o cliente vai enviar outra mensagem
+        // ====================================================
+        await new Promise(resolve => setTimeout(resolve, 7000))
+
+        if (conversationId) {
+            // Olha no banco se chegou alguma mensagem "mais nova"
+            const { data: latestMessage } = await supabase
+                .from('messages')
+                .select('message_id')
+                .eq('conversation_id', conversationId)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .single()
+
+            // Se a última mensagem não for esta (key.id), o cliente mandou mais coisa. Aborta esta resposta!
+            if (latestMessage && latestMessage.message_id !== key.id) {
+                console.log(`[ANTI-ATROPELAMENTO] Cliente enviou outra mensagem rápida (${phone}). Descartando resposta duplicada.`)
+                return
+            }
+        }
+
         // 6. Buscar histórico da conversa para dar memória à IA (Últimas 20 mensagens)
         const { data: history } = await supabase
             .from('messages')
@@ -438,8 +461,11 @@ async function processWebhookInBackground(body: any) {
 
             const closingMessage = await generateClosingMessage(allMessagesForClassification, aiConfig, profile.openai_api_key)
 
+            // Tempo de digitação dinâmico: 50ms por caractere (Min: 2s | Máx: 10s)
+            const typingTimeMs = Math.min(Math.max(closingMessage.length * 50, 2000), 10000)
+
             await evolutionApi.sendPresence(instanceName, remoteJid, 'composing')
-            await new Promise(resolve => setTimeout(resolve, 2000))
+            await new Promise(resolve => setTimeout(resolve, typingTimeMs))
             await evolutionApi.sendTextMessage(instanceName, remoteJid, closingMessage)
 
             if (contactId && conversationId) {
@@ -466,9 +492,11 @@ async function processWebhookInBackground(body: any) {
             return
         }
 
-        // 8. Enviar a resposta normal via Evolution API
+        // 8. Enviar a resposta normal via Evolution API (com delay dinâmico)
+        const typingTimeMs = Math.min(Math.max(botReply.length * 50, 2000), 12000) // Calcula entre 2 a 12 segundos
+
         await evolutionApi.sendPresence(instanceName, remoteJid, 'composing')
-        await new Promise(resolve => setTimeout(resolve, 3000))
+        await new Promise(resolve => setTimeout(resolve, typingTimeMs))
         await evolutionApi.sendTextMessage(instanceName, remoteJid, botReply)
 
         // 9. Salvar a resposta da IA no CRM
