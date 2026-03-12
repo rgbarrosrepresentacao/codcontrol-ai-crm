@@ -190,11 +190,45 @@ async function processWebhookInBackground(body: any) {
                 onConflict: 'user_id,whatsapp_id',
                 ignoreDuplicates: false
             })
-            .select('id, ai_tag')
+            .select('id, ai_tag, current_funnel_id, funnel_step_order, is_funnel_active')
             .single()
 
         const contactId = contact?.id || null
         const currentAiTag = contact?.ai_tag as AiTag | null
+        let currentFunnelId = contact?.current_funnel_id
+        let funnelStepOrder = contact?.funnel_step_order || 0
+        let isFunnelActive = contact?.is_funnel_active || false
+
+        // ── AUTO-ATIVAR FUNIL PADRÃO ──────────────────────────────────────
+        // Se o contato não tem funil ativo, tentamos ativar o funil "Padrão"
+        if (!isFunnelActive) {
+            const { data: defaultFunnel } = await supabase
+                .from('funnels')
+                .select('id')
+                .eq('user_id', userId)
+                .eq('is_default', true)
+                .eq('is_active', true)
+                .single()
+            
+            if (defaultFunnel) {
+                // Se já tinha um funil mas ele acabou, não reiniciamos automaticamente
+                // para não prender o cliente num loop infinito.
+                // Só ativamos se for a primeira vez nesse funil ou se as tags permitirem.
+                if (currentFunnelId !== defaultFunnel.id) {
+                    console.log(`[FUNIL] Ativando funil padrão ${defaultFunnel.id} para lead ${remoteJid}`)
+                    currentFunnelId = defaultFunnel.id
+                    funnelStepOrder = 0
+                    isFunnelActive = true
+
+                    await supabase.from('contacts').update({
+                        current_funnel_id: currentFunnelId,
+                        funnel_step_order: 0,
+                        is_funnel_active: true
+                    }).eq('id', contactId)
+                }
+            }
+        }
+        // ──────────────────────────────────────────────────────────────────
 
         // 3. Atualizar/Criar conversa no CRM
         let conversationId: string | null = null
@@ -255,6 +289,60 @@ async function processWebhookInBackground(body: any) {
         if (!aiConfig || !profile?.openai_api_key) {
             return
         }
+
+        // ── LÓGICA DE FUNIL DE VENDAS ──────────────────────────────────────────
+        // Se o funil estiver ativo, enviamos o próximo passo em vez da IA
+        if (isFunnelActive && currentFunnelId) {
+            let currentOrder = funnelStepOrder
+            let moreSteps = true
+
+            while (moreSteps) {
+                const { data: step } = await supabase
+                    .from('funnel_steps')
+                    .select('*')
+                    .eq('funnel_id', currentFunnelId)
+                    .eq('order_index', currentOrder)
+                    .single()
+
+                if (step) {
+                    console.log(`[FUNIL] Enviando passo ${currentOrder} para ${remoteJid}`)
+                    
+                    if (step.type === 'text') {
+                        await evolutionApi.sendTextMessage(instanceName, remoteJid, step.content)
+                    } else {
+                        await evolutionApi.sendMedia(instanceName, remoteJid, step.content, step.type)
+                    }
+
+                    currentOrder++
+
+                    // Verifica se o próximo passo existe e se tem delay 0
+                    // Se tiver delay > 0, paramos e deixamos o CRON ou a próxima resposta lidar (simplificado: paramos aqui)
+                    const { data: next } = await supabase
+                        .from('funnel_steps')
+                        .select('id, delay_minutes')
+                        .eq('funnel_id', currentFunnelId)
+                        .eq('order_index', currentOrder)
+                        .single()
+                    
+                    if (!next || next.delay_minutes > 0) {
+                        moreSteps = false
+                        await supabase.from('contacts').update({
+                            funnel_step_order: currentOrder,
+                            is_funnel_active: !!next,
+                            ai_tag: next ? 'LEAD_FRIO' : 'INTERESSADO'
+                        }).eq('id', contactId)
+                    } else {
+                        // Pequeno delay entre mensagens seguidas para não dar erro
+                        await new Promise(r => setTimeout(r, 1500))
+                    }
+                } else {
+                    moreSteps = false
+                    await supabase.from('contacts').update({ is_funnel_active: false }).eq('id', contactId)
+                }
+            }
+            return // Interrompe aqui para não rodar a IA
+        }
+        // ───────────────────────────────────────────────────────────────────────
 
         // 5. Extrai o texto da mensagem ou Transcreve áudio
         let textMessage =

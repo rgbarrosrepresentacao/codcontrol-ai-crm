@@ -119,6 +119,23 @@ export const evolutionApi = {
         return res.json()
     },
 
+    async sendMedia(instanceName: string, to: string, mediaUrl: string, mediaType: 'audio' | 'video' | 'image' | 'document', caption?: string) {
+        const res = await fetch(`${EVOLUTION_URL}/message/sendMedia/${instanceName}`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+                number: to,
+                media: mediaUrl,
+                mediatype: mediaType,
+                caption: caption || '',
+                delay: 1500,
+                quoted: null
+            }),
+        })
+        if (!res.ok) throw new Error(`Failed to send media: ${res.statusText}`)
+        return res.json()
+    },
+
     async fetchInstances() {
         const res = await fetch(`${EVOLUTION_URL}/instance/fetchInstances`, {
             method: 'GET',

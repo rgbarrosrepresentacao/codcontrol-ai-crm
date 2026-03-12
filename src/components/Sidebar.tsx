@@ -6,7 +6,8 @@ import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import {
     Bot, LayoutDashboard, Smartphone, Brain, Users,
-    Settings, LogOut, ChevronRight, Shield, X, Menu, CreditCard, MessageCircle, MessageSquare
+    Settings, LogOut, ChevronRight, Shield, X, Menu, CreditCard, MessageCircle, MessageSquare,
+    Filter
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -16,6 +17,7 @@ const navItems = [
     { href: '/dashboard/ia', label: 'Inteligência Artificial', icon: Brain },
     { href: '/dashboard/crm', label: 'CRM', icon: Users },
     { href: '/dashboard/chat', label: 'Chat ao Vivo', icon: MessageSquare },
+    { href: '/dashboard/funis', label: 'Funis de Venda', icon: Filter },
     { href: '/dashboard/planos', label: 'Planos', icon: CreditCard },
     { href: '/dashboard/configuracoes', label: 'Configurações', icon: Settings },
 ]

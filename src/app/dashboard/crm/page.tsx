@@ -1,8 +1,9 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Users, Search, Tag, MessageSquare, Phone, ChevronRight, Loader2, Filter, Bot, UserCheck } from 'lucide-react'
+import { Users, Search, Tag, MessageSquare, Phone, ChevronRight, Loader2, Filter, Bot, UserCheck, Trash2 } from 'lucide-react'
 import { formatDateTime } from '@/lib/utils'
+import { toast } from 'sonner'
 
 const statusConfig = {
     new: { label: 'Novo', color: 'bg-blue-500/20 text-blue-400 border-blue-500/30' },
@@ -97,6 +98,24 @@ export default function CRMPage() {
         setContacts(prev => prev.map(c => c.id === selectedContact.id ? { ...c, notes: editNotes, status: editStatus as any, ai_tag: editAiTag } : c))
         setSavingContact(false)
         setSelectedContact(null)
+    }
+
+    const deleteContact = async () => {
+        if (!selectedContact) return
+        if (!confirm('Deseja realmente excluir este contato? Esta ação não pode ser desfeita.')) return
+        
+        setSavingContact(true)
+        const { error } = await supabase.from('contacts').delete().eq('id', selectedContact.id)
+        
+        if (!error) {
+            setContacts(prev => prev.filter(c => c.id !== selectedContact.id))
+            toast.success('Contato excluído com sucesso')
+            setSelectedContact(null)
+        } else {
+            console.error('Erro ao excluir contato:', error)
+            toast.error('Erro ao excluir contato')
+        }
+        setSavingContact(false)
     }
 
     const displayName = (c: Contact) => c.name || c.push_name || c.phone || c.whatsapp_id.split('@')[0]
@@ -350,6 +369,14 @@ export default function CRMPage() {
                         </div>
 
                         <div className="flex gap-3 mt-6">
+                            <button 
+                                onClick={deleteContact} 
+                                disabled={savingContact}
+                                className="p-2.5 text-muted-foreground hover:text-red-400 border border-border rounded-lg transition-colors group"
+                                title="Excluir contato"
+                            >
+                                <Trash2 className="w-5 h-5" />
+                            </button>
                             <button onClick={() => setSelectedContact(null)} className="flex-1 border border-border text-foreground font-medium py-2.5 rounded-lg hover:bg-secondary transition-colors text-sm">Fechar</button>
                             <button onClick={saveContact} disabled={savingContact} className="flex-1 gradient-primary text-black font-semibold py-2.5 rounded-lg hover:opacity-90 transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-60">
                                 {savingContact && <Loader2 className="w-4 h-4 animate-spin" />}
