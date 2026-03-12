@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
         // Create instance on Evolution API
         let qrCode: string | undefined
         try {
-            const evoResult = await evolutionApi.createInstance(instanceName, user.id)
+            const evoResult = await evolutionApi.createInstance(instanceName)
             qrCode = evoResult?.qrcode?.base64 || evoResult?.base64
         } catch (evoErr: any) {
             console.error('Evolution API error:', evoErr)

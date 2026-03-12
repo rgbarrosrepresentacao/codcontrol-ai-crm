@@ -9,7 +9,7 @@ const headers = {
 }
 
 export const evolutionApi = {
-    async createInstance(instanceName: string, userId: string) {
+    async createInstance(instanceName: string) {
         const res = await fetch(`${EVOLUTION_URL}/instance/create`, {
             method: 'POST',
             headers,

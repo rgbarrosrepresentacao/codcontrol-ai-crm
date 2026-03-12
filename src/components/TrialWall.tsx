@@ -1,6 +1,5 @@
 'use client'
 import { usePathname, useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
 import { AlertTriangle, ArrowRight } from 'lucide-react'
 
 export function TrialWall({
@@ -16,26 +15,17 @@ export function TrialWall({
 }) {
     const pathname = usePathname()
     const router = useRouter()
-    const [isBlocked, setIsBlocked] = useState(false)
-
-    useEffect(() => {
-        if (isAdmin || subscriptionStatus === 'active' || subscriptionStatus === 'trialing') {
-            setIsBlocked(false)
-            return
-        }
-
+    let isBlocked = false
+    if (!isAdmin && subscriptionStatus !== 'active' && subscriptionStatus !== 'trialing') {
         if (trialEndsAt) {
             const ends = new Date(trialEndsAt)
             if (new Date() > ends) {
-                // Se a URL nao for planos (o cliente precisa assinar), entao bloqueia tudo
                 if (pathname !== '/dashboard/planos') {
-                    setIsBlocked(true)
-                } else {
-                    setIsBlocked(false) // Deixa ele ver os planos para poder pagar
+                    isBlocked = true
                 }
             }
         }
-    }, [isAdmin, trialEndsAt, subscriptionStatus, pathname])
+    }
 
     if (isBlocked) {
         return (
@@ -55,7 +45,6 @@ export function TrialWall({
                     </p>
                     <button
                         onClick={() => {
-                            setIsBlocked(false)
                             router.push('/dashboard/planos')
                         }}
                         className="w-full gradient-primary text-black font-bold py-3.5 rounded-xl hover:opacity-90 transition-all flex justify-center items-center gap-2"
