@@ -50,8 +50,8 @@ export async function POST(req: NextRequest) {
         await new Promise(resolve => setTimeout(resolve, 800))
         await evolutionApi.sendTextMessage(instance.instance_name, contactWhatsappId, message.trim())
 
-        // 2. Salva a mensagem no banco de dados (marcada como humana, não da IA)
-        await supabaseAdmin.from('messages').insert({
+        // 2. Salva a mensagem no banco de dados (marcada como humana, nao da IA)
+        const { data: insertedMsg, error: insertError } = await supabaseAdmin.from('messages').insert({
             user_id: user.id,
             conversation_id: conversationId,
             instance_id: instanceId,
@@ -59,26 +59,31 @@ export async function POST(req: NextRequest) {
             from_me: true,
             content: message.trim(),
             type: 'text',
-            ai_generated: false,   // 👈 Enviado por humano
+            ai_generated: false,
             status: 'sent',
-        })
+        }).select('id, content, from_me, ai_generated, type, created_at, status').single()
 
-        // 3. Atualiza a última mensagem da conversa
+        if (insertError) {
+            console.error('[Chat/Send] Erro ao inserir mensagem no DB:', insertError)
+        }
+
+        // 3. Atualiza a ultima mensagem da conversa
         await supabaseAdmin.from('conversations').update({
             last_message: message.trim(),
             last_message_at: new Date().toISOString(),
         }).eq('id', conversationId)
 
-        // 4. HANDOFF AUTOMÁTICO: Muda etiqueta do contato para HUMANO → silencia a IA
+        // 4. HANDOFF AUTOMATICO: Muda etiqueta do contato para HUMANO
         await supabaseAdmin.from('contacts').update({
             ai_tag: 'HUMANO',
-            followup_stage: 0, // Reseta follow-up também
+            followup_stage: 0,
         }).eq('id', conversation.contact_id).eq('user_id', user.id)
 
         // 5. Atualiza o contador de mensagens enviadas
         await supabaseAdmin.rpc('increment_messages_sent', { instance_id_param: instanceId })
 
-        return NextResponse.json({ success: true })
+        // Retorna a mensagem inserida para o frontend atualizar a UI
+        return NextResponse.json({ success: true, message: insertedMsg || null })
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : 'Erro desconhecido'
         console.error('[Chat/Send] Erro:', msg)

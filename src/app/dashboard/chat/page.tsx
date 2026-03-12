@@ -6,7 +6,7 @@ import {
     MessageCircle, Loader2, ChevronLeft, Mic, Image, MoreVertical
 } from 'lucide-react'
 
-// ── Tipos ──────────────────────────────────────────────────────────────────────
+// Types
 
 interface Conversation {
     id: string
@@ -35,15 +35,24 @@ interface Message {
     status: string
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────────────
+// Helpers
 
 const aiTagConfig: Record<string, { label: string; color: string; bg: string }> = {
-    PEDIDO_FECHADO:     { label: '✅ Pedido Fechado',     color: 'text-emerald-400', bg: 'bg-emerald-500/15 border-emerald-500/30' },
-    POSSIVEL_COMPRADOR: { label: '🔥 Possível Comprador', color: 'text-orange-400',  bg: 'bg-orange-500/15 border-orange-500/30' },
-    INTERESSADO:        { label: '👀 Interessado',        color: 'text-blue-400',    bg: 'bg-blue-500/15 border-blue-500/30' },
-    LEAD_FRIO:          { label: '🧊 Lead Frio',          color: 'text-slate-400',   bg: 'bg-slate-500/15 border-slate-500/30' },
-    CANCELADO:          { label: '❌ Cancelado',          color: 'text-red-400',     bg: 'bg-red-500/15 border-red-500/30' },
-    HUMANO:             { label: '👤 Atend. Humano',      color: 'text-violet-400',  bg: 'bg-violet-500/15 border-violet-500/30' },
+    PEDIDO_FECHADO:     { label: 'Pedido Fechado',     color: 'text-emerald-400', bg: 'bg-emerald-500/15 border-emerald-500/30' },
+    POSSIVEL_COMPRADOR: { label: 'Possivel Comprador', color: 'text-orange-400',  bg: 'bg-orange-500/15 border-orange-500/30' },
+    INTERESSADO:        { label: 'Interessado',        color: 'text-blue-400',    bg: 'bg-blue-500/15 border-blue-500/30' },
+    LEAD_FRIO:          { label: 'Lead Frio',          color: 'text-slate-400',   bg: 'bg-slate-500/15 border-slate-500/30' },
+    CANCELADO:          { label: 'Cancelado',          color: 'text-red-400',     bg: 'bg-red-500/15 border-red-500/30' },
+    HUMANO:             { label: 'Atend. Humano',      color: 'text-violet-400',  bg: 'bg-violet-500/15 border-violet-500/30' },
+}
+
+const aiTagEmoji: Record<string, string> = {
+    PEDIDO_FECHADO: '✅',
+    POSSIVEL_COMPRADOR: '🔥',
+    INTERESSADO: '👀',
+    LEAD_FRIO: '🧊',
+    CANCELADO: '❌',
+    HUMANO: '👤',
 }
 
 function displayName(c: Conversation['contact']) {
@@ -63,7 +72,7 @@ function timeLabel(iso: string | null) {
     return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
 }
 
-// ── Componente principal ───────────────────────────────────────────────────────
+// Main Component
 
 export default function ChatPage() {
     const [userId, setUserId] = useState<string | null>(null)
@@ -77,14 +86,14 @@ export default function ChatPage() {
     const [mobileShowChat, setMobileShowChat] = useState(false)
     const bottomRef = useRef<HTMLDivElement>(null)
 
-    // ── Busca usuário autenticado ──────────────────────────────────────────────
+    // Get authenticated user
     useEffect(() => {
         supabase.auth.getUser().then(({ data: { user } }) => {
             if (user) setUserId(user.id)
         })
     }, [])
 
-    // ── Carrega conversas ─────────────────────────────────────────────────────
+    // Load conversations
     const loadConversations = useCallback(async () => {
         if (!userId) return
         const { data } = await supabase
@@ -101,7 +110,7 @@ export default function ChatPage() {
 
     useEffect(() => { loadConversations() }, [loadConversations])
 
-    // ── Realtime: nova conversa ou atualização ────────────────────────────────
+    // Realtime: conversation updates
     useEffect(() => {
         if (!userId) return
         const channel = supabase
@@ -114,7 +123,7 @@ export default function ChatPage() {
         return () => { supabase.removeChannel(channel) }
     }, [userId, loadConversations])
 
-    // ── Carrega mensagens da conversa selecionada ─────────────────────────────
+    // Load messages for selected conversation
     const loadMessages = useCallback(async (convId: string) => {
         setLoadingMsg(true)
         const { data } = await supabase
@@ -132,7 +141,7 @@ export default function ChatPage() {
         loadMessages(selected.id)
     }, [selected, loadMessages])
 
-    // ── Realtime: novas mensagens no chat aberto ──────────────────────────────
+    // Realtime: new incoming messages in the open conversation
     useEffect(() => {
         if (!selected) return
         const channel = supabase
@@ -141,18 +150,35 @@ export default function ChatPage() {
                 event: 'INSERT', schema: 'public', table: 'messages',
                 filter: `conversation_id=eq.${selected.id}`
             }, payload => {
-                setMessages(prev => [...prev, payload.new as Message])
+                const newMsg = payload.new as Message
+                // Avoid adding duplicates (optimistic + real)
+                setMessages(prev => {
+                    const isAlreadyThere = prev.some(m => m.id === newMsg.id)
+                    const hasTempVersion = prev.some(
+                        m => m.id.startsWith('temp-') && m.content === newMsg.content && m.from_me === newMsg.from_me
+                    )
+                    if (isAlreadyThere) return prev
+                    if (hasTempVersion) {
+                        // Replace temp with real
+                        return prev.map(m =>
+                            m.id.startsWith('temp-') && m.content === newMsg.content && m.from_me === newMsg.from_me
+                                ? newMsg
+                                : m
+                        )
+                    }
+                    return [...prev, newMsg]
+                })
             })
             .subscribe()
         return () => { supabase.removeChannel(channel) }
     }, [selected])
 
-    // ── Scroll para baixo automaticamente ────────────────────────────────────
+    // Auto-scroll to bottom
     useEffect(() => {
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
     }, [messages])
 
-    // ── Seleciona conversa ────────────────────────────────────────────────────
+    // Select a conversation
     const selectConversation = (conv: Conversation) => {
         setSelected(conv)
         setMessages([])
@@ -160,12 +186,26 @@ export default function ChatPage() {
         setMobileShowChat(true)
     }
 
-    // ── Envia mensagem manual ─────────────────────────────────────────────────
+    // Send manual message with optimistic UI update
     const sendMessage = async () => {
         if (!text.trim() || !selected || sending) return
         setSending(true)
         const body = text.trim()
         setText('')
+
+        // Show message immediately in chat (optimistic)
+        const tempId = `temp-${Date.now()}`
+        const optimisticMsg: Message = {
+            id: tempId,
+            content: body,
+            from_me: true,
+            ai_generated: false,
+            type: 'text',
+            created_at: new Date().toISOString(),
+            status: 'sending',
+        }
+        setMessages(prev => [...prev, optimisticMsg])
+
         try {
             const res = await fetch('/api/chat/send', {
                 method: 'POST',
@@ -177,12 +217,25 @@ export default function ChatPage() {
                     message: body,
                 })
             })
+
             if (!res.ok) {
                 const err = await res.json()
                 console.error('Erro ao enviar:', err)
+                // Remove optimistic message on error
+                setMessages(prev => prev.filter(m => m.id !== tempId))
+            } else {
+                const data = await res.json()
+                if (data.message) {
+                    // Replace optimistic with real DB record
+                    setMessages(prev => prev.map(m => m.id === tempId ? data.message : m))
+                } else {
+                    // Mark as sent
+                    setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: 'sent' } : m))
+                }
             }
         } catch (e) {
             console.error(e)
+            setMessages(prev => prev.filter(m => m.id !== tempId))
         } finally {
             setSending(false)
         }
@@ -201,16 +254,16 @@ export default function ChatPage() {
         return n.includes(search.toLowerCase()) || (c.contact.phone || '').includes(search)
     })
 
-    // ── Render ────────────────────────────────────────────────────────────────
+    // Render
     return (
-        <div className="flex h-screen bg-background overflow-hidden" style={{ height: 'calc(100vh - 0px)' }}>
+        <div className="flex h-screen bg-background overflow-hidden">
 
-            {/* ── Sidebar de conversas ────────────────────────────────────── */}
+            {/* Conversations sidebar */}
             <div className={`
                 flex flex-col w-full md:w-80 lg:w-96 border-r border-border bg-sidebar flex-shrink-0
                 ${mobileShowChat ? 'hidden md:flex' : 'flex'}
             `}>
-                {/* Cabeçalho */}
+                {/* Header */}
                 <div className="px-4 pt-5 pb-3 border-b border-border">
                     <div className="flex items-center gap-2 mb-3">
                         <MessageCircle className="w-5 h-5 text-primary" />
@@ -228,7 +281,7 @@ export default function ChatPage() {
                     </div>
                 </div>
 
-                {/* Lista */}
+                {/* Conversation list */}
                 <div className="flex-1 overflow-y-auto">
                     {filtered.length === 0 ? (
                         <div className="flex flex-col items-center justify-center h-40 gap-2 text-muted-foreground text-sm">
@@ -239,16 +292,14 @@ export default function ChatPage() {
                         filtered.map(conv => {
                             const name = displayName(conv.contact)
                             const tag = conv.contact.ai_tag ? aiTagConfig[conv.contact.ai_tag] : null
+                            const tagEmoji = conv.contact.ai_tag ? aiTagEmoji[conv.contact.ai_tag] : null
                             const isActive = selected?.id === conv.id
                             return (
                                 <button
                                     key={conv.id}
                                     onClick={() => selectConversation(conv)}
-                                    className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-secondary/50 transition-colors text-left border-b border-border/40
-                                        ${isActive ? 'bg-primary/8 border-l-2 border-l-primary' : ''}
-                                    `}
+                                    className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-secondary/50 transition-colors text-left border-b border-border/40 ${isActive ? 'bg-primary/10 border-l-2 border-l-primary' : ''}`}
                                 >
-                                    {/* Avatar */}
                                     <div className="w-11 h-11 rounded-full gradient-primary flex items-center justify-center text-black font-bold text-sm flex-shrink-0">
                                         {initials(name)}
                                     </div>
@@ -261,9 +312,9 @@ export default function ChatPage() {
                                             <p className="text-xs text-muted-foreground truncate flex-1">
                                                 {conv.last_message || 'Sem mensagens'}
                                             </p>
-                                            {tag && (
+                                            {tag && tagEmoji && (
                                                 <span className={`text-[9px] px-1.5 py-0.5 rounded-full border font-bold flex-shrink-0 ${tag.bg} ${tag.color}`}>
-                                                    {tag.label.split(' ').slice(1).join(' ')}
+                                                    {tagEmoji} {tag.label}
                                                 </span>
                                             )}
                                         </div>
@@ -275,25 +326,21 @@ export default function ChatPage() {
                 </div>
             </div>
 
-            {/* ── Área do chat ────────────────────────────────────────────── */}
-            <div className={`
-                flex flex-col flex-1 min-w-0
-                ${!mobileShowChat ? 'hidden md:flex' : 'flex'}
-            `}>
+            {/* Chat area */}
+            <div className={`flex flex-col flex-1 min-w-0 ${!mobileShowChat ? 'hidden md:flex' : 'flex'}`}>
                 {!selected ? (
-                    /* Tela vazia */
                     <div className="flex flex-col items-center justify-center h-full gap-4 text-muted-foreground">
                         <div className="w-20 h-20 rounded-full gradient-primary flex items-center justify-center glow-primary">
                             <MessageCircle className="w-10 h-10 text-white" />
                         </div>
                         <div className="text-center">
                             <h2 className="text-lg font-bold text-foreground">Selecione uma conversa</h2>
-                            <p className="text-sm mt-1">Clique em um contato à esquerda para abrir o chat</p>
+                            <p className="text-sm mt-1">Clique em um contato a esquerda para abrir o chat</p>
                         </div>
                     </div>
                 ) : (
                     <>
-                        {/* Header do chat */}
+                        {/* Chat header */}
                         <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-sidebar flex-shrink-0">
                             <button
                                 onClick={() => setMobileShowChat(false)}
@@ -311,10 +358,9 @@ export default function ChatPage() {
                                     {selected.contact.phone || selected.contact.whatsapp_id}
                                 </div>
                             </div>
-                            {/* Tag da IA */}
                             {selected.contact.ai_tag && aiTagConfig[selected.contact.ai_tag] && (
                                 <span className={`text-xs px-2.5 py-1 rounded-full border font-semibold hidden sm:inline-flex items-center gap-1 ${aiTagConfig[selected.contact.ai_tag].bg} ${aiTagConfig[selected.contact.ai_tag].color}`}>
-                                    {aiTagConfig[selected.contact.ai_tag].label}
+                                    {aiTagEmoji[selected.contact.ai_tag]} {aiTagConfig[selected.contact.ai_tag].label}
                                 </span>
                             )}
                             <button className="p-2 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg transition-colors">
@@ -322,9 +368,10 @@ export default function ChatPage() {
                             </button>
                         </div>
 
-                        {/* Mensagens */}
-                        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1"
-                            style={{ backgroundImage: 'radial-gradient(circle at 20% 80%, rgba(var(--primary-rgb,99,102,241),0.03) 0%, transparent 60%)' }}
+                        {/* Messages area */}
+                        <div
+                            className="flex-1 overflow-y-auto px-4 py-4 space-y-1"
+                            style={{ backgroundImage: 'radial-gradient(circle at 20% 80%, rgba(99,102,241,0.03) 0%, transparent 60%)' }}
                         >
                             {loadingMsg ? (
                                 <div className="flex items-center justify-center h-full">
@@ -339,6 +386,7 @@ export default function ChatPage() {
                                 messages.map((msg, idx) => {
                                     const prevMsg = idx > 0 ? messages[idx - 1] : null
                                     const showDate = !prevMsg || new Date(msg.created_at).toDateString() !== new Date(prevMsg.created_at).toDateString()
+                                    const isSending = msg.status === 'sending'
                                     return (
                                         <div key={msg.id}>
                                             {showDate && (
@@ -350,7 +398,8 @@ export default function ChatPage() {
                                             )}
                                             <div className={`flex ${msg.from_me ? 'justify-end' : 'justify-start'} mb-0.5`}>
                                                 <div className={`
-                                                    max-w-[75%] px-3.5 py-2 rounded-2xl text-sm leading-relaxed relative
+                                                    max-w-[75%] px-3.5 py-2 rounded-2xl text-sm leading-relaxed relative transition-opacity
+                                                    ${isSending ? 'opacity-60' : 'opacity-100'}
                                                     ${msg.from_me
                                                         ? 'bg-primary text-primary-foreground rounded-br-sm'
                                                         : 'bg-secondary/70 text-foreground rounded-bl-sm border border-border/50'
@@ -359,12 +408,12 @@ export default function ChatPage() {
                                                     {msg.content}
                                                     <div className={`flex items-center gap-1 mt-1 ${msg.from_me ? 'justify-end' : 'justify-start'}`}>
                                                         <span className={`text-[10px] ${msg.from_me ? 'text-primary-foreground/60' : 'text-muted-foreground'}`}>
-                                                            {new Date(msg.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                                            {isSending ? 'enviando...' : new Date(msg.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                                                         </span>
-                                                        {msg.from_me && msg.ai_generated && (
+                                                        {msg.from_me && msg.ai_generated && !isSending && (
                                                             <Bot className="w-3 h-3 text-primary-foreground/60" aria-label="Enviado pela IA" />
                                                         )}
-                                                        {msg.from_me && !msg.ai_generated && (
+                                                        {msg.from_me && !msg.ai_generated && !isSending && (
                                                             <UserCheck className="w-3 h-3 text-primary-foreground/60" aria-label="Enviado por humano" />
                                                         )}
                                                     </div>
@@ -377,13 +426,12 @@ export default function ChatPage() {
                             <div ref={bottomRef} />
                         </div>
 
-                        {/* Input de envio */}
+                        {/* Send input */}
                         <div className="px-4 py-3 border-t border-border bg-sidebar flex-shrink-0">
-                            {/* Aviso sobre handoff */}
                             {selected.contact.ai_tag && ['PEDIDO_FECHADO', 'HUMANO'].includes(selected.contact.ai_tag) && (
                                 <div className="flex items-center gap-2 text-xs text-violet-400 bg-violet-500/10 border border-violet-500/20 rounded-lg px-3 py-2 mb-2">
                                     <UserCheck className="w-3.5 h-3.5 flex-shrink-0" />
-                                    IA pausada — você está em atendimento humano
+                                    IA pausada &mdash; voce esta em atendimento humano
                                 </div>
                             )}
                             <div className="flex items-end gap-2">
@@ -416,7 +464,7 @@ export default function ChatPage() {
                                 </button>
                             </div>
                             <p className="text-[10px] text-muted-foreground text-center mt-1.5">
-                                Enter para enviar · Shift+Enter para nova linha · Mensagens humanas pausam a IA automaticamente
+                                Enter para enviar &middot; Shift+Enter para nova linha &middot; Mensagens humanas pausam a IA automaticamente
                             </p>
                         </div>
                     </>
