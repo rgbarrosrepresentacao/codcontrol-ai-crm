@@ -185,6 +185,7 @@ async function processWebhookInBackground(body: any) {
                 name: pushName,
                 status: 'active',
                 last_message_at: new Date().toISOString(),
+                followup_stage: 0,
             }, {
                 onConflict: 'user_id,whatsapp_id',
                 ignoreDuplicates: false
