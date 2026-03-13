@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabase'
 import {
     Bot, LayoutDashboard, Smartphone, Brain, Users,
     Settings, LogOut, ChevronRight, Shield, X, Menu, CreditCard, MessageCircle, MessageSquare,
-    Filter
+    Filter, Truck
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -18,6 +18,7 @@ const navItems = [
     { href: '/dashboard/crm', label: 'CRM', icon: Users },
     { href: '/dashboard/chat', label: 'Chat ao Vivo', icon: MessageSquare },
     { href: '/dashboard/funis', label: 'Funis de Venda', icon: Filter },
+    { href: '/dashboard/logistica', label: 'Logística', icon: Truck },
     { href: '/dashboard/planos', label: 'Planos', icon: CreditCard },
     { href: '/dashboard/configuracoes', label: 'Configurações', icon: Settings },
 ]
@@ -160,7 +161,7 @@ export function Sidebar({ isAdmin, userName, userEmail, planName, trialEndsAt, s
                 </button>
                 <div className="mt-4 px-3 flex items-center justify-between text-[10px] text-muted-foreground font-mono">
                     <span>Versão</span>
-                    <span className="text-primary/70">v1.1.1-beta</span>
+                    <span className="text-primary/70">v1.2.0-beta</span>
                 </div>
             </div>
         </div>

@@ -12,6 +12,50 @@ const supabase = createClient(
 const AI_TAGS = ['PEDIDO_FECHADO', 'POSSIVEL_COMPRADOR', 'INTERESSADO', 'LEAD_FRIO', 'CANCELADO'] as const
 type AiTag = typeof AI_TAGS[number]
 
+// Função para checar logística (CEP ou Cidade)
+async function checkLogistics(userId: string, input: string): Promise<string | null> {
+    try {
+        // Busca as regras de logística do usuário
+        const { data: rules } = await supabase
+            .from('logistics_rules')
+            .select('*')
+            .eq('user_id', userId)
+            .eq('is_active', true)
+
+        if (!rules || rules.length === 0) return null
+
+        const normalizedInput = input.toLowerCase().trim().replace(/[^a-z0-9]/g, '')
+        const isPotentialZip = /^[0-9]{5,8}$/.test(normalizedInput)
+
+        for (const rule of rules) {
+            const items = rule.content.split(/[,\n]/).map((i: string) => i.toLowerCase().trim().replace(/[^a-z0-9]/g, ''))
+            
+            if (rule.type === 'zipcode' && isPotentialZip) {
+                if (items.some((zip: string) => normalizedInput.includes(zip))) {
+                    return `[SISTEMA: O CEP informado (${input}) ESTÁ na lista de cidades atendidas para PAGAMENTO NA ENTREGA. Informe isso à cliente com empolgação!]`
+                }
+            } else if (rule.type === 'city') {
+                // Para cidades, limpamos menos para manter nomes compostos
+                const cityInput = input.toLowerCase().trim()
+                const cityItems = rule.content.split(/[,\n]/).map((i: string) => i.toLowerCase().trim())
+                if (cityItems.some((city: string) => cityInput.includes(city))) {
+                    return `[SISTEMA: A localização informada (${input}) ESTÁ na lista de cidades atendidas para PAGAMENTO NA ENTREGA. Informe isso com empolgação!]`
+                }
+            }
+        }
+
+        // Se detectamos que é um CEP ou Cidade mas não achamos na lista
+        if (isPotentialZip || input.length > 3) {
+            return `[SISTEMA: A localização informada (${input}) NÃO está na lista de pagamento na entrega. Informe educadamente que não atendemos essa região com essa modalidade.]`
+        }
+
+        return null
+    } catch (err) {
+        console.error('Erro ao checar logística:', err)
+        return null
+    }
+}
+
 // Tags que pausam a IA e transferem para atendimento humano
 const HANDOFF_TAGS = ['PEDIDO_FECHADO', 'HUMANO']
 
@@ -513,6 +557,18 @@ async function processWebhookInBackground(body: any) {
 
         const currentDate = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
 
+        // 6.5 Checar Logística Inteligente
+        const logisticsHint = await checkLogistics(userId, textMessage)
+        const systemMessage = {
+            role: 'system' as const,
+            content: `[DATA E HORA ATUAL DO SISTEMA: ${currentDate}]\n\n${aiConfig.system_prompt}\n\nAja no tom de conversa: ${aiConfig.tone}.\nResponda em: ${aiConfig.language}. Você é o assistente ${aiConfig.bot_name}.\n\nREGRA ABSOLUTA DE COMPORTAMENTO HUMANO: Seja extremamente humano, direto e informal. Não envie mensagens robóticas, não use listas exageradas e não escreva textos muito longos (máximo 2-3 frases curtas por mensagem). Aja como uma pessoa comum digitando no WhatsApp de forma rápida e casual.`
+        }
+
+        if (logisticsHint) {
+            // Injeta a dica de logística no histórico para a IA ler
+            chatMessages.push({ role: 'user', content: logisticsHint })
+        }
+
         // 7. Chamar a OpenAI para gerar a resposta da IA
         const openAiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
@@ -523,10 +579,7 @@ async function processWebhookInBackground(body: any) {
             body: JSON.stringify({
                 model: 'gpt-4o-mini',
                 messages: [
-                    {
-                        role: 'system',
-                        content: `[DATA E HORA ATUAL DO SISTEMA: ${currentDate}]\n\n${aiConfig.system_prompt}\n\nAja no tom de conversa: ${aiConfig.tone}.\nResponda em: ${aiConfig.language}. Você é o assistente ${aiConfig.bot_name}.\n\nREGRA ABSOLUTA DE COMPORTAMENTO HUMANO: Seja extremamente humano, direto e informal. Não envie mensagens robóticas, não use listas exageradas e não escreva textos muito longos (máximo 2-3 frases curtas por mensagem). Aja como uma pessoa comum digitando no WhatsApp de forma rápida e casual.`
-                    },
+                    systemMessage,
                     ...chatMessages
                 ],
                 temperature: 0.8,
