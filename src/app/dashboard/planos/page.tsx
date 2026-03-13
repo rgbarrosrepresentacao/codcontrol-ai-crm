@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { CreditCard, CheckCircle2, ArrowRight, Zap, Star } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { CheckoutButton } from '@/components/CheckoutButton'
+import { GoogleAdsConversion } from '@/components/GoogleAdsConversion'
 
 export default async function PlanosPage() {
     const supabase = await createSupabaseServerClient()
@@ -22,6 +23,7 @@ export default async function PlanosPage() {
 
     return (
         <div className="p-6 md:p-8 space-y-8 animate-fade-in">
+            <GoogleAdsConversion />
             <div className="text-center">
                 <h1 className="text-3xl font-bold text-foreground flex items-center justify-center gap-2 mb-2">
                     <CreditCard className="w-7 h-7 text-primary" />Planos e Assinatura
