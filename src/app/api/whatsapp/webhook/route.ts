@@ -62,8 +62,8 @@ async function classifyContact(
                         role: 'system',
                         content: `Você é um classificador de leads de vendas. Analise a conversa e classifique o cliente em UMA das categorias abaixo. Responda APENAS com a etiqueta, nada mais.
 
-PEDIDO_FECHADO - Cliente confirmou a compra OU enviou dados pessoais para entrega (nome completo, endereço, CEP, CPF, telefone)
-POSSIVEL_COMPRADOR - Cliente demonstrou interesse mas quer comprar depois, em outro dia ou pediu para entrar em contato mais tarde
+PEDIDO_FECHADO - Cliente JÁ ENVIOU TODOS OS DADOS COMPLETOS (nome da rua, número, bairro, cidade, CEP, etc) e FINALIZOU a compra. ATENÇÃO MÁXIMA: Se o cliente apenas informou o CEP perguntando se tem entrega ou valor de frete, ele AINDA NÃO é pedido fechado (mantenha como INTERESSADO). O pedido só é fechado quando o cliente aceita e passa os dados reais de entrega da casa dele.
+POSSIVEL_COMPRADOR - Cliente demonstrou forte interesse mas quer comprar depois, em outro dia ou pediu para entrar em contato mais tarde
 INTERESSADO - Cliente apenas perguntou preço, como funciona, tirou dúvidas, sem confirmar compra e sem dados de entrega
 LEAD_FRIO - Cliente parou de responder, não demonstrou interesse real ou encerrou a conversa sem avançar
 CANCELADO - Cliente desistiu da compra, cancelou pedido ou pediu para não ser mais contatado
@@ -111,12 +111,12 @@ async function generateClosingMessage(
 
 TAREFA: O cliente acabou de confirmar o pedido e agora você vai encerrar o atendimento de forma calorosa e profissional.
 
-Escreva UMA mensagem curta (2-4 linhas) que:
-1. Agradeça o cliente pelo pedido
-2. Confirme que o pedido foi anotado
-3. Informe que em breve a equipe entrará em contato com mais detalhes
-4. Use emojis discretos para soar mais pessoal
-5. Seja caloroso mas profissional
+Escreva UMA mensagem curta (2-4 linhas) que pareça muito natural:
+1. Agradeça o cliente pelo pedido e confirmar os dados
+2. Confirme que o pagamento só será feito na entrega do produto ao entregador
+3. Informe que em breve nossa equipe humana entrará em contato via WhatsApp com o dia certinho de quem fará a entrega
+4. Use emojis discretos para soar amigável e caloroso
+5. Não faça perguntas, apenas encerre o assunto com excelência
 
 NÃO faça perguntas. NÃO peça mais informações. Esta é a mensagem FINAL da IA.`
                     },
