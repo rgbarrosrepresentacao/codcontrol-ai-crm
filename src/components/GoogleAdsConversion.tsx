@@ -11,7 +11,7 @@ function ConversionTracking() {
             // Verifica se a tag global do Google já carregou
             if (typeof window !== 'undefined' && (window as any).gtag) {
                 (window as any).gtag('event', 'conversion', {
-                    'send_to': 'AW-17985947430', // Seu ID do Google Ads
+                    'send_to': 'AW-17985947430/HLMkCM-JoIEcEKaOr4BD', // Seu ID + Label de Conversão
                     'value': 1.0,               // Valor padrão (pode ser ajustado)
                     'currency': 'BRL'
                 });
