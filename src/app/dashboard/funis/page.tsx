@@ -21,7 +21,8 @@ interface Step {
     type: 'text' | 'audio' | 'video' | 'image'
     content: string
     order_index: number
-    delay_minutes: number
+    delay_seconds: number
+    wait_for_reply: boolean
 }
 
 export default function FunnelsPage() {
@@ -89,7 +90,8 @@ export default function FunnelsPage() {
             type,
             content: '',
             order_index: steps.length,
-            delay_minutes: 0
+            delay_seconds: 0,
+            wait_for_reply: false
         }
         setSteps([...steps, newStep])
     }
@@ -106,7 +108,8 @@ export default function FunnelsPage() {
             type: s.type,
             content: s.content,
             order_index: idx,
-            delay_minutes: s.delay_minutes
+            delay_seconds: s.delay_seconds,
+            wait_for_reply: !!s.wait_for_reply
         }))
 
         const { error } = await supabase.from('funnel_steps').insert(stepsToInsert)
@@ -372,26 +375,30 @@ export default function FunnelsPage() {
                                                 </div>
                                             )}
 
-                                            <div className="mt-4 pt-4 border-t border-border flex items-center justify-between">
-                                                <div className="flex items-center gap-3">
-                                                    <span className="text-xs font-medium text-muted-foreground">Esperar resposta anterior?</span>
-                                                    <div className="flex items-center gap-1.5 bg-secondary px-2 py-1 rounded-md text-[10px] font-bold text-emerald-400 uppercase">
-                                                        Sim (Padrão)
+                                            <div className="mt-4 pt-4 border-t border-border flex flex-wrap items-center justify-between gap-4">
+                                                <div className="flex items-center gap-3 cursor-pointer" onClick={() => {
+                                                    const newSteps = [...steps]
+                                                    newSteps[index].wait_for_reply = !newSteps[index].wait_for_reply
+                                                    setSteps(newSteps)
+                                                }}>
+                                                    <span className="text-xs font-medium text-muted-foreground">Esperar resposta para enviar?</span>
+                                                    <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[10px] font-bold uppercase transition-colors ${step.wait_for_reply ? 'bg-primary/20 text-primary border border-primary/30' : 'bg-secondary text-muted-foreground border border-border'}`}>
+                                                        {step.wait_for_reply ? 'Sim' : 'Não'}
                                                     </div>
                                                 </div>
                                                 <div className="flex items-center gap-2">
-                                                    <span className="text-xs text-muted-foreground">Atrasso:</span>
+                                                    <span className="text-xs text-muted-foreground">Atraso:</span>
                                                     <input 
                                                         type="number"
-                                                        value={step.delay_minutes}
+                                                        value={step.delay_seconds}
                                                         onChange={e => {
                                                             const newSteps = [...steps]
-                                                            newSteps[index].delay_minutes = parseInt(e.target.value) || 0
+                                                            newSteps[index].delay_seconds = parseInt(e.target.value) || 0
                                                             setSteps(newSteps)
                                                         }}
                                                         className="w-16 bg-input border border-border rounded-md px-2 py-1 text-xs text-center focus:outline-none focus:ring-1 focus:ring-primary"
                                                     />
-                                                    <span className="text-xs text-muted-foreground">minutos</span>
+                                                    <span className="text-xs text-muted-foreground">segundos</span>
                                                 </div>
                                             </div>
                                         </div>

@@ -315,24 +315,43 @@ async function processWebhookInBackground(body: any) {
 
                     currentOrder++
 
-                    // Verifica se o próximo passo existe e se tem delay 0
-                    // Se tiver delay > 0, paramos e deixamos o CRON ou a próxima resposta lidar (simplificado: paramos aqui)
+                    // Verifica o próximo passo
                     const { data: next } = await supabase
                         .from('funnel_steps')
-                        .select('id, delay_minutes')
+                        .select('id, delay_seconds, wait_for_reply')
                         .eq('funnel_id', currentFunnelId)
                         .eq('order_index', currentOrder)
                         .single()
                     
-                    if (!next || next.delay_minutes > 0) {
+                    if (!next) {
+                        // Funil acabou
+                        moreSteps = false
+                        await supabase.from('contacts').update({ is_funnel_active: false }).eq('id', contactId)
+                    } else if (next.wait_for_reply) {
+                        // Espera resposta do lead para prosseguir
                         moreSteps = false
                         await supabase.from('contacts').update({
                             funnel_step_order: currentOrder,
-                            is_funnel_active: !!next,
-                            ai_tag: next ? 'LEAD_FRIO' : 'INTERESSADO'
+                            is_funnel_active: true,
+                            ai_tag: null // mantemos sem tag da IA para continuar o funil depois
                         }).eq('id', contactId)
+                    } else if (next.delay_seconds > 0) {
+                        // Não espera resposta, mas tem delay
+                        await supabase.from('contacts').update({
+                            funnel_step_order: currentOrder,
+                            is_funnel_active: true
+                        }).eq('id', contactId)
+                        
+                        console.log(`[FUNIL] Aguardando ${next.delay_seconds} segundos antes do passo ${currentOrder}...`)
+                        await new Promise(r => setTimeout(r, next.delay_seconds * 1000))
                     } else {
-                        // Pequeno delay entre mensagens seguidas para não dar erro
+                        // Sem delay e não espera resposta
+                        await supabase.from('contacts').update({
+                            funnel_step_order: currentOrder,
+                            is_funnel_active: true
+                        }).eq('id', contactId)
+                        
+                        // Pequeno delay para a API do WhatsApp respirar entre duas mensagens seguidas
                         await new Promise(r => setTimeout(r, 1500))
                     }
                 } else {
