@@ -45,11 +45,12 @@ async function checkLogistics(userId: string, input: string): Promise<string | n
         }
 
         // Se detectamos que é um CEP ou Cidade mas não achamos na lista
-        if (isPotentialZip || input.length > 3) {
-            return `[SISTEMA: A localização informada (${input}) NÃO está na lista de pagamento na entrega. Informe educadamente que não atendemos essa região com essa modalidade.]`
+        if (isPotentialZip || (input.length > 5 && !input.includes(' '))) {
+            return `[SISTEMA: A localização informada (${input}) NÃO está na lista de pagamento na entrega do seu painel de LOGÍSTICA. Informe educadamente que não oferecemos essa modalidade para essa região específica no momento.]`
         }
 
-        return null
+        // Se a mensagem não parece uma localização, enviamos um lembrete para ela não esquecer de pedir
+        return `[SISTEMA: Você ainda NÃO verificou se a cliente mora em área de Pagamento na Entrega. NÃO confirme nada antes de receber e o sistema validar o CEP ou Cidade. Mantenha a postura de "Vou conferir pra você".]`
     } catch (err) {
         console.error('Erro ao checar logística:', err)
         return null
@@ -561,7 +562,7 @@ async function processWebhookInBackground(body: any) {
         const logisticsHint = await checkLogistics(userId, textMessage)
         const systemMessage = {
             role: 'system' as const,
-            content: `[DATA E HORA ATUAL DO SISTEMA: ${currentDate}]\n\n${aiConfig.system_prompt}\n\nAja no tom de conversa: ${aiConfig.tone}.\nResponda em: ${aiConfig.language}. Você é o assistente ${aiConfig.bot_name}.\n\nREGRA ABSOLUTA DE COMPORTAMENTO HUMANO: Seja extremamente humano, direto e informal. Não envie mensagens robóticas, não use listas exageradas e não escreva textos muito longos (máximo 2-3 frases curtas por mensagem). Aja como uma pessoa comum digitando no WhatsApp de forma rápida e casual.`
+            content: `[DATA E HORA ATUAL DO SISTEMA: ${currentDate}]\n\n${aiConfig.system_prompt}\n\nAja no tom de conversa: ${aiConfig.tone}.\nResponda em: ${aiConfig.language}. Você é o assistente ${aiConfig.bot_name}.\n\nREGRA DE OURO LOGÍSTICA: Você SEMPRE deve pedir o CEP ou Cidade antes de prometer entrega programada ou pagamento na entrega. Se o sistema não te der um aviso de [ATENDIDO] ou [NÃO ATENDIDO] para a localização ATUAL, você NÃO sabe se atende. Nunca chute.\n\nREGRA ABSOLUTA DE COMPORTAMENTO HUMANO: Seja extremamente humano, direto e informal.`
         }
 
         if (logisticsHint) {
