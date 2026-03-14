@@ -351,77 +351,7 @@ async function processWebhookInBackground(body: any) {
             return
         }
 
-        // ── LÓGICA DE FUNIL DE VENDAS ──────────────────────────────────────────
-        // Se o funil estiver ativo, enviamos o próximo passo em vez da IA
-        if (isFunnelActive && currentFunnelId) {
-            let currentOrder = funnelStepOrder
-            let moreSteps = true
-
-            while (moreSteps) {
-                const { data: step } = await supabase
-                    .from('funnel_steps')
-                    .select('*')
-                    .eq('funnel_id', currentFunnelId)
-                    .eq('order_index', currentOrder)
-                    .single()
-
-                if (step) {
-                    console.log(`[FUNIL] Enviando passo ${currentOrder} para ${remoteJid}`)
-                    
-                    if (step.type === 'text') {
-                        await evolutionApi.sendTextMessage(instanceName, remoteJid, step.content)
-                    } else {
-                        await evolutionApi.sendMedia(instanceName, remoteJid, step.content, step.type)
-                    }
-
-                    currentOrder++
-
-                    // Verifica o próximo passo
-                    const { data: next } = await supabase
-                        .from('funnel_steps')
-                        .select('id, delay_seconds, wait_for_reply')
-                        .eq('funnel_id', currentFunnelId)
-                        .eq('order_index', currentOrder)
-                        .single()
-                    
-                    if (!next) {
-                        // Funil acabou
-                        moreSteps = false
-                        await supabase.from('contacts').update({ is_funnel_active: false }).eq('id', contactId)
-                    } else if (next.wait_for_reply) {
-                        // Espera resposta do lead para prosseguir
-                        moreSteps = false
-                        await supabase.from('contacts').update({
-                            funnel_step_order: currentOrder,
-                            is_funnel_active: true,
-                            ai_tag: null // mantemos sem tag da IA para continuar o funil depois
-                        }).eq('id', contactId)
-                    } else if (next.delay_seconds > 0) {
-                        // Não espera resposta, mas tem delay
-                        await supabase.from('contacts').update({
-                            funnel_step_order: currentOrder,
-                            is_funnel_active: true
-                        }).eq('id', contactId)
-                        
-                        console.log(`[FUNIL] Aguardando ${next.delay_seconds} segundos antes do passo ${currentOrder}...`)
-                        await new Promise(r => setTimeout(r, next.delay_seconds * 1000))
-                    } else {
-                        // Sem delay e não espera resposta
-                        await supabase.from('contacts').update({
-                            funnel_step_order: currentOrder,
-                            is_funnel_active: true
-                        }).eq('id', contactId)
-                        
-                        // Pequeno delay para a API do WhatsApp respirar entre duas mensagens seguidas
-                        await new Promise(r => setTimeout(r, 1500))
-                    }
-                } else {
-                    moreSteps = false
-                    await supabase.from('contacts').update({ is_funnel_active: false }).eq('id', contactId)
-                }
-            }
-            return // Interrompe aqui para não rodar a IA
-        }
+        // (Lógica de funil movida para após o anti-atropelamento para evitar duplicações)
         // ───────────────────────────────────────────────────────────────────────
 
         // 5. Extrai o texto da mensagem ou Transcreve áudio
@@ -544,9 +474,90 @@ async function processWebhookInBackground(body: any) {
 
             // Se a última mensagem não for esta (key.id), o cliente mandou mais coisa. Aborta esta resposta!
             if (latestMessage && latestMessage.message_id !== key.id) {
-                console.log(`[ANTI-ATROPELAMENTO] Cliente enviou outra mensagem rápida (${phone}). Descartando resposta duplicada.`)
+                console.log(`[ANTI-ATROPELAMENTO] Cliente enviou outra mensagem rápida (${phone}). Descartando resposta obsoleta.`)
                 return
             }
+
+            // ── LÓGICA DE FUNIL DE VENDAS (POS-VALIDAÇÃO) ──────────────────────
+            // Agora que sabemos que esta é a mensagem mais recente, rodamos o funil
+            if (isFunnelActive && currentFunnelId) {
+                let currentOrder = funnelStepOrder
+                let moreSteps = true
+
+                while (moreSteps) {
+                    const { data: step } = await supabase
+                        .from('funnel_steps')
+                        .select('*')
+                        .eq('funnel_id', currentFunnelId)
+                        .eq('order_index', currentOrder)
+                        .single()
+
+                    if (step) {
+                        console.log(`[FUNIL] Enviando passo ${currentOrder} para ${remoteJid}`)
+                        
+                        if (step.type === 'text') {
+                            await evolutionApi.sendTextMessage(instanceName, remoteJid, step.content)
+                        } else {
+                            await evolutionApi.sendMedia(instanceName, remoteJid, step.content, step.type)
+                        }
+
+                        currentOrder++
+
+                        // Verifica o próximo passo
+                        const { data: next } = await supabase
+                            .from('funnel_steps')
+                            .select('id, delay_seconds, wait_for_reply')
+                            .eq('funnel_id', currentFunnelId)
+                            .eq('order_index', currentOrder)
+                            .single()
+                        
+                        if (!next) {
+                            moreSteps = false
+                            await supabase.from('contacts').update({ is_funnel_active: false }).eq('id', contactId)
+                        } else if (next.wait_for_reply) {
+                            moreSteps = false
+                            await supabase.from('contacts').update({
+                                funnel_step_order: currentOrder,
+                                is_funnel_active: true,
+                                ai_tag: null
+                            }).eq('id', contactId)
+                        } else if (next.delay_seconds > 0) {
+                            await supabase.from('contacts').update({
+                                funnel_step_order: currentOrder,
+                                is_funnel_active: true
+                            }).eq('id', contactId)
+                            
+                            console.log(`[FUNIL] Aguardando ${next.delay_seconds} segundos...`)
+                            await new Promise(r => setTimeout(r, next.delay_seconds * 1000))
+
+                            // TRAVA DE SEGURANÇA: Se durante o delay o cliente mandou mensagem nova, abortamos este loop antigo!
+                            const { data: reCheck } = await supabase
+                                .from('messages')
+                                .select('message_id')
+                                .eq('conversation_id', conversationId)
+                                .order('created_at', { ascending: false })
+                                .limit(1)
+                                .single()
+
+                            if (reCheck && reCheck.message_id !== key.id) {
+                                console.log(`[FUNIL] Cliente interagiu durante o delay. Abortando fluxo antigo para priorizar o novo.`)
+                                return
+                            }
+                        } else {
+                            await supabase.from('contacts').update({
+                                funnel_step_order: currentOrder,
+                                is_funnel_active: true
+                            }).eq('id', contactId)
+                            await new Promise(r => setTimeout(r, 1500))
+                        }
+                    } else {
+                        moreSteps = false
+                        await supabase.from('contacts').update({ is_funnel_active: false }).eq('id', contactId)
+                    }
+                }
+                return // Fim do funil, não roda a IA
+            }
+            // ──────────────────────────────────────────────────────────────────
         }
 
         // 6. Buscar histórico da conversa para dar memória à IA (Últimas 20 mensagens)
