@@ -26,15 +26,21 @@ async function checkLogistics(userId: string, input: string): Promise<string | n
 
         const normalizedInput = input.toLowerCase().trim()
         
-        // --- NOVO: Detecção de Intenção de "Quais Cidades?" ---
-        // Se o cliente pergunta onde atendemos, sem mandar números (CEPs), mostramos os nomes dos blocos
-        const asksWhere = /\b(onde|quais|lista|cidades|regiões|regioes|atende|atendimento|entrega|locais|áreas|areas)\b/i.test(normalizedInput)
-        
-        if (asksWhere && !/[0-9]/.test(normalizedInput)) {
-            const areaNames = rules.map(r => r.name).join(', ')
-            return `[SISTEMA INTERNO: O cliente quer saber as áreas de entrega. Suas regras de logística ativas são: ${areaNames}. Diga quais são e peça o CEP ou Cidade para confirmar se o sistema libera para a rua dela especificamente.]`
+        // --- 1. DETECÇÃO DE PREÇO/VALOR (Prioridade) ---
+        // Se o cliente quer saber o valor, não deixamos a IA achar que "valor" é uma cidade
+        const isAskingPrice = /\b(valor|preço|preco|quanto|custo|preçinho|precinho|promoção|promocao|kit|kits|pagar|pagamento)\b/i.test(normalizedInput)
+        if (isAskingPrice && !/[0-9]/.test(normalizedInput)) {
+            return `[SISTEMA INTERNO: O cliente quer saber o PREÇO. Informe os valores conforme seu prompt e pergunte de qual CIDADE ele é para você verificar se o motoboy consegue levar na porta.]`
         }
 
+        // --- 2. DETECÇÃO DE ONDE ATENDE ---
+        const asksWhere = /\b(onde|quais|lista|cidades|regiões|regioes|atende|atendimento|entrega|locais|áreas|areas)\b/i.test(normalizedInput)
+        if (asksWhere && normalizedInput.length < 50) {
+            const areaNames = rules.map(r => r.name).join(', ')
+            return `[SISTEMA INTERNO: O cliente quer saber as áreas atendidas. Seus locais cadastrados são: ${areaNames}. Informe e peça a CIDADE para validar o CEP da rua dele especificamente.]`
+        }
+
+        // --- 3. VALIDAÇÃO REAL (CEP ou Cidade) ---
         const cleanInput = normalizedInput.replace(/[^a-z0-9]/g, '')
         const isPotentialZip = /^[0-9]{5,8}$/.test(cleanInput)
 
@@ -42,24 +48,25 @@ async function checkLogistics(userId: string, input: string): Promise<string | n
             if (rule.type === 'zipcode' && isPotentialZip) {
                 const zips = rule.content.split(/[,\n]/).map((i: string) => i.toLowerCase().trim().replace(/[^a-z0-9]/g, ''))
                 if (zips.some((zip: string) => cleanInput.includes(zip))) {
-                    return `[SISTEMA: O CEP informado (${input}) ESTÁ na lista de cidades atendidas para PAGAMENTO NA ENTREGA. Informe isso à cliente com empolgação e peça os dados de entrega!]`
+                    return `[SISTEMA: O CEP informado ESTÁ na lista. CONFIRME que o entregador leva na casa dela e ela paga apenas na porta! Peça o endereço completo.]`
                 }
             } else if (rule.type === 'city') {
                 const cityItems = rule.content.split(/[,\n]/).map((i: string) => i.toLowerCase().trim())
+                // Checa se o nome de alguma cidade cadastrada está na mensagem do cliente
                 if (cityItems.some((city: string) => normalizedInput.includes(city))) {
-                    return `[SISTEMA: A localização informada (${input}) ESTÁ na lista de cidades atendidas para PAGAMENTO NA ENTREGA. Avise que o entregador recebe na porta (Card/Pix/Dinheiro) e peça o endereço completo!]`
+                    return `[SISTEMA: A CIDADE informada (${input}) ESTÁ na lista. Avise que o motoboy entrega na porta e ela paga ao receber. Peça o CEP para finalizar!]`
                 }
             }
         }
 
-        // Se detectamos que é uma tentativa de localização mas não achamos na lista
-        const isLocationAttempt = isPotentialZip || /\b(moro em|sou de|cidade|cep|estado)\b/i.test(normalizedInput)
+        // --- 4. TENTATIVA DE LOCALIZAÇÃO FORA DA LISTA ---
+        const isLocationAttempt = isPotentialZip || /\b(moro em|sou de|meu cep|moro no|moro na)\b/i.test(normalizedInput)
         if (isLocationAttempt) {
-            return `[SISTEMA: A localização informada (${input}) NÃO está na sua lista de motoboy próprio. Informe educadamente que não oferecemos Pagamento na Entrega aí agora, mas pergunte se ela quer receber via Correios (pagamento antecipado).]`
+            return `[SISTEMA: Essa localização informada NÃO está na lista de motoboy próprio. Diga educadamente que para essa região o pagamento na entrega não está disponível, mas que você pode enviar via Correios com pagamento antecipado.]`
         }
 
-        // Caso padrão: Lembrete para não esquecer de validar
-        return `[SISTEMA: Você ainda não validou a localização atual. Peça o CEP ou Cidade antes de prometer Pagamento na Entrega.]`
+        // Se não for nada relacionado ao fluxo de logística, retornamos null para a Camila seguir o prompt normal (preço, dúvidas, etc)
+        return null
     } catch (err) {
         console.error('Erro ao checar logística:', err)
         return null
