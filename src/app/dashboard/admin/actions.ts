@@ -63,3 +63,30 @@ export async function deleteAnnouncementAction(id: string) {
     if (error) throw new Error(error.message)
     return true
 }
+
+export async function saveMaterialAction(title: string, type: string, link: string) {
+    const adminSupabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
+    
+    const { error } = await adminSupabase.from('academy_materials').insert({
+        title,
+        type,
+        link
+    })
+    
+    if (error) throw new Error(error.message)
+    return true
+}
+
+export async function deleteMaterialAction(id: string) {
+    const adminSupabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
+    
+    const { error } = await adminSupabase.from('academy_materials').delete().eq('id', id)
+    if (error) throw new Error(error.message)
+    return true
+}

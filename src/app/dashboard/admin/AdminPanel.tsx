@@ -2,18 +2,19 @@
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
-import { Shield, Users, Smartphone, BarChart3, Search, Ban, CheckCircle2, Loader2, Megaphone, Trash2, Send, Calendar, Clock } from 'lucide-react'
+import { Shield, Users, Smartphone, BarChart3, Search, Ban, CheckCircle2, Loader2, Megaphone, Trash2, Send, Calendar, Clock, GraduationCap, Plus, ExternalLink, FileText } from 'lucide-react'
 import { formatDate } from '@/lib/utils'
-import { toggleUserStatusAction, updateUserTrialAction, saveAnnouncementAction, deleteAnnouncementAction } from './actions'
+import { toggleUserStatusAction, updateUserTrialAction, saveAnnouncementAction, deleteAnnouncementAction, saveMaterialAction, deleteMaterialAction } from './actions'
 
 interface AdminPanelProps {
     users: any[]
     instances: any[]
     plans: any[]
     initialAnnouncements: any[]
+    initialMaterials: any[]
 }
 
-export default function AdminPanel({ users, instances, plans, initialAnnouncements }: AdminPanelProps) {
+export default function AdminPanel({ users, instances, plans, initialAnnouncements, initialMaterials }: AdminPanelProps) {
     const [search, setSearch] = useState('')
     const [toggling, setToggling] = useState<string | null>(null)
     const [updatingTrial, setUpdatingTrial] = useState<string | null>(null)
@@ -22,6 +23,12 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
     const [sending, setSending] = useState(false)
     const [localAnnouncements, setLocalAnnouncements] = useState(initialAnnouncements)
     const [deletingAnnouncement, setDeletingAnnouncement] = useState<string | null>(null)
+
+    // Academy Materials State
+    const [material, setMaterial] = useState({ title: '', type: 'PDF', link: '' })
+    const [savingMaterial, setSavingMaterial] = useState(false)
+    const [localMaterials, setLocalMaterials] = useState(initialMaterials)
+    const [deletingMaterial, setDeletingMaterial] = useState<string | null>(null)
 
     const filtered = localUsers.filter(u =>
         u.name?.toLowerCase().includes(search.toLowerCase()) ||
@@ -77,6 +84,33 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
             toast.error('Erro ao remover')
         }
         setDeletingAnnouncement(null)
+    }
+
+    const handleSaveMaterial = async () => {
+        if (!material.title || !material.link) return toast.error('Preencha título e link')
+        setSavingMaterial(true)
+        try {
+            await saveMaterialAction(material.title, material.type, material.link)
+            toast.success('Material adicionado!')
+            setMaterial({ title: '', type: 'PDF', link: '' })
+            window.location.reload()
+        } catch (e: any) {
+            toast.error('Erro ao salvar: ' + e.message)
+        } finally {
+            setSavingMaterial(false)
+        }
+    }
+
+    const handleDeleteMaterial = async (id: string) => {
+        setDeletingMaterial(id)
+        try {
+            await deleteMaterialAction(id)
+            setLocalMaterials(prev => prev.filter(m => m.id !== id))
+            toast.success('Material removido')
+        } catch {
+            toast.error('Erro ao remover')
+        }
+        setDeletingMaterial(null)
     }
 
     const connectedCount = instances.filter(i => i.status === 'connected').length
@@ -187,6 +221,88 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
                                         className="p-1.5 text-muted-foreground hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
                                     >
                                         {deletingAnnouncement === a.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+                                    </button>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </div>
+            </div>
+
+            {/* Academy Materials Management Section */}
+            <div className="grid lg:grid-cols-2 gap-6">
+                <div className="gradient-card border border-border rounded-xl p-6">
+                    <h2 className="font-semibold text-foreground mb-4 flex items-center gap-2">
+                        <GraduationCap className="w-5 h-5 text-primary" /> Novo Material de Estudo
+                    </h2>
+                    <div className="space-y-4">
+                        <div>
+                            <label className="text-xs text-muted-foreground mb-1 block">Título do Material</label>
+                            <input
+                                value={material.title}
+                                onChange={e => setMaterial({ ...material, title: e.target.value })}
+                                placeholder="Ex: Manual de Configuração, PDF de Estratégias..."
+                                className="w-full bg-secondary/50 border border-border rounded-lg px-4 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
+                            />
+                        </div>
+                        <div>
+                            <label className="text-xs text-muted-foreground mb-1 block">Link do Material (PDF, Drive, Web)</label>
+                            <input
+                                value={material.link}
+                                onChange={e => setMaterial({ ...material, link: e.target.value })}
+                                placeholder="https://..."
+                                className="w-full bg-secondary/50 border border-border rounded-lg px-4 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
+                            />
+                        </div>
+                        <div className="flex gap-4 items-end">
+                            <div className="flex-1">
+                                <label className="text-xs text-muted-foreground mb-1 block">Tipo</label>
+                                <select
+                                    value={material.type}
+                                    onChange={e => setMaterial({ ...material, type: e.target.value })}
+                                    className="w-full bg-secondary/50 border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none"
+                                >
+                                    <option value="PDF">📄 PDF</option>
+                                    <option value="LINK">🔗 Link Externo</option>
+                                    <option value="VIDEO">🎥 Vídeo Extra</option>
+                                    <option value="DOC">📝 Documento</option>
+                                </select>
+                            </div>
+                            <button
+                                onClick={handleSaveMaterial}
+                                disabled={savingMaterial}
+                                className="gradient-primary text-black font-bold h-10 px-6 rounded-lg text-sm flex items-center gap-2 hover:opacity-90 transition-all disabled:opacity-50"
+                            >
+                                {savingMaterial ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                                Adicionar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="gradient-card border border-border rounded-xl p-6 flex flex-col">
+                    <h2 className="font-semibold text-foreground mb-4">📚 Materiais Cadastrados</h2>
+                    <div className="space-y-3 flex-1 overflow-y-auto max-h-[250px] pr-2 custom-scrollbar">
+                        {localMaterials.length === 0 ? (
+                            <div className="text-center py-8 text-muted-foreground text-xs italic">Nenhum material cadastrado</div>
+                        ) : (
+                            localMaterials.map((m: any) => (
+                                <div key={m.id} className="bg-secondary/30 border border-border/50 rounded-lg p-3 flex items-start justify-between gap-3 group">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                                            {m.type === 'PDF' ? <FileText className="w-4 h-4 text-primary" /> : <ExternalLink className="w-4 h-4 text-primary" />}
+                                        </div>
+                                        <div>
+                                            <div className="text-xs font-bold text-foreground">{m.title}</div>
+                                            <div className="text-[10px] text-muted-foreground truncate max-w-[200px]">{m.link}</div>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => handleDeleteMaterial(m.id)}
+                                        disabled={deletingMaterial === m.id}
+                                        className="p-1.5 text-muted-foreground hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                                    >
+                                        {deletingMaterial === m.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
                                     </button>
                                 </div>
                             ))
