@@ -24,33 +24,42 @@ async function checkLogistics(userId: string, input: string): Promise<string | n
 
         if (!rules || rules.length === 0) return null
 
-        const normalizedInput = input.toLowerCase().trim().replace(/[^a-z0-9]/g, '')
-        const isPotentialZip = /^[0-9]{5,8}$/.test(normalizedInput)
+        const normalizedInput = input.toLowerCase().trim()
+        
+        // --- NOVO: Detecção de Intenção de "Quais Cidades?" ---
+        // Se o cliente pergunta onde atendemos, sem mandar números (CEPs), mostramos os nomes dos blocos
+        const asksWhere = /\b(onde|quais|lista|cidades|regiões|regioes|atende|atendimento|entrega|locais|áreas|areas)\b/i.test(normalizedInput)
+        
+        if (asksWhere && !/[0-9]/.test(normalizedInput)) {
+            const areaNames = rules.map(r => r.name).join(', ')
+            return `[SISTEMA INTERNO: O cliente quer saber as áreas de entrega. Suas regras de logística ativas são: ${areaNames}. Diga quais são e peça o CEP ou Cidade para confirmar se o sistema libera para a rua dela especificamente.]`
+        }
+
+        const cleanInput = normalizedInput.replace(/[^a-z0-9]/g, '')
+        const isPotentialZip = /^[0-9]{5,8}$/.test(cleanInput)
 
         for (const rule of rules) {
-            const items = rule.content.split(/[,\n]/).map((i: string) => i.toLowerCase().trim().replace(/[^a-z0-9]/g, ''))
-            
             if (rule.type === 'zipcode' && isPotentialZip) {
-                if (items.some((zip: string) => normalizedInput.includes(zip))) {
-                    return `[SISTEMA: O CEP informado (${input}) ESTÁ na lista de cidades atendidas para PAGAMENTO NA ENTREGA. Informe isso à cliente com empolgação!]`
+                const zips = rule.content.split(/[,\n]/).map((i: string) => i.toLowerCase().trim().replace(/[^a-z0-9]/g, ''))
+                if (zips.some((zip: string) => cleanInput.includes(zip))) {
+                    return `[SISTEMA: O CEP informado (${input}) ESTÁ na lista de cidades atendidas para PAGAMENTO NA ENTREGA. Informe isso à cliente com empolgação e peça os dados de entrega!]`
                 }
             } else if (rule.type === 'city') {
-                // Para cidades, limpamos menos para manter nomes compostos
-                const cityInput = input.toLowerCase().trim()
                 const cityItems = rule.content.split(/[,\n]/).map((i: string) => i.toLowerCase().trim())
-                if (cityItems.some((city: string) => cityInput.includes(city))) {
-                    return `[SISTEMA: A localização informada (${input}) ESTÁ na lista de cidades atendidas para PAGAMENTO NA ENTREGA. Informe isso com empolgação!]`
+                if (cityItems.some((city: string) => normalizedInput.includes(city))) {
+                    return `[SISTEMA: A localização informada (${input}) ESTÁ na lista de cidades atendidas para PAGAMENTO NA ENTREGA. Avise que o entregador recebe na porta (Card/Pix/Dinheiro) e peça o endereço completo!]`
                 }
             }
         }
 
-        // Se detectamos que é um CEP ou Cidade mas não achamos na lista
-        if (isPotentialZip || (input.length > 5 && !input.includes(' '))) {
-            return `[SISTEMA: A localização informada (${input}) NÃO está na lista de pagamento na entrega do seu painel de LOGÍSTICA. Informe educadamente que não oferecemos essa modalidade para essa região específica no momento.]`
+        // Se detectamos que é uma tentativa de localização mas não achamos na lista
+        const isLocationAttempt = isPotentialZip || /\b(moro em|sou de|cidade|cep|estado)\b/i.test(normalizedInput)
+        if (isLocationAttempt) {
+            return `[SISTEMA: A localização informada (${input}) NÃO está na sua lista de motoboy próprio. Informe educadamente que não oferecemos Pagamento na Entrega aí agora, mas pergunte se ela quer receber via Correios (pagamento antecipado).]`
         }
 
-        // Se a mensagem não parece uma localização, enviamos um lembrete para ela não esquecer de pedir
-        return `[SISTEMA: Você ainda NÃO verificou se a cliente mora em área de Pagamento na Entrega. NÃO confirme nada antes de receber e o sistema validar o CEP ou Cidade. Mantenha a postura de "Vou conferir pra você".]`
+        // Caso padrão: Lembrete para não esquecer de validar
+        return `[SISTEMA: Você ainda não validou a localização atual. Peça o CEP ou Cidade antes de prometer Pagamento na Entrega.]`
     } catch (err) {
         console.error('Erro ao checar logística:', err)
         return null
@@ -85,7 +94,7 @@ export async function POST(req: NextRequest) {
 
 // Classifica o contato com base no histórico de conversa usando a IA
 async function classifyContact(
-    messages: { role: 'assistant' | 'user', content: string }[],
+    messages: { role: 'assistant' | 'user' | 'system', content: string }[],
     openaiKey: string
 ): Promise<AiTag | null> {
     try {
@@ -136,7 +145,7 @@ Responda APENAS com uma dessas palavras: PEDIDO_FECHADO, POSSIVEL_COMPRADOR, INT
 
 // Gera mensagem de agradecimento/encerramento profissional ao fechar pedido
 async function generateClosingMessage(
-    messages: { role: 'assistant' | 'user', content: string }[],
+    messages: { role: 'assistant' | 'user' | 'system', content: string }[],
     aiConfig: any,
     openaiKey: string
 ): Promise<string> {
@@ -544,7 +553,7 @@ async function processWebhookInBackground(body: any) {
         const chatMessages = (history || [])
             .reverse()
             .map(m => ({
-                role: m.role ? 'assistant' : 'user' as 'assistant' | 'user',
+                role: (m.role ? 'assistant' : 'user') as 'assistant' | 'user' | 'system',
                 content: m.content || ''
             }))
 
@@ -566,8 +575,8 @@ async function processWebhookInBackground(body: any) {
         }
 
         if (logisticsHint) {
-            // Injeta a dica de logística no histórico para a IA ler
-            chatMessages.push({ role: 'user', content: logisticsHint })
+            // Injeta a dica de logística como uma instrução de SISTEMA para não confundir a IA como se fosse fala do cliente
+            chatMessages.push({ role: 'system', content: logisticsHint })
         }
 
         // 7. Chamar a OpenAI para gerar a resposta da IA
