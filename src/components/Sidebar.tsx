@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabase'
 import {
     Bot, LayoutDashboard, Smartphone, Brain, Users,
     Settings, LogOut, ChevronRight, Shield, X, Menu, CreditCard, MessageCircle, MessageSquare,
-    Filter, Truck
+    Filter, Truck, PlayCircle
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -20,6 +20,7 @@ const navItems = [
     { href: '/dashboard/funis', label: 'Funis de Venda', icon: Filter },
     { href: '/dashboard/logistica', label: 'Logística', icon: Truck },
     { href: '/dashboard/planos', label: 'Planos', icon: CreditCard },
+    { href: '/dashboard/tutoriais', label: 'Área de Membros', icon: PlayCircle },
     { href: '/dashboard/configuracoes', label: 'Configurações', icon: Settings },
 ]
 
