@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@supabase/supabase-js'
+import { revalidatePath } from 'next/cache'
 
 export async function toggleUserStatusAction(userId: string, isActive: boolean) {
     const adminSupabase = createClient(
@@ -77,6 +78,8 @@ export async function saveMaterialAction(title: string, type: string, link: stri
     })
     
     if (error) throw new Error(error.message)
+    revalidatePath('/dashboard/tutoriais')
+    revalidatePath('/dashboard/admin')
     return true
 }
 
@@ -88,5 +91,7 @@ export async function deleteMaterialAction(id: string) {
     
     const { error } = await adminSupabase.from('academy_materials').delete().eq('id', id)
     if (error) throw new Error(error.message)
+    revalidatePath('/dashboard/tutoriais')
+    revalidatePath('/dashboard/admin')
     return true
 }
