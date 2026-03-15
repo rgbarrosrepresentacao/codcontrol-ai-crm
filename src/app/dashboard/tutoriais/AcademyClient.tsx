@@ -49,14 +49,14 @@ const lessons = [
         description: 'Aprenda a intervir quando necessário e gerenciar o chat ao vivo.'
     },
     {
-        id: 'jcEwKoO9IMw',
-        title: 'Aula 7 — Funil de Vendas: Estratégias',
+        id: 'cWCt-tpGPLc',
+        title: 'Aula 7 — Funil de Vendas: Estratégia para Vender',
         duration: '12:30',
         description: 'Estratégias avançadas para triplicar suas vendas usando funis automáticos.'
     },
     {
-        id: 'CGErRewlgZU',
-        title: 'Aula 8 — Suporte e próximos passos',
+        id: 'M622ZsQhxgg',
+        title: 'Aula 8 — Suporte e Próximos Passos',
         duration: '03:00',
         description: 'Onde encontrar ajuda e como escalar sua operação com o CodControl.'
     }
