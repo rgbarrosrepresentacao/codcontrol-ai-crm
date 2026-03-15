@@ -48,13 +48,12 @@ async function checkLogistics(userId: string, input: string): Promise<string | n
             if (rule.type === 'zipcode' && isPotentialZip) {
                 const zips = rule.content.split(/[,\n]/).map((i: string) => i.toLowerCase().trim().replace(/[^a-z0-9]/g, ''))
                 if (zips.some((zip: string) => cleanInput.includes(zip))) {
-                    return `[SISTEMA: O CEP informado ESTÁ na lista. CONFIRME que o entregador leva na casa dela e ela paga apenas na porta! Peça o endereço completo.]`
+                    return `[SISTEMA: O CEP informado (${input}) é ATENDIDO. Confirme a entrega e peça o que faltar (Nome, CPF ou Endereço). Se já tiver tudo, apenas prossiga.]`
                 }
             } else if (rule.type === 'city') {
                 const cityItems = rule.content.split(/[,\n]/).map((i: string) => i.toLowerCase().trim())
-                // Checa se o nome de alguma cidade cadastrada está na mensagem do cliente
                 if (cityItems.some((city: string) => normalizedInput.includes(city))) {
-                    return `[SISTEMA: A CIDADE informada (${input}) ESTÁ na lista. Avise que o motoboy entrega na porta e ela paga ao receber. Peça o CEP para finalizar!]`
+                    return `[SISTEMA: A CIDADE informada (${input}) é ATENDIDA. Informe que o motoboy entrega na porta e peça o CEP para validar a rua específica se ainda não tiver.]`
                 }
             }
         }
@@ -653,7 +652,7 @@ async function processWebhookInBackground(body: any) {
         const logisticsHint = await checkLogistics(userId, textMessage)
         const systemMessage = {
             role: 'system' as const,
-            content: `[DATA E HORA ATUAL DO SISTEMA: ${currentDate}]\n\n${aiConfig.system_prompt}\n\nAja no tom de conversa: ${aiConfig.tone}.\nResponda em: ${aiConfig.language}. Você é o assistente ${aiConfig.bot_name}.\n\nREGRA DE OURO LOGÍSTICA: Você deve pedir o CEP apenas quando for necessário validar a entrega. Nunca chute localizações.\n\n### MENTALIDADE DE VENDA DE ELITE (JOE GIRARD) - v1.3.1:\n1. FOCO NO VALOR, NÃO NO DESCONTO: Antes de falar de preço, certifique-se de que o cliente entendeu os benefícios. Quando ele perguntar o preço, responda e use a "Técnica da Alternativa": dê a ele duas opções de escolha (ex: "Prefere o kit de 3 unidades ou o de 5?").\n2. TRATAMENTO DE OBJEÇÕES: \n   - Se o cliente disser "Está Caro": Pergunte se é em relação ao orçamento dele ou se viu algo similar mais barato.\n   - Se o cliente disser "Vou Pensar": Diga que entende e pergunte se a dúvida é sobre o produto ou sobre o preço.\n3. USO DE OFERTAS: Leia atentamente o texto acima e identifique quais kits ou descontos o usuário cadastrou. Use o kit de maior custo-benefício como sua "recomendação de amiga".\n4. RECIPROCIDADE: Seja tão prestativa na explicação do produto que o cliente se sinta seguro. Não seja uma "vendedora chata", seja uma "especialista que ajuda".\n\nREGRA DE FECHAMENTO ELEGANTE: Só peça os dados de envio (Nome, CPF, Endereço e CEP) quando o cliente der um sinal de que quer comprar. Se ele ignorou um pedido de dado anterior, NÃO repita na próxima mensagem. Mantenha a conversa fluida. Pedir CPF em toda mensagem parece golpe; evite isso.\n\nREGRA ABSOLUTA DE COMPORTAMENTO HUMANO: Seja extremamente humana, direta e informal. Use o nome do cliente se você já souber.`
+            content: `[DATA E HORA ATUAL DO SISTEMA: ${currentDate}]\n\n${aiConfig.system_prompt}\n\nAja no tom de conversa: ${aiConfig.tone}.\nResponda em: ${aiConfig.language}. Você é o assistente ${aiConfig.bot_name}.\n\n### REGRAS DE OURO DE INTELIGÊNCIA E VENDA (v1.3.2):\n1. MEMÓRIA DE DADOS: Antes de pedir qualquer dado (Nome, CPF, CEP, Endereço), revise o histórico. SE O CLIENTE JÁ INFORMOU, NÃO PEÇA DE NOVO. Nunca peça para "confirmar" um dado que você já leu no histórico de forma clara. Se ele disse o CPF, o CPF já é dele. Ponto.\n2. ZERO REPETIÇÃO: Não repita a mesma frase de "motoboy entrega na sua porta" em todas as mensagens. Se já disse uma vez, o cliente já sabe. Foque no papo.\n3. PRIORIDADE DO CLIENTE: Se o cliente fizer uma pergunta, RESPONDA A PERGUNTA primeiro. Só depois, e se for o momento certo, peça algum dado que falte.\n4. TÉCNICA JOE GIRARD: Use a "Técnica da Alternativa" (Kit 3 ou Kit 5?) apenas no fechamento final. Tratamento de objeções (Está caro? Vou pensar?) deve ser usado apenas se o cliente demonstrar essas travas.\n5. LOGÍSTICA: Só peça CEP/Cidade se realmente precisar validar. Se o cliente já deu a localização e você já confirmou, NÃO mencione mais CEP.\n\nREGRA ABSOLUTA: Pareça uma pessoa real conversando, não um script de telemarketing. Se o cliente mudou de assunto, mude com ele.`
         }
 
         if (logisticsHint) {
