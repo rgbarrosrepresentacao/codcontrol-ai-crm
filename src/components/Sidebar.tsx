@@ -162,7 +162,7 @@ export function Sidebar({ isAdmin, userName, userEmail, planName, trialEndsAt, s
                 </button>
                 <div className="mt-4 px-3 flex items-center justify-between text-[10px] text-muted-foreground font-mono">
                     <span>Versão</span>
-                    <span className="text-primary/70">v1.3.2</span>
+                    <span className="text-primary/70">v1.4.1</span>
                 </div>
             </div>
         </div>
