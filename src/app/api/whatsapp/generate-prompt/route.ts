@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+import { createSupabaseServerClient } from '@/lib/supabase-server'
 
 export async function POST(req: NextRequest) {
     try {
-        const { data: { user } } = await supabase.auth.getUser(req.headers.get('Authorization')?.split(' ')[1] || '')
+        const supabase = await createSupabaseServerClient()
+        const { data: { user } } = await supabase.auth.getUser()
+
+        if (!user) {
+            return NextResponse.json({ error: 'Usuário não autenticado' }, { status: 401 })
+        }
+
         const body = await req.json()
         const { productName, productResolves, benefits, prices, sellerName, tone } = body
 
@@ -16,11 +17,11 @@ export async function POST(req: NextRequest) {
         const { data: profile } = await supabase
             .from('profiles')
             .select('openai_api_key')
-            .eq('id', user?.id)
+            .eq('id', user.id)
             .single()
 
         if (!profile?.openai_api_key) {
-            return NextResponse.json({ error: 'Configure sua API Key da OpenAI primeiro.' }, { status: 400 })
+            return NextResponse.json({ error: 'Configure sua API Key da OpenAI primeiro na aba no topo desta página.' }, { status: 400 })
         }
 
         const prompt = `Você é um Engenheiro de Prompt especialista em Vendas pelo WhatsApp e psicologia do consumidor. 
@@ -69,10 +70,16 @@ Gere apenas o texto do Prompt final, pronto para ser copiado e colado.`
         })
 
         const gptData = await response.json()
+        
+        if (gptData.error) {
+            throw new Error(gptData.error.message || 'Erro na API da OpenAI')
+        }
+
         const generatedPrompt = gptData.choices[0].message.content
 
         return NextResponse.json({ prompt: generatedPrompt })
     } catch (error: any) {
+        console.error('Error generating prompt:', error)
         return NextResponse.json({ error: error.message }, { status: 500 })
     }
 }
