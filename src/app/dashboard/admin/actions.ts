@@ -51,6 +51,7 @@ export async function saveAnnouncementAction(title: string, content: string, typ
     })
     
     if (error) throw new Error(error.message)
+    revalidatePath('/dashboard/admin')
     return true
 }
 
@@ -62,6 +63,7 @@ export async function deleteAnnouncementAction(id: string) {
     
     const { error } = await adminSupabase.from('announcements').delete().eq('id', id)
     if (error) throw new Error(error.message)
+    revalidatePath('/dashboard/admin')
     return true
 }
 
