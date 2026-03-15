@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
-import { Brain, Save, Loader2, Plus, Trash2, ToggleLeft, ToggleRight, Eye, EyeOff } from 'lucide-react'
+import { Brain, Save, Loader2, Plus, Trash2, ToggleLeft, ToggleRight, Eye, EyeOff, Sparkles, X, Target, Heart, Tag, Info, UserPen } from 'lucide-react'
 
 interface AiConfig {
     id?: string
@@ -46,6 +46,16 @@ export default function IAPage() {
     const [savingKey, setSavingKey] = useState(false)
     const [loading, setLoading] = useState(true)
     const [activeTab, setActiveTab] = useState<string>('global')
+    const [showWizard, setShowWizard] = useState(false)
+    const [generating, setGenerating] = useState(false)
+    const [wizardData, setWizardData] = useState({
+        productName: '',
+        productResolves: '',
+        benefits: '',
+        prices: '',
+        sellerName: 'Camila',
+        tone: 'Amigável e Vendedora'
+    })
 
     useEffect(() => {
         const load = async () => {
@@ -126,6 +136,36 @@ export default function IAPage() {
             if (idx >= 0) { const updated = [...prev]; updated[idx] = newConfig; return updated }
             return [...prev, newConfig]
         })
+    }
+
+    const handleGeneratePrompt = async () => {
+        if (!openaiKey) {
+            toast.error('Configure sua API Key da OpenAI primeiro!')
+            return
+        }
+        if (!wizardData.productName || !wizardData.productResolves) {
+            toast.error('Preencha pelo menos o nome e o que o produto resolve!')
+            return
+        }
+
+        setGenerating(true)
+        try {
+            const res = await fetch('/api/whatsapp/generate-prompt', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(wizardData),
+            })
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error || 'Erro ao gerar prompt')
+
+            updateConfig('system_prompt', data.prompt)
+            toast.success('Prompt de Elite gerado com sucesso!')
+            setShowWizard(false)
+        } catch (error: any) {
+            toast.error(error.message)
+        } finally {
+            setGenerating(false)
+        }
     }
 
     const handleToggleActive = async () => {
@@ -317,7 +357,15 @@ export default function IAPage() {
 
                 {/* System Prompt */}
                 <div>
-                    <label className="block text-sm font-medium text-foreground mb-1.5">Prompt do assistente</label>
+                    <div className="flex items-center justify-between mb-1.5">
+                        <label className="block text-sm font-medium text-foreground">Prompt do assistente</label>
+                        <button
+                            onClick={() => setShowWizard(true)}
+                            className="text-xs font-semibold gradient-primary text-black px-3 py-1.5 rounded-lg flex items-center gap-1.5 hover:opacity-90 transition-all shadow-sm"
+                        >
+                            <Sparkles className="w-3.5 h-3.5" /> Gerar Prompt de Elite (Modo Joe Girard)
+                        </button>
+                    </div>
                     <p className="text-xs text-muted-foreground mb-2">Defina como o bot deve se comportar, o que pode e não pode responder.</p>
                     <textarea
                         value={currentConfig.system_prompt}
@@ -339,6 +387,116 @@ export default function IAPage() {
                     {saving ? 'Salvando...' : 'Salvar configuração'}
                 </button>
             </div>
+
+            {/* Elite Sales Wizard Modal */}
+            {showWizard && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] flex items-center justify-center p-4">
+                    <div className="gradient-card border border-border rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-slide-up">
+                        <div className="sticky top-0 bg-background/95 backdrop-blur-sm p-6 border-b border-border flex items-center justify-between z-10">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-primary/10 rounded-lg">
+                                    <Sparkles className="w-6 h-6 text-primary" />
+                                </div>
+                                <div>
+                                    <h2 className="text-xl font-bold text-foreground">Gerador de Prompt de Elite</h2>
+                                    <p className="text-muted-foreground text-xs">A mentalidade do maior vendedor do mundo guiando sua IA.</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setShowWizard(false)} className="text-muted-foreground hover:text-foreground p-2 hover:bg-secondary rounded-lg transition-all">
+                                <X className="w-6 h-6" />
+                            </button>
+                        </div>
+
+                        <div className="p-6 space-y-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="flex items-center gap-2 text-sm font-medium text-foreground mb-1.5">
+                                        <Tag className="w-4 h-4 text-primary" /> Nome do Produto
+                                    </label>
+                                    <input
+                                        value={wizardData.productName}
+                                        onChange={(e) => setWizardData({ ...wizardData, productName: e.target.value })}
+                                        placeholder="Ex: Liso Mágico Premium"
+                                        className="w-full bg-input border border-border rounded-xl px-4 py-2.5 text-foreground focus:ring-2 focus:ring-primary/50 transition-all text-sm"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="flex items-center gap-2 text-sm font-medium text-foreground mb-1.5">
+                                        <UserPen className="w-4 h-4 text-primary" /> Nome da Atendente (IA)
+                                    </label>
+                                    <input
+                                        value={wizardData.sellerName}
+                                        onChange={(e) => setWizardData({ ...wizardData, sellerName: e.target.value })}
+                                        placeholder="Ex: Camila"
+                                        className="w-full bg-input border border-border rounded-xl px-4 py-2.5 text-foreground focus:ring-2 focus:ring-primary/50 transition-all text-sm"
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="flex items-center gap-2 text-sm font-medium text-foreground mb-1.5">
+                                    <Target className="w-4 h-4 text-primary" /> O que o produto resolve? (A Dor)
+                                </label>
+                                <textarea
+                                    value={wizardData.productResolves}
+                                    onChange={(e) => setWizardData({ ...wizardData, productResolves: e.target.value })}
+                                    placeholder="Ex: Resolve o problema de cabelos rebeldes, frizz e falta de brilho em casa."
+                                    rows={2}
+                                    className="w-full bg-input border border-border rounded-xl px-4 py-2.5 text-foreground focus:ring-2 focus:ring-primary/50 transition-all text-sm"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="flex items-center gap-2 text-sm font-medium text-foreground mb-1.5">
+                                    <Heart className="w-4 h-4 text-primary" /> Principais Benefícios (um por linha)
+                                </label>
+                                <textarea
+                                    value={wizardData.benefits}
+                                    onChange={(e) => setWizardData({ ...wizardData, benefits: e.target.value })}
+                                    placeholder="Ex: Liso perfeito em 30 min, Não arde o olho, Sem formol..."
+                                    rows={3}
+                                    className="w-full bg-input border border-border rounded-xl px-4 py-2.5 text-foreground focus:ring-2 focus:ring-primary/50 transition-all text-sm"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="flex items-center gap-2 text-sm font-medium text-foreground mb-1.5">
+                                    <Info className="w-4 h-4 text-primary" /> Preços e Promoções (Kits)
+                                </label>
+                                <textarea
+                                    value={wizardData.prices}
+                                    onChange={(e) => setWizardData({ ...wizardData, prices: e.target.value })}
+                                    placeholder="Ex: Kit 1 un por R$149, Kit 2 un (Campeão) por R$197..."
+                                    rows={3}
+                                    className="w-full bg-input border border-border rounded-xl px-4 py-2.5 text-foreground focus:ring-2 focus:ring-primary/50 transition-all text-sm"
+                                />
+                            </div>
+
+                            <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 flex gap-3 text-sm text-primary/80">
+                                <Info className="w-5 h-5 shrink-0 mt-0.5" />
+                                <p>A IA vai casar essas informações com a nossa estrutura de **Logística Própria** e as técnicas do **Joe Girard** automaticamente.</p>
+                            </div>
+                        </div>
+
+                        <div className="p-6 border-t border-border flex gap-3 sticky bottom-0 bg-background/95 backdrop-blur-sm">
+                            <button
+                                onClick={() => setShowWizard(false)}
+                                className="flex-1 border border-border text-foreground font-semibold py-3 rounded-xl hover:bg-secondary transition-all text-sm"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={handleGeneratePrompt}
+                                disabled={generating}
+                                className="flex-[2] gradient-primary text-black font-bold py-3 rounded-xl hover:opacity-90 transition-all flex items-center justify-center gap-2 text-sm shadow-lg shadow-primary/20"
+                            >
+                                {generating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
+                                {generating ? 'Gerando Inteligência...' : 'Gerar Prompt de Elite'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     )
 }
