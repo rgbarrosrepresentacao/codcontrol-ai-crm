@@ -416,6 +416,68 @@ async function processWebhookInBackground(body: any) {
             }
         }
 
+        // --- 5.1 PERCEPÇÃO DE IMAGEM (VISION) ---
+        // Se for uma imagem, tentamos "enxergar" os dados (contas, documentos, etc)
+        if (!textMessage && messageData.imageMessage) {
+            console.log('Detectado mensagem de imagem, enviando para o motor Vision...')
+            try {
+                const EVOLUTION_URL = process.env.EVOLUTION_API_URL || 'https://api.codcontrolpro.bond'
+                const EVOLUTION_KEY = process.env.EVOLUTION_API_KEY || ''
+
+                const mediaRes = await fetch(`${EVOLUTION_URL}/chat/getBase64FromMediaMessage/${instanceName}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'apikey': EVOLUTION_KEY
+                    },
+                    body: JSON.stringify({ message: body.data, convertToMp4: false })
+                })
+
+                if (mediaRes.ok) {
+                    const mediaData = await mediaRes.json()
+                    const base64Image = mediaData.base64 || mediaData.base64Data || mediaData.data
+
+                    if (base64Image) {
+                        const visionResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${profile.openai_api_key}`
+                            },
+                            body: JSON.stringify({
+                                model: 'gpt-4o-mini',
+                                messages: [
+                                    {
+                                        role: 'system',
+                                        content: 'Você é um assistente de extração de dados. Sua missão é ler fotos de contas de luz, água ou documentos enviados pelo cliente e extrair de forma organizada: Nome, CPF, Endereço completo (Rua, Número, Bairro, Cidade) e CEP. Se a imagem não for um documento legível ou não tiver dados úteis, ignore. Se for um documento, retorne apenas os dados encontrados.'
+                                    },
+                                    {
+                                        role: 'user',
+                                        content: [
+                                            { type: 'text', text: 'Extraia os dados cadastrais desta imagem:' },
+                                            { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } }
+                                        ]
+                                    }
+                                ],
+                                max_tokens: 300
+                            })
+                        })
+
+                        if (visionResponse.ok) {
+                            const visionData = await visionResponse.json()
+                            const extraction = visionData.choices[0].message.content
+                            if (extraction && extraction.length > 10) {
+                                textMessage = `[ALERTA DE SISTEMA: O cliente enviou uma imagem e seu motor VISION extraiu os seguintes dados: ${extraction}. Use estas informações para confirmar o pedido ou preencher o que faltava!]`
+                                console.log('Vision Extraction Result:', textMessage)
+                            }
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error('Falha no motor Vision:', err)
+            }
+        }
+
         if (!textMessage) {
             if (contactId && conversationId) {
                 const msgType = messageData.audioMessage ? 'audio' : messageData.imageMessage ? 'image' : messageData.documentMessage ? 'document' : 'text'
