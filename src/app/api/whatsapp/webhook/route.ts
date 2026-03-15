@@ -123,11 +123,13 @@ async function classifyContact(
                         role: 'system',
                         content: `Você é um classificador de leads de vendas. Analise a conversa e classifique o cliente em UMA das categorias abaixo. Responda APENAS com a etiqueta, nada mais.
 
-PEDIDO_FECHADO - Cliente JÁ ENVIOU TODOS OS DADOS COMPLETOS (nome da rua, número, bairro, cidade, CEP, etc) e FINALIZOU a compra. ATENÇÃO MÁXIMA: Se o cliente apenas informou o CEP perguntando se tem entrega ou valor de frete, ele AINDA NÃO é pedido fechado (mantenha como INTERESSADO). O pedido só é fechado quando o cliente aceita e passa os dados reais de entrega da casa dele.
-POSSIVEL_COMPRADOR - Cliente demonstrou forte interesse mas quer comprar depois, em outro dia ou pediu para entrar em contato mais tarde
-INTERESSADO - Cliente apenas perguntou preço, como funciona, tirou dúvidas, sem confirmar compra e sem dados de entrega
-LEAD_FRIO - Cliente parou de responder, não demonstrou interesse real ou encerrou a conversa sem avançar
-CANCELADO - Cliente desistiu da compra, cancelou pedido ou pediu para não ser mais contatado
+PEDIDO_FECHADO - O cliente enviou ABSOLUTAMENTE TODOS os dados para o envio: 1) Nome Completo, 2) CPF (11 dígitos), 3) CEP e 4) Endereço Completo (Rua, Número, Bairro e Cidade). Se falta QUALQUER um desses itens, NÃO classifique como PEDIDO_FECHADO. Mantenha como INTERESSADO se ele estiver apenas tirando dúvidas ou POSSIVEL_COMPRADOR se ele estiver quase lá mas ainda não mandou os dados.
+POSSIVEL_COMPRADOR - Cliente demonstrou forte interesse mas parou antes de mandar os dados, ou quer comprar depois.
+INTERESSADO - Cliente apenas perguntou preço, frete, ou passou apenas o CEP para consulta. Ele ainda está na fase de negociação.
+LEAD_FRIO - Cliente parou de responder ou não tem interesse real.
+CANCELADO - Cliente desistiu explicitamente.
+
+CRÍTICO: Nunca classifique como PEDIDO_FECHADO se o cliente mandou apenas o CEP. Ele PRECISA dos 4 itens acima (Nome, CPF, CEP, Endereço).
 
 Responda APENAS com uma dessas palavras: PEDIDO_FECHADO, POSSIVEL_COMPRADOR, INTERESSADO, LEAD_FRIO ou CANCELADO`
                     },
@@ -566,7 +568,7 @@ async function processWebhookInBackground(body: any) {
             .select('role:from_me, content')
             .eq('conversation_id', conversationId)
             .order('created_at', { ascending: false })
-            .limit(20)
+            .limit(30)
 
         const chatMessages = (history || [])
             .reverse()
@@ -589,7 +591,7 @@ async function processWebhookInBackground(body: any) {
         const logisticsHint = await checkLogistics(userId, textMessage)
         const systemMessage = {
             role: 'system' as const,
-            content: `[DATA E HORA ATUAL DO SISTEMA: ${currentDate}]\n\n${aiConfig.system_prompt}\n\nAja no tom de conversa: ${aiConfig.tone}.\nResponda em: ${aiConfig.language}. Você é o assistente ${aiConfig.bot_name}.\n\nREGRA DE OURO LOGÍSTICA: Você SEMPRE deve pedir o CEP ou Cidade antes de prometer entrega programada ou pagamento na entrega. Se o sistema não te der um aviso de [ATENDIDO] ou [NÃO ATENDIDO] para a localização ATUAL, você NÃO sabe se atende. Nunca chute.\n\nREGRA ABSOLUTA DE COMPORTAMENTO HUMANO: Seja extremamente humano, direto e informal.`
+            content: `[DATA E HORA ATUAL DO SISTEMA: ${currentDate}]\n\n${aiConfig.system_prompt}\n\nAja no tom de conversa: ${aiConfig.tone}.\nResponda em: ${aiConfig.language}. Você é o assistente ${aiConfig.bot_name}.\n\nREGRA DE OURO LOGÍSTICA: Você SEMPRE deve pedir o CEP ou Cidade antes de prometer entrega programada ou pagamento na entrega. Se o sistema não te der um aviso de [ATENDIDO] ou [NÃO ATENDIDO] para a localização ATUAL, você NÃO sabe se atende. Nunca chute.\n\nREGRA DE FECHAMENTO (VENDEDORA ELITE): Seu objetivo é fechar a venda. Para isso, você PRECISA coletar: 1) Nome Completo, 2) CPF, 3) Endereço com Número e Bairro, e 4) CEP. Sempre verifique o histórico da conversa: se o cliente mandou o CEP mas não mandou o CPF, você deve responder à pergunta dele e IMEDIATAMENTE pedir o CPF e o endereço para agilizar o envio dele.\n\nREGRA DE CONTEXTO E MEMÓRIA: Analise as mensagens anteriores. Se o cliente mencionou algum detalhe específico (ex: uma dor, uma preferência, um local), use isso na sua resposta para gerar conexão. Ex: "Como você comentou que...", "Já que você precisa de...".\n\nREGRA DE ESPELHAMENTO DE TON: Identifique o tom do cliente no histórico. Se ele for direto e rápido, seja direta. Se ele for caloroso e usar emojis, seja assim também. Nunca pareça um roteiro fixo.\n\nREGRA DE VALOR: Se o histórico mostrar que o cliente perguntou o preço mas ainda não fechou, reforce sutilmente um dos benefícios exclusivos do seu produto (foco em transformar a vida dele) antes de pedir os dados de entrega.\n\nREGRA ABSOLUTA DE COMPORTAMENTO HUMANO: Seja extremamente humana, direta, informal e focada em ajudar o cliente a finalizar a compra agora.`
         }
 
         if (logisticsHint) {
