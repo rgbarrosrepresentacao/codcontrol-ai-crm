@@ -59,6 +59,18 @@ const lessons = [
         title: 'Aula 8 — Suporte e Próximos Passos',
         duration: '03:00',
         description: 'Onde encontrar ajuda e como escalar sua operação com o CodControl.'
+    },
+    {
+        id: 'R8CRcUliIHU',
+        title: 'Aula 9 — Como usar Gerador de Prompt de Elite',
+        duration: '06:15',
+        description: 'Aprenda a criar prompts impossíveis de serem ignorados usando nosso gerador inteligente.'
+    },
+    {
+        id: '3sWWzFI4Zmg',
+        title: 'Aula 10 — Como ativar para a IA falar por áudio',
+        duration: '04:50',
+        description: 'Configure a voz da sua atendente e humanize seu atendimento com mensagens de voz automáticas.'
     }
 ]
 
