@@ -30,14 +30,14 @@ async function checkLogistics(userId: string, input: string): Promise<string | n
         // Se o cliente quer saber o valor, não deixamos a IA achar que "valor" é uma cidade
         const isAskingPrice = /\b(valor|preço|preco|quanto|custo|preçinho|precinho|promoção|promocao|kit|kits|pagar|pagamento)\b/i.test(normalizedInput)
         if (isAskingPrice && !/[0-9]/.test(normalizedInput)) {
-            return `[SISTEMA INTERNO: O cliente quer saber o PREÇO. Informe os valores conforme seu prompt e pergunte de qual CIDADE ele é para você verificar se o motoboy consegue levar na porta.]`
+            return `[SISTEMA INTERNO: O cliente quer saber o PREÇO. Informe os valores conforme seu prompt e pergunte de qual LOCALIDADE ele é para você verificar a disponibilidade de entrega.]`
         }
 
         // --- 2. DETECÇÃO DE ONDE ATENDE ---
         const asksWhere = /\b(onde|quais|lista|cidades|regiões|regioes|atende|atendimento|entrega|locais|áreas|areas)\b/i.test(normalizedInput)
         if (asksWhere && normalizedInput.length < 50) {
             const areaNames = rules.map(r => r.name).join(', ')
-            return `[SISTEMA INTERNO: O cliente quer saber as áreas atendidas. Seus locais cadastrados são: ${areaNames}. Informe e peça a CIDADE para validar o CEP da rua dele especificamente.]`
+            return `[SISTEMA INTERNO: O cliente quer saber as áreas atendidas. Seus locais cadastrados são: ${areaNames}. Informe e peça a LOCALIDADE para validar a rua dele especificamente.]`
         }
 
         // --- 3. VALIDAÇÃO REAL (CEP ou Cidade) ---
@@ -53,7 +53,7 @@ async function checkLogistics(userId: string, input: string): Promise<string | n
             } else if (rule.type === 'city') {
                 const cityItems = rule.content.split(/[,\n]/).map((i: string) => i.toLowerCase().trim())
                 if (cityItems.some((city: string) => normalizedInput.includes(city))) {
-                    return `[SISTEMA: A CIDADE informada (${input}) é ATENDIDA. Informe que o motoboy entrega na porta e peça o CEP para validar a rua específica se ainda não tiver.]`
+                    return `[SISTEMA: A LOCALIDADE informada (${input}) é ATENDIDA. Informe sobre a entrega conforme seu prompt e peça o CEP para validar a rua específica se ainda não tiver.]`
                 }
             }
         }
@@ -61,7 +61,7 @@ async function checkLogistics(userId: string, input: string): Promise<string | n
         // --- 4. TENTATIVA DE LOCALIZAÇÃO FORA DA LISTA ---
         const isLocationAttempt = isPotentialZip || /\b(moro em|sou de|meu cep|moro no|moro na)\b/i.test(normalizedInput)
         if (isLocationAttempt) {
-            return `[SISTEMA: Essa localização informada NÃO está na lista de motoboy próprio. Diga educadamente que para essa região o pagamento na entrega não está disponível, mas que você pode enviar via Correios com pagamento antecipado.]`
+            return `[SISTEMA: Essa localização informada NÃO está na lista de atendimento prioritário. Informe as opções de envio/venda disponíveis para essa região baseando-se estritamente no seu prompt principal.]`
         }
 
         // Se não for nada relacionado ao fluxo de logística, retornamos null para a Camila seguir o prompt normal (preço, dúvidas, etc)
@@ -174,9 +174,9 @@ async function generateClosingMessage(
 TAREFA: O cliente acabou de confirmar o pedido e agora você vai encerrar o atendimento de forma calorosa e profissional.
 
 Escreva UMA mensagem curta (2-4 linhas) que pareça muito natural:
-1. Agradeça o cliente pelo pedido e confirmar os dados
-2. Confirme que o pagamento só será feito na entrega do produto ao entregador
-3. Informe que em breve nossa equipe humana entrará em contato via WhatsApp com o dia certinho de quem fará a entrega
+1. Agradeça o cliente pelo pedido e por confirmar os dados
+2. Confirme o método de pagamento e entrega seguindo estritamente as instruções de: ${aiConfig.system_prompt}
+3. Informe que em breve nossa equipe entrará em contato para os próximos passos
 4. Use emojis discretos para soar amigável e caloroso
 5. Não faça perguntas, apenas encerre o assunto com excelência
 
@@ -652,7 +652,7 @@ async function processWebhookInBackground(body: any) {
         const logisticsHint = await checkLogistics(userId, textMessage)
         const systemMessage = {
             role: 'system' as const,
-            content: `[DATA E HORA ATUAL DO SISTEMA: ${currentDate}]\n\n${aiConfig.system_prompt}\n\nAja no tom de conversa: ${aiConfig.tone}.\nResponda em: ${aiConfig.language}. Você é o assistente ${aiConfig.bot_name}.\n\n### REGRAS DE OURO DE INTELIGÊNCIA E VENDA (v1.3.2):\n1. MEMÓRIA DE DADOS: Antes de pedir qualquer dado (Nome, CPF, CEP, Endereço), revise o histórico. SE O CLIENTE JÁ INFORMOU, NÃO PEÇA DE NOVO. Nunca peça para "confirmar" um dado que você já leu no histórico de forma clara. Se ele disse o CPF, o CPF já é dele. Ponto.\n2. ZERO REPETIÇÃO: Não repita a mesma frase de "motoboy entrega na sua porta" em todas as mensagens. Se já disse uma vez, o cliente já sabe. Foque no papo.\n3. PRIORIDADE DO CLIENTE: Se o cliente fizer uma pergunta, RESPONDA A PERGUNTA primeiro. Só depois, e se for o momento certo, peça algum dado que falte.\n4. TÉCNICA JOE GIRARD: Use a "Técnica da Alternativa" (Kit 3 ou Kit 5?) apenas no fechamento final. Tratamento de objeções (Está caro? Vou pensar?) deve ser usado apenas se o cliente demonstrar essas travas.\n5. LOGÍSTICA: Só peça CEP/Cidade se realmente precisar validar. Se o cliente já deu a localização e você já confirmou, NÃO mencione mais CEP.\n\nREGRA ABSOLUTA: Pareça uma pessoa real conversando, não um script de telemarketing. Se o cliente mudou de assunto, mude com ele.`
+            content: `[DATA E HORA ATUAL DO SISTEMA: ${currentDate}]\n\n${aiConfig.system_prompt}\n\nAja no tom de conversa: ${aiConfig.tone}.\nResponda em: ${aiConfig.language}. Você é o assistente ${aiConfig.bot_name}.\n\n### REGRAS DE OURO DE INTELIGÊNCIA E VENDA (v1.3.3):\n1. MEMÓRIA DE DADOS: Antes de pedir qualquer dado (Nome, CPF, CEP, Endereço), revise o histórico. SE O CLIENTE JÁ INFORMOU, NÃO PEÇA DE NOVO. Nunca peça para "confirmar" um dado que você já leu no histórico de forma clara. Se ele disse o CPF, o CPF já é dele. Ponto.\n2. ZERO REPETIÇÃO: Evite repetir as mesmas informações em todas as mensagens. Se já disse uma vez, o cliente já sabe. Foque no papo.\n3. PRIORIDADE DO CLIENTE: Se o cliente fizer uma pergunta, RESPONDA A PERGUNTA primeiro. Só depois, e se for o momento certo, peça algum dado que falte.\n4. TÉCNICA JOE GIRARD: Use a "Técnica da Alternativa" (Kit 3 ou Kit 5?) apenas no fechamento final. Tratamento de objeções (Está caro? Vou pensar?) deve ser usado apenas se o cliente demonstrar essas travas.\n5. LOGÍSTICA: Só peça CEP/Localidade se realmente precisar validar. Se o cliente já deu a localização e você já passou a informação de entrega, siga o fluxo de venda.\n\nREGRA ABSOLUTA: Pareça uma pessoa real conversando, não um script de telemarketing. Respeite as informações de pagamento e frete contidas no seu prompt principal.`
         }
 
         if (logisticsHint) {
