@@ -11,8 +11,8 @@ export async function POST(req: NextRequest) {
         }
 
         const body = await req.json()
-        const { productName, productResolves, benefits, prices, sellerName, tone } = body
-
+        const { productName, productResolves, benefits, prices, commonObjections, sellerName, tone } = body
+        
         // Buscar a chave da OpenAI do perfil do usuário
         const { data: profile } = await supabase
             .from('profiles')
@@ -24,34 +24,39 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Configure sua API Key da OpenAI primeiro na aba no topo desta página.' }, { status: 400 })
         }
 
-        const prompt = `Você é um Engenheiro de Prompt especialista em Vendas pelo WhatsApp e psicologia do consumidor. 
-Sua missão é criar um "System Prompt" de alta performance para uma atendente de IA chamada ${sellerName}.
+        const prompt = `Você é um Engenheiro de Prompt de Elite, especialista em Neurovendas e Conversão pelo WhatsApp. 
+Sua missão é criar o "System Prompt" definitivo para uma atendente de IA chamada ${sellerName}. 
+O objetivo é que ela seja indistinguível de uma vendedora humana de alto nível.
 
-Dados do Produto:
-- Nome: ${productName}
-- O que resolve (Dor): ${productResolves}
-- Benefícios: ${benefits}
-- Preços/Ofertas: ${prices}
-- Nome da Atendente: ${sellerName}
-- Tom de voz desejado: ${tone}
+DADOS DA ESTRATÉGIA:
+- Produto: ${productName}
+- Dor que resolve: ${productResolves}
+- Benefícios Irresistíveis: ${benefits}
+- Ofertas/Preços: ${prices}
+- Objeções para Quebrar: ${commonObjections}
+- Identidade: ${sellerName}
+- Tom de Voz: ${tone}
 
-DIRETRIZES TÉCNICAS DO PROMPT:
-1. Integre as técnicas de Joe Girard (Maior Vendedor do Mundo).
-2. O prompt deve ser estruturado para que a IA NUNCA seja robótica.
-3. Deve incluir regras de "Não repetição" de dados já coletados.
-4. Deve focar na "Escuta Ativa" e "Reciprocidade".
-5. Deve usar a "Técnica da Alternativa" (Kit A ou Kit B) no fechamento.
-6. Deve agir como uma especialista no produto, não apenas uma tiradora de pedidos.
-7. O prompt deve ser em Português e formatado para ser usado em um campo de System Message.
+DIRETRIZES DE COMPORTAMENTO "100% HUMANO" NO WHATSAPP:
+1. BLOQUEIO DE "TESTÃO": A IA deve ser instruída a NUNCA enviar blocos gigantes de texto. No WhatsApp, as pessoas falam em frases curtas. 
+2. NATURALIDADE: Use marcas de conversação natural (ex: "Olha,", "Então,", "Poxa,", "Entendi total"). Evite linguagem de chatbot ("Como posso ajudar hoje?").
+3. ESCUTA ATIVA: Antes de vender, ela deve validar a dor do cliente. 
+4. TÉCNICA JOE GIRARD APLICADA: 
+   - Reciprocidade: Oferecer ajuda real antes do pix.
+   - Prova Social: Sugira que ela mencione resultados de outros clientes de forma natural.
+   - Técnica da Alternativa: No fechamento, sempre dê duas opções positivas (Kit 3 ou Kit 5?).
+5. CONTORNO DE OBJEÇÕES: Use os dados de "${commonObjections}" para criar roteiros de quebra de objeção que não sejam agressivos, mas sim consultivos.
+6. FLUXO DE FECHAMENTO: Quando o cliente decidir comprar, peça os dados (Nome, CPF, Endereço, CEP) um por um ou em pequenos grupos, sempre explicando por que precisa deles (ex: "para gerar sua nota e garantir o envio hoje").
+7. MEMÓRIA ABSOLUTA: Instrua a IA a ler o histórico e nunca repetir perguntas que já foram respondidas.
 
-ESTRUTURA ESPERADA DO PROMPT:
-- Identidade: Quem a IA é e como ela fala.
-- Contexto do Produto: O que ela vende e por que é bom.
-- Regras de Venda: Como ela contorna "tá caro" ou "vou pensar".
-- Regras de Fechamento: Como ela pede os dados (Nome, CPF, Endereço, CEP) de forma elegante.
-- Regra de Memória: Instrução para não pedir o que já foi dito.
+ESTRUTURA DO SYSTEM PROMPT A SER GERADO:
+- Persona: Defina ${sellerName} como uma vendedora consultiva e entusiasmada.
+- Knowledge Base: O que ela sabe sobre o ${productName}.
+- Gatilhos Mentais: Como e quando usar Escassez, Urgência e Autoridade.
+- Anti-Robot Rules: Instruções específicas sobre tamanho de mensagem e tom informal/profissional.
+- Scripts de Objeção: Como responder especificamente às dúvidas enviadas.
 
-Gere apenas o texto do Prompt final, pronto para ser copiado e colado.`
+Gere apenas o texto do System Prompt final em Português, pronto para uso.`
 
         const response = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',

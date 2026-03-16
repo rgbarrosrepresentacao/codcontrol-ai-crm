@@ -53,6 +53,7 @@ export default function IAPage() {
         productResolves: '',
         benefits: '',
         prices: '',
+        commonObjections: '',
         sellerName: 'Camila',
         tone: 'Amigável e Vendedora'
     })
@@ -467,6 +468,19 @@ export default function IAPage() {
                                     value={wizardData.prices}
                                     onChange={(e) => setWizardData({ ...wizardData, prices: e.target.value })}
                                     placeholder="Ex: Kit 1 un por R$149, Kit 2 un (Campeão) por R$197..."
+                                    rows={3}
+                                    className="w-full bg-input border border-border rounded-xl px-4 py-2.5 text-foreground focus:ring-2 focus:ring-primary/50 transition-all text-sm"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="flex items-center gap-2 text-sm font-medium text-foreground mb-1.5">
+                                    <Target className="w-4 h-4 text-primary" /> Objeções Comuns (um por linha)
+                                </label>
+                                <textarea
+                                    value={wizardData.commonObjections}
+                                    onChange={(e) => setWizardData({ ...wizardData, commonObjections: e.target.value })}
+                                    placeholder="Ex: Tá caro, Vou falar com meu marido, É seguro?..."
                                     rows={3}
                                     className="w-full bg-input border border-border rounded-xl px-4 py-2.5 text-foreground focus:ring-2 focus:ring-primary/50 transition-all text-sm"
                                 />
