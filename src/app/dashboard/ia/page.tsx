@@ -12,6 +12,8 @@ interface AiConfig {
     tone: 'professional' | 'friendly' | 'casual' | 'formal'
     language: string
     is_active: boolean
+    audio_enabled: boolean
+    voice_id: string
 }
 
 interface Instance {
@@ -84,6 +86,8 @@ export default function IAPage() {
             tone: 'professional',
             language: 'pt-BR',
             is_active: true,
+            audio_enabled: false,
+            voice_id: 'nova',
         }
     }
 
@@ -102,6 +106,8 @@ export default function IAPage() {
                     tone: config.tone,
                     language: config.language,
                     is_active: config.is_active,
+                    audio_enabled: config.audio_enabled,
+                    voice_id: config.voice_id,
                 }).eq('id', config.id)
                 if (error) throw error
             } else {
@@ -113,6 +119,8 @@ export default function IAPage() {
                     tone: config.tone,
                     language: config.language,
                     is_active: config.is_active,
+                    audio_enabled: config.audio_enabled,
+                    voice_id: config.voice_id,
                 }).select().single()
                 if (error) throw error
                 setConfigs(prev => {
@@ -197,6 +205,8 @@ export default function IAPage() {
                         tone: config.tone,
                         language: config.language,
                         is_active: newValue,
+                        audio_enabled: config.audio_enabled,
+                        voice_id: config.voice_id,
                     })
                     .select()
                     .single()
@@ -354,6 +364,85 @@ export default function IAPage() {
                         <option value="en-US">🇺🇸 English (US)</option>
                         <option value="es-ES">🇪🇸 Español</option>
                     </select>
+                </div>
+
+                {/* Voice Selection (New Section) */}
+                <div className="pt-4 border-t border-border">
+                    <div className="flex items-center justify-between mb-4">
+                        <div>
+                            <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                                🎙️ Voz da Atendente (IA)
+                            </h3>
+                            <p className="text-xs text-muted-foreground">Escolha a voz que será usada quando o cliente pedir áudio.</p>
+                        </div>
+                        <button
+                            onClick={() => updateConfig('audio_enabled', !currentConfig.audio_enabled)}
+                            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${currentConfig.audio_enabled ? 'bg-primary/20 text-primary border border-primary/30' : 'bg-secondary text-muted-foreground border border-border'}`}
+                        >
+                            {currentConfig.audio_enabled ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}
+                            {currentConfig.audio_enabled ? 'Respostas por Áudio Ativas' : 'Áudio Desativado'}
+                        </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Femininas */}
+                        <div className="space-y-2">
+                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Vozes Femininas</span>
+                            {[
+                                { id: 'nova', name: 'Nova', desc: 'Energética e vibrante' },
+                                { id: 'shimmer', name: 'Shimmer', desc: 'Suave e profissional' },
+                                { id: 'coral', name: 'Coral', desc: 'Amigável e clara' }
+                            ].map(v => (
+                                <div key={v.id} className={`flex items-center justify-between p-3 rounded-xl border transition-all ${currentConfig.voice_id === v.id ? 'border-primary bg-primary/5' : 'border-border'}`}>
+                                    <div onClick={() => updateConfig('voice_id', v.id)} className="flex-1 cursor-pointer">
+                                        <div className="text-sm font-medium text-foreground">{v.name}</div>
+                                        <div className="text-[11px] text-muted-foreground">{v.desc}</div>
+                                    </div>
+                                    <button 
+                                        onClick={() => {
+                                            const audio = new Audio(`https://cdn.openai.com/API/docs/audio/${v.id}.wav`);
+                                            audio.play().catch(() => toast.error('Erro ao reproduzir amostra.'));
+                                        }}
+                                        className="p-2 hover:bg-primary/10 rounded-full text-primary transition-all"
+                                        title="Ouvir Amostra"
+                                    >
+                                        <Eye className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Masculinas */}
+                        <div className="space-y-2">
+                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Vozes Masculinas</span>
+                            {[
+                                { id: 'echo', name: 'Echo', desc: 'Confiante e maduro' },
+                                { id: 'ash', name: 'Ash', desc: 'Sério e direto' }
+                            ].map(v => (
+                                <div key={v.id} className={`flex items-center justify-between p-3 rounded-xl border transition-all ${currentConfig.voice_id === v.id ? 'border-primary bg-primary/5' : 'border-border'}`}>
+                                    <div onClick={() => updateConfig('voice_id', v.id)} className="flex-1 cursor-pointer">
+                                        <div className="text-sm font-medium text-foreground">{v.name}</div>
+                                        <div className="text-[11px] text-muted-foreground">{v.desc}</div>
+                                    </div>
+                                    <button 
+                                        onClick={() => {
+                                            const audio = new Audio(`https://cdn.openai.com/API/docs/audio/${v.id}.wav`);
+                                            audio.play().catch(() => toast.error('Erro ao reproduzir amostra.'));
+                                        }}
+                                        className="p-2 hover:bg-primary/10 rounded-full text-primary transition-all"
+                                        title="Ouvir Amostra"
+                                    >
+                                        <Eye className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                    {currentConfig.audio_enabled && (
+                        <p className="mt-3 text-[11px] text-yellow-500 flex items-center gap-1.5">
+                            <Info className="w-3.5 h-3.5" /> A IA responderá por áudio apenas se o cliente pedir ou mandar áudio primeiro.
+                        </p>
+                    )}
                 </div>
 
                 {/* System Prompt */}

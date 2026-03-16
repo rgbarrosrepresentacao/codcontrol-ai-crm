@@ -119,6 +119,20 @@ export const evolutionApi = {
         return res.json()
     },
 
+    async sendWhatsAppAudio(instanceName: string, to: string, audioBase64: string) {
+        const res = await fetch(`${EVOLUTION_URL}/message/sendWhatsAppAudio/${instanceName}`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+                number: to,
+                audio: audioBase64,
+                delay: 1500,
+            }),
+        })
+        if (!res.ok) throw new Error(`Failed to send audio: ${res.statusText}`)
+        return res.json()
+    },
+
     async sendMedia(instanceName: string, to: string, mediaUrl: string, mediaType: 'audio' | 'video' | 'image' | 'document', caption?: string) {
         const res = await fetch(`${EVOLUTION_URL}/message/sendMedia/${instanceName}`, {
             method: 'POST',
