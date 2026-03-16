@@ -355,14 +355,79 @@ async function processWebhookInBackground(body: any) {
             }
         }
 
-        // 7. Funil de Vendas Automático (Opcional, se houver)
-        // ... (Mantendo a lógica de funil se necessário, ou pulando para IA)
+        // 7. Verificação de Handoff (Pausa IA e Funil)
+        if (currentAiTag && HANDOFF_TAGS.includes(currentAiTag)) return
 
-        // 8. Configuração de IA
+        // 8. Funil de Vendas Automático
+        let isInFunnel = contact.is_funnel_active === true
+        let funnelId = contact.current_funnel_id
+        let stepOrder = contact.funnel_step_order || 0
+
+        // Ativa o funil padrão se o contato nunca entrou em nenhum
+        if (!funnelId && !isInFunnel) {
+            const { data: defaultFunnel } = await supabase
+                .from('funnels')
+                .select('id')
+                .eq('user_id', userId)
+                .eq('is_active', true)
+                .eq('is_default', true)
+                .maybeSingle()
+
+            if (defaultFunnel) {
+                isInFunnel = true
+                funnelId = defaultFunnel.id
+                stepOrder = 0
+                await supabase.from('contacts').update({
+                    is_funnel_active: true,
+                    current_funnel_id: funnelId,
+                    funnel_step_order: 0
+                }).eq('id', contactId)
+            }
+        }
+
+        if (isInFunnel && funnelId) {
+            const { data: steps } = await supabase
+                .from('funnel_steps')
+                .select('*')
+                .eq('funnel_id', funnelId)
+                .order('order_index', { ascending: true })
+
+            if (steps && steps.length > 0) {
+                const pendingSteps = steps.filter(s => s.order_index >= stepOrder)
+                
+                for (const step of pendingSteps) {
+                    // Delay antes de enviar cada passo
+                    if (step.delay_seconds > 0) {
+                        await new Promise(r => setTimeout(r, step.delay_seconds * 1000))
+                    }
+
+                    if (step.type === 'text') {
+                        await evolutionApi.sendTextMessage(instanceName, remoteJid, step.content)
+                    } else {
+                        await evolutionApi.sendMedia(instanceName, remoteJid, step.content, step.type)
+                    }
+
+                    stepOrder = step.order_index + 1
+                    
+                    if (step.wait_for_reply) {
+                        await supabase.from('contacts').update({ funnel_step_order: stepOrder }).eq('id', contactId)
+                        return // Interrompe e aguarda a próxima resposta do cliente
+                    }
+                }
+                
+                // Se percorreu todos os passos, encerra o funil
+                await supabase.from('contacts').update({ 
+                    is_funnel_active: false,
+                    funnel_step_order: stepOrder
+                }).eq('id', contactId)
+                return // A IA assumirá no próximo contato
+            }
+        }
+
+        // 9. Configuração de IA
         if (profile && !profile.is_admin && profile.stripe_subscription_status !== 'active' && profile.stripe_subscription_status !== 'trialing') {
             if (profile.trial_ends_at && new Date(profile.trial_ends_at) < new Date()) return
         }
-        if (currentAiTag && HANDOFF_TAGS.includes(currentAiTag)) return
 
         let { data: aiConfigs } = await supabase.from('ai_configurations').select('*').eq('user_id', userId).eq('instance_id', instanceId).eq('is_active', true).limit(1)
         let aiConfig = aiConfigs?.[0]
