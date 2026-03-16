@@ -1,7 +1,7 @@
 // Evolution API client
 
 const EVOLUTION_URL = process.env.EVOLUTION_API_URL || 'https://api.codcontrolpro.bond'
-const EVOLUTION_KEY = process.env.EVOLUTION_API_KEY || 'fNJvOh3c3wiNlzEuHbH2BegImGcbW8J7'
+const EVOLUTION_KEY = process.env.EVOLUTION_API_KEY || ''
 
 const headers = {
     'Content-Type': 'application/json',
