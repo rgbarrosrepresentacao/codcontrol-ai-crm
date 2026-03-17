@@ -34,7 +34,7 @@ export const logzzApi = {
     async createOrder(apiKey: string, order: LogzzOrder) {
         console.log('[Logzz] 📤 Enviando pedido para API:', JSON.stringify(order, null, 2))
         
-        const response = await fetch(`${LOGZZ_API_BASE}/orders`, {
+        const response = await fetch(`${LOGZZ_API_BASE}/external/orders`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${apiKey}`,
