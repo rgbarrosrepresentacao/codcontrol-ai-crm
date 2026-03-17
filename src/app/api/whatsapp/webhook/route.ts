@@ -2,6 +2,53 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { evolutionApi } from '@/lib/evolution'
 import { generateSpeech } from '@/lib/openai-tts'
+import { logzzApi } from '@/lib/logzz'
+
+// Função para extrair dados do pedido da conversa usando IA
+async function extractOrderData(messages: any[], openaiKey: string): Promise<any> {
+    try {
+        const conversationText = messages.map(m => `${m.role === 'assistant' ? 'IA' : 'Cliente'}: ${m.content}`).join('\n')
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openaiKey}` },
+            body: JSON.stringify({
+                model: 'gpt-4o-mini',
+                messages: [
+                    { 
+                        role: 'system', 
+                        content: `Você é um extrator de dados de pedidos. Sua tarefa é extrair os dados do cliente para preencher um formulário de entrega.
+                        
+                        REGRAS:
+                        - Extraia: Nome Completo, CPF, CEP, Rua, Número, Bairro, Cidade, Estado.
+                        - Deduza o Estado (ex: SP) pela Cidade se necessário.
+                        - Identifique qual Produto o cliente quer (se houver mais de um, use o contexto).
+                        - Retorne APENAS um JSON puro, sem markdown, no formato:
+                        {
+                            "name": "...",
+                            "cpf": "...", 
+                            "zipcode": "...",
+                            "address": "...",
+                            "number": "...",
+                            "district": "...",
+                            "city": "...",
+                            "state": "...",
+                            "product_name": "...",
+                            "quantity": 1
+                        }`
+                    },
+                    { role: 'user', content: `Extraia os dados desta conversa:\n\n${conversationText}` }
+                ],
+                temperature: 0,
+                response_format: { type: 'json_object' }
+            })
+        })
+        const data = await response.json()
+        return JSON.parse(data.choices[0].message.content)
+    } catch (err) {
+        console.error('Erro ao extrair dados do pedido:', err)
+        return null
+    }
+}
 
 // Usamos um cliente do Supabase com Service Role Key para ignorar RLS nesta rota de background e poder buscar os dados do usuário
 const supabase = createClient(
@@ -492,6 +539,49 @@ async function processWebhookInBackground(body: any) {
         if (newAiTag) await supabase.from('contacts').update({ ai_tag: newAiTag }).eq('id', contactId)
 
         if (newAiTag === 'PEDIDO_FECHADO') {
+            // 1. Tentar criar pedido na Logzz se configurado
+            try {
+                const { data: logzzConfig } = await supabase.from('logzz_configurations').select('*').eq('user_id', userId).eq('is_active', true).single()
+                
+                if (logzzConfig?.api_key) {
+                    const orderData = await extractOrderData([...chatMessages, { role: 'assistant', content: botReply }], profile.openai_api_key)
+                    
+                    if (orderData) {
+                        // Buscar mapeamento do produto
+                        const { data: mapping } = await supabase.from('logzz_products')
+                            .select('*')
+                            .eq('user_id', userId)
+                            .ilike('product_name_crm', `%${orderData.product_name}%`)
+                            .limit(1)
+                            .maybeSingle()
+
+                        if (mapping) {
+                            await logzzApi.createOrder(logzzConfig.api_key, {
+                                client_name: orderData.name,
+                                client_email: 'nao@informado.com',
+                                client_document: orderData.cpf.replace(/[^0-9]/g, ''),
+                                client_phone: phone,
+                                client_zip_code: orderData.zipcode.replace(/[^0-9]/g, ''),
+                                client_address: orderData.address,
+                                client_address_number: orderData.number,
+                                client_address_district: orderData.district,
+                                client_address_city: orderData.city,
+                                client_address_state: orderData.state,
+                                payment_method: 'delivery_payment',
+                                products: [{
+                                    hash: mapping.logzz_product_code,
+                                    quantity: orderData.quantity || 1,
+                                    offer_hash: mapping.logzz_offer_hash || undefined
+                                }]
+                            })
+                            console.log(`[Logzz] Pedido criado com sucesso para ${orderData.name}`)
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error('[Logzz] Erro ao processar pedido automático:', err)
+            }
+
             const closeMsg = await generateClosingMessage(chatMessages, aiConfig, profile.openai_api_key)
             await evolutionApi.sendTextMessage(instanceName, remoteJid, closeMsg)
             return

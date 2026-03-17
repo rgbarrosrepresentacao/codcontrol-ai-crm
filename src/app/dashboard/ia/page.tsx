@@ -2,7 +2,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
-import { Brain, Save, Loader2, Plus, Trash2, ToggleLeft, ToggleRight, Eye, EyeOff, Sparkles, X, Target, Heart, Tag, Info, UserPen } from 'lucide-react'
+import { Brain, Save, Loader2, Plus, Trash2, ToggleLeft, ToggleRight, Eye, EyeOff, Sparkles, X, Target, Heart, Tag, Info, UserPen, Settings } from 'lucide-react'
+import LogzzConfig from './LogzzConfig'
 
 interface AiConfig {
     id?: string
@@ -47,9 +48,10 @@ export default function IAPage() {
     const [saving, setSaving] = useState(false)
     const [savingKey, setSavingKey] = useState(false)
     const [loading, setLoading] = useState(true)
+    const [generating, setGenerating] = useState(false)
+    const [isAdmin, setIsAdmin] = useState(false)
     const [activeTab, setActiveTab] = useState<string>('global')
     const [showWizard, setShowWizard] = useState(false)
-    const [generating, setGenerating] = useState(false)
     const [wizardData, setWizardData] = useState({
         productName: '',
         productResolves: '',
@@ -67,11 +69,12 @@ export default function IAPage() {
             const [instancesRes, configsRes, profileRes] = await Promise.all([
                 supabase.from('whatsapp_instances').select('*').eq('user_id', user.id),
                 supabase.from('ai_configurations').select('*').eq('user_id', user.id),
-                supabase.from('profiles').select('openai_api_key').eq('id', user.id).single(),
+                supabase.from('profiles').select('openai_api_key, is_admin').eq('id', user.id).single(),
             ])
             setInstances(instancesRes.data || [])
             setConfigs(configsRes.data || [])
             setOpenaiKey(profileRes.data?.openai_api_key || '')
+            setIsAdmin(profileRes.data?.is_admin || false)
             setLoading(false)
         }
         load()
@@ -477,6 +480,9 @@ export default function IAPage() {
                     {saving ? 'Salvando...' : 'Salvar configuração'}
                 </button>
             </div>
+
+            {/* Logzz Config (Admin Only) */}
+            {isAdmin && <LogzzConfig />}
 
             {/* Elite Sales Wizard Modal */}
             {showWizard && (
