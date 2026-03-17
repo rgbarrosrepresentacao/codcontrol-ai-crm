@@ -555,26 +555,30 @@ async function processWebhookInBackground(body: any) {
                             .limit(1)
                             .maybeSingle()
 
-                        if (mapping) {
+                        if (mapping && orderData.name && orderData.cpf) {
                             await logzzApi.createOrder(logzzConfig.api_key, {
-                                client_name: orderData.name,
+                                client_name: orderData.name || 'Não informado',
                                 client_email: 'nao@informado.com',
-                                client_document: orderData.cpf.replace(/[^0-9]/g, ''),
+                                client_document: (orderData.cpf || '').replace(/[^0-9]/g, ''),
                                 client_phone: phone,
-                                client_zip_code: orderData.zipcode.replace(/[^0-9]/g, ''),
-                                client_address: orderData.address,
-                                client_address_number: orderData.number,
-                                client_address_district: orderData.district,
-                                client_address_city: orderData.city,
-                                client_address_state: orderData.state,
+                                client_zip_code: (orderData.zipcode || '').replace(/[^0-9]/g, ''),
+                                client_address: orderData.address || '',
+                                client_address_number: orderData.number || 'S/N',
+                                client_address_district: orderData.district || '',
+                                client_address_city: orderData.city || '',
+                                client_address_state: orderData.state || '',
                                 payment_method: 'delivery_payment',
                                 products: [{
                                     hash: mapping.logzz_product_code,
-                                    quantity: orderData.quantity || 1,
+                                    quantity: Number(orderData.quantity) || 1,
                                     offer_hash: mapping.logzz_offer_hash || undefined
                                 }]
                             })
-                            console.log(`[Logzz] Pedido criado com sucesso para ${orderData.name}`)
+                            console.log(`[Logzz] ✅ Pedido criado na Logzz para ${orderData.name} | Produto: ${mapping.product_name_crm}`)
+                        } else if (!orderData.cpf) {
+                            console.warn('[Logzz] ⚠️ Pedido NÃO enviado: CPF não identificado na conversa')
+                        } else if (!mapping) {
+                            console.warn(`[Logzz] ⚠️ Pedido NÃO enviado: Produto "${orderData.product_name}" não tem mapeamento cadastrado`)
                         }
                     }
                 }

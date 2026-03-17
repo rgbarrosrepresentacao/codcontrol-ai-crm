@@ -53,23 +53,29 @@ export default function LogzzConfig() {
   }
 
   async function handleSaveConfig() {
+    if (!config.api_key.trim()) {
+      toast.error('Insira a API Key da Logzz antes de salvar')
+      return
+    }
     setSaving(true)
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
+    if (!user) { setSaving(false); return }
 
     const payload = {
       user_id: user.id,
-      api_key: config.api_key,
+      api_key: config.api_key.trim(),
       is_active: config.is_active,
       updated_at: new Date().toISOString()
     }
 
-    const { error } = config.id 
-      ? await supabase.from('logzz_configurations').update(payload).eq('id', config.id)
-      : await supabase.from('logzz_configurations').insert(payload)
+    // Usamos upsert com onConflict user_id para evitar erro de UNIQUE constraint
+    const { error } = await supabase
+      .from('logzz_configurations')
+      .upsert(payload, { onConflict: 'user_id' })
 
     if (error) {
-      toast.error('Erro ao salvar configuração')
+      console.error('Erro Logzz config:', error)
+      toast.error(`Erro ao salvar: ${error.message}`)
     } else {
       toast.success('Configuração Logzz salva!')
       loadData()
@@ -195,7 +201,7 @@ export default function LogzzConfig() {
         </div>
       </div>
 
-      {config.id && (
+      {(config.id || config.api_key) && (
         <div className="gradient-card border border-border rounded-xl p-6">
             <div className="flex items-center justify-between mb-6">
                 <div>
