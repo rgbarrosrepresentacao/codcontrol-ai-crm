@@ -393,36 +393,50 @@ async function processWebhookInBackground(body: any) {
                 .order('order_index', { ascending: true })
 
             if (steps && steps.length > 0) {
-                const pendingSteps = steps.filter(s => s.order_index >= stepOrder)
-                
-                for (const step of pendingSteps) {
-                    // Delay antes de enviar cada passo
-                    if (step.delay_seconds > 0) {
-                        await new Promise(r => setTimeout(r, step.delay_seconds * 1000))
-                    }
+                // Detecta se o cliente está fazendo uma PERGUNTA ou DÚVIDA durante o funil.
+                // Nesse caso, a IA deve responder antes de continuar o funil.
+                const isClientQuestion = /[?]/.test(textMessage) ||
+                    /\b(como|qual|quanto|quando|onde|por que|porque|o que|quero saber|me fala|me explica|tem como|existe|funciona|dúvida|duvida|não entendi|nao entendi|pode explicar|me diz)\b/i.test(textMessage)
 
-                    if (step.type === 'text') {
-                        await evolutionApi.sendTextMessage(instanceName, remoteJid, step.content)
-                    } else {
-                        await evolutionApi.sendMedia(instanceName, remoteJid, step.content, step.type)
-                    }
-
-                    stepOrder = step.order_index + 1
+                if (isClientQuestion) {
+                    // Não avançamos o funil agora — apenas deixamos cair para a IA responder a dúvida
+                    // O stepOrder permanece o mesmo, o funil continuará na próxima mensagem do cliente
+                    console.log(`[Webhook] Dúvida detectada durante o funil (step ${stepOrder}). Deixando a IA responder antes de continuar.`)
+                    // Não retornamos aqui — deixamos o código seguir até a seção 9 (IA)
+                } else {
+                    // Cliente respondeu ao funil normalmente, então continuamos os passos
+                    const pendingSteps = steps.filter(s => s.order_index >= stepOrder)
                     
-                    if (step.wait_for_reply) {
-                        await supabase.from('contacts').update({ funnel_step_order: stepOrder }).eq('id', contactId)
-                        return // Interrompe e aguarda a próxima resposta do cliente
+                    for (const step of pendingSteps) {
+                        // Delay antes de enviar cada passo
+                        if (step.delay_seconds > 0) {
+                            await new Promise(r => setTimeout(r, step.delay_seconds * 1000))
+                        }
+
+                        if (step.type === 'text') {
+                            await evolutionApi.sendTextMessage(instanceName, remoteJid, step.content)
+                        } else {
+                            await evolutionApi.sendMedia(instanceName, remoteJid, step.content, step.type)
+                        }
+
+                        stepOrder = step.order_index + 1
+                        
+                        if (step.wait_for_reply) {
+                            await supabase.from('contacts').update({ funnel_step_order: stepOrder }).eq('id', contactId)
+                            return // Interrompe e aguarda a próxima resposta do cliente
+                        }
                     }
+                    
+                    // Se percorreu todos os passos, encerra o funil
+                    await supabase.from('contacts').update({ 
+                        is_funnel_active: false,
+                        funnel_step_order: stepOrder
+                    }).eq('id', contactId)
+                    return // A IA assumirá no próximo contato
                 }
-                
-                // Se percorreu todos os passos, encerra o funil
-                await supabase.from('contacts').update({ 
-                    is_funnel_active: false,
-                    funnel_step_order: stepOrder
-                }).eq('id', contactId)
-                return // A IA assumirá no próximo contato
             }
         }
+
 
         // 9. Configuração de IA
         if (profile && !profile.is_admin && profile.stripe_subscription_status !== 'active' && profile.stripe_subscription_status !== 'trialing') {
