@@ -32,6 +32,8 @@ export const logzzApi = {
     },
 
     async createOrder(apiKey: string, order: LogzzOrder) {
+        console.log('[Logzz] 📤 Enviando pedido para API:', JSON.stringify(order, null, 2))
+        
         const response = await fetch(`${LOGZZ_API_BASE}/orders`, {
             method: 'POST',
             headers: {
@@ -41,6 +43,15 @@ export const logzzApi = {
             },
             body: JSON.stringify(order)
         })
-        return response.json()
+
+        const responseBody = await response.json()
+
+        if (!response.ok) {
+            console.error(`[Logzz] ❌ Erro HTTP ${response.status} ao criar pedido:`, JSON.stringify(responseBody))
+            throw new Error(`Logzz API Error ${response.status}: ${JSON.stringify(responseBody)}`)
+        }
+
+        console.log('[Logzz] 📥 Resposta da API Logzz:', JSON.stringify(responseBody))
+        return responseBody
     }
 }
