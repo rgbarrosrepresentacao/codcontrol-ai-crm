@@ -249,6 +249,9 @@ NÃO faça perguntas. NÃO peça mais informações. Esta é a mensagem FINAL da
 
 async function processWebhookInBackground(body: any) {
     try {
+        // Ignora qualquer webhook que não seja recebimento/edição direta de mgs
+        if (body.event && body.event !== 'messages.upsert') return
+
         const messageData = body.data?.message
         const key = body.data?.key
         const instanceName = body.instance
