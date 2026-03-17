@@ -548,42 +548,43 @@ async function processWebhookInBackground(body: any) {
                 
                 if (logzzConfig?.api_key) {
                     const orderData = await extractOrderData([...chatMessages, { role: 'assistant', content: botReply }], profile.openai_api_key)
-                    
                     if (orderData) {
-                        // Buscar mapeamento do produto
-                        const { data: mapping } = await supabase.from('logzz_products')
-                            .select('*')
-                            .eq('user_id', userId)
-                            .ilike('product_name_crm', `%${orderData.product_name}%`)
-                            .limit(1)
-                            .maybeSingle()
+                            // Buscar todos os mapeamentos do usuário e ver qual "bate" com o que a IA extraiu
+                            const { data: mappings } = await supabase.from('logzz_products')
+                                .select('*')
+                                .eq('user_id', userId)
 
-                        if (mapping && orderData.name && orderData.cpf) {
-                            await logzzApi.createOrder(logzzConfig.api_key, {
-                                client_name: orderData.name || 'Não informado',
-                                client_email: 'nao@informado.com',
-                                client_document: (orderData.cpf || '').replace(/[^0-9]/g, ''),
-                                client_phone: phone,
-                                client_zip_code: (orderData.zipcode || '').replace(/[^0-9]/g, ''),
-                                client_address: orderData.address || '',
-                                client_address_number: orderData.number || 'S/N',
-                                client_address_district: orderData.district || '',
-                                client_address_city: orderData.city || '',
-                                client_address_state: orderData.state || '',
-                                payment_method: 'delivery_payment',
-                                products: [{
-                                    hash: mapping.logzz_product_code,
-                                    quantity: Number(orderData.quantity) || 1,
-                                    offer_hash: mapping.logzz_offer_hash || undefined
-                                }]
-                            })
-                            console.log(`[Logzz] ✅ Pedido criado na Logzz para ${orderData.name} | Produto: ${mapping.product_name_crm}`)
-                        } else if (!orderData.cpf) {
-                            console.warn('[Logzz] ⚠️ Pedido NÃO enviado: CPF não identificado na conversa')
-                        } else if (!mapping) {
-                            console.warn(`[Logzz] ⚠️ Pedido NÃO enviado: Produto "${orderData.product_name}" não tem mapeamento cadastrado`)
+                            const mapping = mappings?.find(m => 
+                                orderData.product_name.toLowerCase().includes(m.product_name_crm.toLowerCase()) ||
+                                m.product_name_crm.toLowerCase().includes(orderData.product_name.toLowerCase())
+                            )
+
+                            if (mapping && orderData.name && orderData.cpf) {
+                                await logzzApi.createOrder(logzzConfig.api_key, {
+                                    client_name: orderData.name || 'Não informado',
+                                    client_email: 'nao@informado.com',
+                                    client_document: (orderData.cpf || '').replace(/[^0-9]/g, ''),
+                                    client_phone: phone,
+                                    client_zip_code: (orderData.zipcode || '').replace(/[^0-9]/g, ''),
+                                    client_address: orderData.address || '',
+                                    client_address_number: orderData.number || 'S/N',
+                                    client_address_district: orderData.district || '',
+                                    client_address_city: orderData.city || '',
+                                    client_address_state: orderData.state || '',
+                                    payment_method: 'delivery_payment',
+                                    products: [{
+                                        hash: mapping.logzz_product_code,
+                                        quantity: Number(orderData.quantity) || 1,
+                                        offer_hash: mapping.logzz_offer_hash || undefined
+                                    }]
+                                })
+                                console.log(`[Logzz] ✅ Pedido criado na Logzz para ${orderData.name} | Produto: ${mapping.product_name_crm}`)
+                            } else if (!orderData.cpf) {
+                                console.warn('[Logzz] ⚠️ Pedido NÃO enviado: CPF não identificado na conversa')
+                            } else if (!mapping) {
+                                console.warn(`[Logzz] ⚠️ Pedido NÃO enviado: Produto "${orderData.product_name}" não tem mapeamento cadastrado. Tentamos bater com ${mappings?.length || 0} regras.`)
+                            }
                         }
-                    }
                 }
             } catch (err) {
                 console.error('[Logzz] Erro ao processar pedido automático:', err)
