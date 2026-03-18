@@ -541,69 +541,73 @@ async function processWebhookInBackground(body: any) {
         const newAiTag = await classifyContact([...chatMessages, { role: 'assistant', content: botReply }], profile.openai_api_key)
         if (newAiTag) await supabase.from('contacts').update({ ai_tag: newAiTag }).eq('id', contactId)
 
-        if (newAiTag === 'PEDIDO_FECHADO') {
-            // 1. Tentar criar pedido na Logzz se configurado
+        // 1. Tentar criar pedido na Logzz se configurado
+        const shouldTryLogzz = newAiTag === 'PEDIDO_FECHADO' || botReply.toLowerCase().includes('pedido') || botReply.toLowerCase().includes('concluido')
+
+        if (shouldTryLogzz) {
             try {
                 const { data: logzzConfig } = await supabase.from('logzz_configurations').select('*').eq('user_id', userId).eq('is_active', true).single()
                 
                 if (logzzConfig?.api_key) {
+                    console.log('[Logzz] 🔍 Detectado possível fechamento. Iniciando extração de dados...')
                     const orderData = await extractOrderData([...chatMessages, { role: 'assistant', content: botReply }], profile.openai_api_key)
-                         if (orderData) {
-                            console.log(`[Logzz] 🧠 Dados extraídos pela IA: Nome=${orderData.name}, CPF=${orderData.cpf}, Produto=${orderData.product_name}`)
-                            
-                            // Buscar todos os mapeamentos do usuário e ver qual "bate" com o que a IA extraiu
-                            const { data: mappings } = await supabase.from('logzz_products')
-                                .select('*')
-                                .eq('user_id', userId)
+                    
+                    if (orderData) {
+                        console.log(`[Logzz] 🧠 Dados extraídos: Nome=${orderData.name}, CPF=${orderData.cpf}, CEP=${orderData.zipcode}`)
+                        
+                        const { data: mappings } = await supabase.from('logzz_products').select('*').eq('user_id', userId)
+                        const mapping = mappings?.find(m => 
+                            orderData.product_name?.toLowerCase().includes(m.product_name_crm?.toLowerCase()) ||
+                            m.product_name_crm?.toLowerCase().includes(orderData.product_name?.toLowerCase())
+                        )
 
-                            const mapping = mappings?.find(m => 
-                                orderData.product_name?.toLowerCase().includes(m.product_name_crm?.toLowerCase()) ||
-                                m.product_name_crm?.toLowerCase().includes(orderData.product_name?.toLowerCase())
-                            )
-
-                            if (mapping && orderData.name && orderData.cpf) {
-                                try {
-                                    const logzzResult = await logzzApi.createOrder(logzzConfig.api_key, {
-                                        client_name: orderData.name,
-                                        client_email: orderData.email || 'nao@informado.com',
-                                        client_document: (orderData.cpf || '').replace(/[^0-9]/g, ''),
-                                        client_phone: phone.replace(/[^0-9]/g, ''),
-                                        client_zip_code: (orderData.zipcode || '').replace(/[^0-9]/g, ''),
-                                        client_address: orderData.address || '',
-                                        client_address_number: orderData.number || 'S/N',
-                                        client_address_district: orderData.district || '',
-                                        client_address_city: orderData.city || '',
-                                        client_address_state: orderData.state || '',
-                                        payment_method: 'delivery_payment',
-                                        products: [{
-                                            hash: mapping.logzz_product_code,
-                                            quantity: Number(orderData.quantity) || 1,
-                                            offer_hash: mapping.logzz_offer_hash || undefined
-                                        }]
-                                    })
-                                    console.log(`[Logzz] ✅ Pedido criado com SUCESSO! ID Logzz: ${logzzResult.id || 'OK'}`)
-                                } catch (apiErr: any) {
-                                    console.error('[Logzz] ❌ Falha na API da Logzz ao criar o pedido:', apiErr.message)
-                                }
-                            } else {
-                                if (!orderData.cpf) console.warn('[Logzz] ⚠️ Pedido NÃO enviado: CPF não encontrado nos dados da IA.')
-                                if (!orderData.name) console.warn('[Logzz] ⚠️ Pedido NÃO enviado: Nome do cliente não encontrado.')
-                                if (!mapping) console.warn(`[Logzz] ⚠️ Pedido NÃO enviado: Produto "${orderData.product_name}" não mapeado no CRM.`)
+                        if (mapping && orderData.name && orderData.cpf && orderData.zipcode) {
+                            try {
+                                await logzzApi.createOrder(logzzConfig.api_key, {
+                                    client_name: orderData.name,
+                                    client_email: orderData.email || 'nao@informado.com',
+                                    client_document: (orderData.cpf || '').replace(/[^0-9]/g, ''),
+                                    client_phone: phone.replace(/[^0-9]/g, ''),
+                                    client_zip_code: (orderData.zipcode || '').replace(/[^0-9]/g, ''),
+                                    client_address: orderData.address || '',
+                                    client_address_number: orderData.number || 'S/N',
+                                    client_address_district: orderData.district || '',
+                                    client_address_city: orderData.city || '',
+                                    client_address_state: orderData.state || '',
+                                    payment_method: 'delivery_payment',
+                                    products: [{
+                                        hash: mapping.logzz_product_code,
+                                        quantity: Number(orderData.quantity) || 1,
+                                        offer_hash: mapping.logzz_offer_hash || undefined
+                                    }]
+                                })
+                                console.log(`[Logzz] ✅ SUCESSO! Pedido gerado para ${orderData.name}`)
+                            } catch (apiErr: any) {
+                                console.error('[Logzz] ❌ Erro na API (Endpoint /order):', apiErr.message)
                             }
                         } else {
-                            console.error('[Logzz] ❌ IA falhou ao extrair dados do pedido da conversa.')
+                            console.warn('[Logzz] ⚠️ Dados insuficientes:', { 
+                                hasMapping: !!mapping, 
+                                hasName: !!orderData.name, 
+                                hasCPF: !!orderData.cpf, 
+                                hasCEP: !!orderData.zipcode 
+                            })
                         }
+                    }
                 }
             } catch (err) {
-                console.error('[Logzz] Erro ao processar pedido automático:', err)
+                console.error('[Logzz] Erro no fluxo automático:', err)
             }
+        }
 
+        // Se for fechamento, manda a mensagem de despedida e encerra o webhook aqui
+        if (newAiTag === 'PEDIDO_FECHADO') {
             const closeMsg = await generateClosingMessage(chatMessages, aiConfig, profile.openai_api_key)
             await evolutionApi.sendTextMessage(instanceName, remoteJid, closeMsg)
             return
         }
 
-        // Resposta (Voz ou Texto)
+        // Resposta Padrão (Voz ou Texto) se não for fechamento
         const typingTime = Math.min(Math.max(botReply.length * 50, 2000), 10000)
         if (aiConfig.audio_enabled && wantsAudio) {
             try {
@@ -620,7 +624,7 @@ async function processWebhookInBackground(body: any) {
             await evolutionApi.sendTextMessage(instanceName, remoteJid, botReply)
         }
 
-        // Salvar Resposta
+        // Salvar Resposta no Banco
         if (conversationId) {
             await supabase.from('messages').insert({
                 user_id: userId, conversation_id: conversationId, instance_id: instanceId, contact_id: contactId,
