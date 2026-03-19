@@ -247,6 +247,94 @@ NÃO faça perguntas. NÃO peça mais informações. Esta é a mensagem FINAL da
     }
 }
 
+// ─── Funnel Execution Engine (Graph-based) ────────────────────────────────────
+async function executeFunnelGraph(
+    funnelId: string,
+    startNodeId: string,
+    instanceName: string,
+    remoteJid: string,
+    contactId: string,
+    useHandle: string = 'default'
+): Promise<void> {
+    let currentNodeId: string | null = startNodeId
+    let handle = useHandle
+
+    while (currentNodeId) {
+        const { data: node } = await supabase
+            .from('funnel_steps').select('*').eq('id', currentNodeId).single() as { data: any }
+        if (!node) break
+
+        // Update position in DB
+        await supabase.from('contacts').update({ funnel_current_node_id: currentNodeId, funnel_status: 'EM_ANDAMENTO' }).eq('id', contactId)
+
+        // Execute the node
+        if (node.node_type === 'delay') {
+            const secs = node.node_data?.delay_seconds || node.delay_seconds || 5
+            await new Promise(r => setTimeout(r, secs * 1000))
+        } else if (node.node_type === 'text') {
+            if (node.delay_seconds > 0) await new Promise(r => setTimeout(r, node.delay_seconds * 1000))
+            const content = node.content || node.node_data?.content || ''
+            if (content) await evolutionApi.sendTextMessage(instanceName, remoteJid, content)
+        } else if (node.node_type === 'audio') {
+            const url = node.content || node.node_data?.content || ''
+            if (url) await evolutionApi.sendMedia(instanceName, remoteJid, url, 'audio')
+        } else if (node.node_type === 'image') {
+            const url = node.content || node.node_data?.content || ''
+            if (url) await evolutionApi.sendMedia(instanceName, remoteJid, url, 'image', node.node_data?.caption || '')
+        } else if (node.node_type === 'video') {
+            const url = node.content || node.node_data?.content || ''
+            if (url) await evolutionApi.sendMedia(instanceName, remoteJid, url, 'video', node.node_data?.caption || '')
+        } else if (node.node_type === 'action') {
+            const url = node.content || node.node_data?.url || ''
+            const caption = node.node_data?.caption || ''
+            if (url) await evolutionApi.sendTextMessage(instanceName, remoteJid, caption ? `${caption}\n${url}` : url)
+        } else if (node.node_type === 'end') {
+            const msg = node.content || node.node_data?.content || ''
+            if (msg) await evolutionApi.sendTextMessage(instanceName, remoteJid, msg)
+            await supabase.from('contacts').update({ funnel_status: 'FINALIZADO', funnel_lock_until: null, is_funnel_active: false }).eq('id', contactId)
+            return
+        } else if (node.node_type === 'condition' || node.node_type === 'start') {
+            // condition and start just route to next node; condition pauses for client response
+            if (node.node_type === 'condition') {
+                await supabase.from('contacts').update({ funnel_status: 'PAUSADO', funnel_lock_until: null }).eq('id', contactId)
+                return
+            }
+        }
+
+        // If wait_for_reply — pause here and wait for client
+        if (node.wait_for_reply) {
+            await supabase.from('contacts').update({ funnel_status: 'PAUSADO', funnel_lock_until: null }).eq('id', contactId)
+            return
+        }
+
+        // Find next node via edges (new visual builder)
+        const { data: edge } = await supabase
+            .from('funnel_edges')
+            .select('target_node_id')
+            .eq('source_node_id', currentNodeId)
+            .eq('source_handle', handle)
+            .maybeSingle() as { data: { target_node_id: string } | null }
+
+        handle = 'default' // reset handle after first hop
+
+        if (edge?.target_node_id) {
+            currentNodeId = edge.target_node_id
+        } else {
+            // Fallback: try linear order_index (old funnels without edges)
+            const { data: nextStep } = await supabase
+                .from('funnel_steps')
+                .select('id')
+                .eq('funnel_id', funnelId)
+                .eq('order_index', (node.order_index || 0) + 1)
+                .maybeSingle()
+            currentNodeId = nextStep?.id || null
+        }
+    }
+
+    // No more nodes — funnel is done
+    await supabase.from('contacts').update({ funnel_status: 'FINALIZADO', funnel_lock_until: null, is_funnel_active: false }).eq('id', contactId)
+}
+
 async function processWebhookInBackground(body: any) {
     try {
         // Ignora qualquer webhook que não seja recebimento/edição direta de mgs
@@ -408,84 +496,89 @@ async function processWebhookInBackground(body: any) {
         // 7. Verificação de Handoff (Pausa IA e Funil)
         if (currentAiTag && HANDOFF_TAGS.includes(currentAiTag)) return
 
-        // 8. Funil de Vendas Automático
-        let isInFunnel = contact.is_funnel_active === true
-        let funnelId = contact.current_funnel_id
-        let stepOrder = contact.funnel_step_order || 0
+        // 8. FUNIL — State Machine com Anti-Duplicação e Execução por Grafo
+        const funnelStatus = (contact as any).funnel_status || 'INATIVO'
+        const currentNodeId = (contact as any).funnel_current_node_id as string | null
+        const funnelLockUntil = (contact as any).funnel_lock_until as string | null
+        const funnelId = contact.current_funnel_id
 
-        // Ativa o funil padrão se o contato nunca entrou em nenhum
-        if (!funnelId && !isInFunnel) {
-            const { data: defaultFunnel } = await supabase
-                .from('funnels')
-                .select('id')
-                .eq('user_id', userId)
-                .eq('is_active', true)
-                .eq('is_default', true)
-                .maybeSingle()
-
-            if (defaultFunnel) {
-                isInFunnel = true
-                funnelId = defaultFunnel.id
-                stepOrder = 0
-                await supabase.from('contacts').update({
-                    is_funnel_active: true,
-                    current_funnel_id: funnelId,
-                    funnel_step_order: 0
-                }).eq('id', contactId)
-            }
+        // 8a. LOCK anti-duplicação: se outra thread já está executando, ignora
+        if (funnelLockUntil && new Date(funnelLockUntil) > new Date()) {
+            console.log(`[Funnel] Lock ativo até ${funnelLockUntil} — ignorando execução duplicada`)
+            // Cai para IA responder normalmente
         }
-
-        if (isInFunnel && funnelId) {
-            const { data: steps } = await supabase
-                .from('funnel_steps')
-                .select('*')
-                .eq('funnel_id', funnelId)
-                .order('order_index', { ascending: true })
-
-            if (steps && steps.length > 0) {
-                // Detecta se o cliente está fazendo uma PERGUNTA ou DÚVIDA durante o funil.
-                // Nesse caso, a IA deve responder antes de continuar o funil.
-                const isClientQuestion = /[?]/.test(textMessage) ||
-                    /\b(como|qual|quanto|quando|onde|por que|porque|o que|quero saber|me fala|me explica|tem como|existe|funciona|dúvida|duvida|não entendi|nao entendi|pode explicar|me diz)\b/i.test(textMessage)
-
-                if (isClientQuestion) {
-                    // Não avançamos o funil agora — apenas deixamos cair para a IA responder a dúvida
-                    // O stepOrder permanece o mesmo, o funil continuará na próxima mensagem do cliente
-                    console.log(`[Webhook] Dúvida detectada durante o funil (step ${stepOrder}). Deixando a IA responder antes de continuar.`)
-                    // Não retornamos aqui — deixamos o código seguir até a seção 9 (IA)
-                } else {
-                    // Cliente respondeu ao funil normalmente, então continuamos os passos
-                    const pendingSteps = steps.filter(s => s.order_index >= stepOrder)
-                    
-                    for (const step of pendingSteps) {
-                        // Delay antes de enviar cada passo
-                        if (step.delay_seconds > 0) {
-                            await new Promise(r => setTimeout(r, step.delay_seconds * 1000))
-                        }
-
-                        if (step.type === 'text') {
-                            await evolutionApi.sendTextMessage(instanceName, remoteJid, step.content)
-                        } else {
-                            await evolutionApi.sendMedia(instanceName, remoteJid, step.content, step.type)
-                        }
-
-                        stepOrder = step.order_index + 1
-                        
-                        if (step.wait_for_reply) {
-                            await supabase.from('contacts').update({ funnel_step_order: stepOrder }).eq('id', contactId)
-                            return // Interrompe e aguarda a próxima resposta do cliente
-                        }
-                    }
-                    
-                    // Se percorreu todos os passos, encerra o funil
-                    await supabase.from('contacts').update({ 
-                        is_funnel_active: false,
-                        funnel_step_order: stepOrder
-                    }).eq('id', contactId)
-                    return // A IA assumirá no próximo contato
+        // 8b. Funil ativo e cliente respondeu → PAUSAR automaticamente, IA assume
+        else if ((funnelStatus === 'EM_ANDAMENTO' || funnelStatus === 'INICIADO') && funnelId) {
+            console.log(`[Funnel] Cliente respondeu enquanto funil estava ${funnelStatus}. Pausando.`)
+            await supabase.from('contacts').update({ funnel_status: 'PAUSADO' }).eq('id', contactId)
+            // Cai para IA com contexto do funil (ver seção 9)
+        }
+        // 8c. Funil pausado em nó de CONDIÇÃO → determinar caminho (sim/não) baseado em ai_tag
+        else if (funnelStatus === 'PAUSADO' && currentNodeId && funnelId) {
+            const { data: pausedNode } = await supabase.from('funnel_steps').select('node_type').eq('id', currentNodeId).maybeSingle()
+            if (pausedNode?.node_type === 'condition') {
+                // Detectar intenção do cliente para escolher caminho SIM ou NÃO
+                const isPositive = /\b(sim|quero|pode|ok|vamos|vai|interesse|comprar|quero sim|aceito|combinado|topo)\b/i.test(textMessage) || (currentAiTag === 'POSSIVEL_COMPRADOR' || currentAiTag === 'INTERESSADO')
+                const handle = isPositive ? 'yes' : 'no'
+                console.log(`[Funnel] Condição respondida com handle: ${handle}`)
+                const lock = new Date(Date.now() + 30000).toISOString()
+                await supabase.from('contacts').update({ funnel_status: 'INICIADO', funnel_lock_until: lock }).eq('id', contactId)
+                executeFunnelGraph(funnelId, currentNodeId, instanceName, remoteJid, contactId, handle).catch(console.error)
+                return
+            }
+            // Funil pausado em wait_for_reply → retomar a partir do próximo nó
+            if (funnelId && currentNodeId) {
+                const lock = new Date(Date.now() + 30000).toISOString()
+                await supabase.from('contacts').update({ funnel_status: 'INICIADO', funnel_lock_until: lock }).eq('id', contactId)
+                // Find next node via edges
+                const { data: nextEdge } = await supabase.from('funnel_edges').select('target_node_id').eq('source_node_id', currentNodeId).eq('source_handle', 'default').maybeSingle()
+                if (nextEdge?.target_node_id) {
+                    executeFunnelGraph(funnelId, nextEdge.target_node_id, instanceName, remoteJid, contactId).catch(console.error)
+                    return
+                }
+                // Fallback linear: find next by order_index
+                const { data: curNode } = await supabase.from('funnel_steps').select('order_index').eq('id', currentNodeId).maybeSingle()
+                const { data: nextStep } = await supabase.from('funnel_steps').select('id').eq('funnel_id', funnelId).eq('order_index', (curNode?.order_index || 0) + 1).maybeSingle()
+                if (nextStep?.id) {
+                    executeFunnelGraph(funnelId, nextStep.id, instanceName, remoteJid, contactId).catch(console.error)
+                    return
                 }
             }
         }
+        // 8d. Sem funil ativo → tentar ativar funil padrão (primeiro contato)
+        else if (funnelStatus === 'INATIVO' && !funnelId) {
+            const { data: defaultFunnel } = await supabase
+                .from('funnels').select('id')
+                .eq('user_id', userId).eq('is_active', true).eq('is_default', true).maybeSingle()
+
+            if (defaultFunnel) {
+                // Find START node
+                const { data: startNode } = await supabase
+                    .from('funnel_steps').select('id')
+                    .eq('funnel_id', defaultFunnel.id).eq('node_type', 'start').maybeSingle()
+                
+                // Fallback: first step by order_index if no start node
+                const { data: firstStep } = !startNode ? await supabase
+                    .from('funnel_steps').select('id')
+                    .eq('funnel_id', defaultFunnel.id).order('order_index', { ascending: true }).limit(1).maybeSingle() : { data: null }
+
+                const firstNodeId = startNode?.id || firstStep?.id
+                if (firstNodeId) {
+                    const lock = new Date(Date.now() + 30000).toISOString()
+                    await supabase.from('contacts').update({
+                        current_funnel_id: defaultFunnel.id,
+                        funnel_status: 'INICIADO',
+                        funnel_current_node_id: firstNodeId,
+                        funnel_lock_until: lock,
+                        is_funnel_active: true,
+                        funnel_step_order: 0,
+                    }).eq('id', contactId)
+                    executeFunnelGraph(defaultFunnel.id, firstNodeId, instanceName, remoteJid, contactId).catch(console.error)
+                    return // IA não responde na primeira mensagem se funil ativado
+                }
+            }
+        }
+        // 8e. Funil FINALIZADO → apenas a IA responde (não toca no funil)
 
 
         // 9. Configuração de IA
@@ -517,9 +610,21 @@ async function processWebhookInBackground(body: any) {
         }))
 
         const currentDate = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+        // Funnel context for IA — lets the AI know the current funnel state
+        const curFunnelStatus = (contact as any).funnel_status || 'INATIVO'
+        const curNodeId = (contact as any).funnel_current_node_id as string | null
+        let funnelContext = ''
+        if (curFunnelStatus === 'PAUSADO' && curNodeId) {
+            const { data: curNode } = await supabase.from('funnel_steps').select('node_type, content, order_index').eq('id', curNodeId).maybeSingle()
+            if (curNode) {
+                funnelContext = `\n\n[CONTEXTO DO FUNIL: O cliente está em um fluxo de vendas automatizado. Última etapa enviada: tipo=${curNode.node_type}, conteúdo="${(curNode.content || '').slice(0, 80)}". O funil está PAUSADO aguardando a resposta dele. Continue a conversa naturalmente com base no funil, sem repetir o que já foi enviado. Se ele demonstrar forte interesse, conduza para o fechamento.]`
+            }
+        } else if (curFunnelStatus === 'FINALIZADO') {
+            funnelContext = '\n\n[CONTEXTO: O funil automático já foi concluído. Continue a conversa normalmente e conduza para o fechamento se houver interesse.]'
+        }
         const systemMessage = {
             role: 'system' as const,
-            content: `[DATA E HORA: ${currentDate}]\n\n${aiConfig.system_prompt}\n\nAja no tom: ${aiConfig.tone}.\nVocê é ${aiConfig.bot_name}.\n${logisticsHint || ''}`
+            content: `[DATA E HORA: ${currentDate}]\n\n${aiConfig.system_prompt}\n\nAja no tom: ${aiConfig.tone}.\nVocê é ${aiConfig.bot_name}.\n${logisticsHint || ''}${funnelContext}`
         }
 
         const gptRes = await fetch('https://api.openai.com/v1/chat/completions', {
