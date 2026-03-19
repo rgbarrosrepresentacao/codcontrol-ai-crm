@@ -556,10 +556,18 @@ async function processWebhookInBackground(body: any) {
                         console.log(`[Logzz] 🧠 Dados extraídos: Nome=${orderData.name}, CPF=${orderData.cpf}, CEP=${orderData.zipcode}`)
                         
                         const { data: mappings } = await supabase.from('logzz_products').select('*').eq('user_id', userId)
-                        const mapping = mappings?.find(m => 
+                        
+                        // Busca mapeamento exato
+                        let mapping = mappings?.find(m => 
                             orderData.product_name?.toLowerCase().includes(m.product_name_crm?.toLowerCase()) ||
                             m.product_name_crm?.toLowerCase().includes(orderData.product_name?.toLowerCase())
                         )
+
+                        // Se não achar mapeamento, mas o usuário tiver apenas UM produto cadastrado, usa ele como fallback
+                        if (!mapping && mappings && mappings.length === 1) {
+                            console.log(`[Logzz] 🏷️ Mapeamento exato não encontrado, usando fallback do único produto cadastrado: ${mappings[0].product_name_crm}`)
+                            mapping = mappings[0]
+                        }
 
                         if (mapping && orderData.name && orderData.cpf && orderData.zipcode) {
                             try {
@@ -583,7 +591,7 @@ async function processWebhookInBackground(body: any) {
                                 })
                                 console.log(`[Logzz] ✅ SUCESSO! Pedido gerado para ${orderData.name}`)
                             } catch (apiErr: any) {
-                                console.error('[Logzz] ❌ Erro na API (Endpoint /order):', apiErr.message)
+                                console.error('[Logzz] ❌ Erro na API (External Sales):', apiErr.message)
                             }
                         } else {
                             console.warn('[Logzz] ⚠️ Dados insuficientes:', { 
