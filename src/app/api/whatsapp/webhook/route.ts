@@ -677,21 +677,21 @@ async function processWebhookInBackground(body: any) {
                         if (mapping && orderData.name && orderData.cpf && orderData.zipcode) {
                             try {
                                 await logzzApi.createOrder(logzzConfig.api_key, {
-                                    client_name: orderData.name,
-                                    client_email: orderData.email || 'nao@informado.com',
-                                    client_document: (orderData.cpf || '').replace(/[^0-9]/g, ''),
-                                    client_phone: phone.replace(/[^0-9]/g, ''),
-                                    client_zip_code: (orderData.zipcode || '').replace(/[^0-9]/g, ''),
-                                    client_address: orderData.address || '',
-                                    client_address_number: orderData.number || 'S/N',
-                                    client_address_district: orderData.district || '',
-                                    client_address_city: orderData.city || '',
-                                    client_address_state: orderData.state || '',
+                                    name: orderData.name,
+                                    email: orderData.email || 'nao@informado.com',
+                                    cpf_cnpj: (orderData.cpf || '').replace(/[^0-9]/g, ''),
+                                    phone: phone.replace(/[^0-9]/g, ''),
+                                    zipcode: (orderData.zipcode || '').replace(/[^0-9]/g, ''),
+                                    address: orderData.address || '',
+                                    address_number: orderData.number || 'S/N',
+                                    neighborhood: orderData.district || '',
+                                    city: orderData.city || '',
+                                    state: orderData.state || '',
                                     payment_method: 'delivery_payment',
-                                    products: [{
-                                        hash: mapping.logzz_product_code,
+                                    items: [{
+                                        product_id: mapping.logzz_product_code,
                                         quantity: Number(orderData.quantity) || 1,
-                                        offer_hash: mapping.logzz_offer_hash || undefined
+                                        price: mapping.price || undefined
                                     }]
                                 })
                                 console.log(`[Logzz] ✅ SUCESSO! Pedido gerado para ${orderData.name}`)

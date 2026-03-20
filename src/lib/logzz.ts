@@ -1,23 +1,23 @@
 
-const LOGZZ_API_BASE = 'https://app.logzz.com.br/api/v1'
+const LOGZZ_API_BASE = 'https://api.logzz.com.br/api/v1'
 
 export interface LogzzOrder {
-    client_name: string
-    client_email: string
-    client_document: string
-    client_phone: string
-    client_zip_code: string
-    client_address: string
-    client_address_number: string
-    client_address_district: string
-    client_address_city: string
-    client_address_state: string
-    products: Array<{
-        hash: string
+    name: string
+    email: string
+    cpf_cnpj: string
+    phone: string
+    zipcode: string
+    address: string
+    address_number: string
+    neighborhood: string
+    city: string
+    state: string
+    items: Array<{
+        product_id: string
         quantity: number
-        offer_hash?: string
+        price?: number
     }>
-    payment_method: string
+    payment_method: 'pix' | 'boleto' | 'credit_card' | 'delivery_payment'
 }
 
 export const logzzApi = {
