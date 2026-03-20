@@ -37,12 +37,12 @@ function defaultData(type: NType): Record<string, unknown> {
   const map: Record<NType, Record<string, unknown>> = {
     start: {},
     text: { content: '', wait_for_reply: false },
-    audio: { content: '' },
-    image: { content: '', caption: '' },
-    video: { content: '', caption: '' },
+    audio: { content: '', wait_for_reply: false },
+    image: { content: '', caption: '', wait_for_reply: false },
+    video: { content: '', caption: '', wait_for_reply: false },
     delay: { delay_seconds: 5 },
     condition: { condition_label: 'Se cliente demonstrar interesse...' },
-    action: { url: '', caption: '' },
+    action: { url: '', caption: '', wait_for_reply: false },
     end: { content: 'Obrigada! Em breve nossa equipe entrará em contato. 😊' },
   }
   return map[type] || {}
@@ -88,7 +88,7 @@ function FlowNode({ data, selected, type: rawType }: NodeProps) {
       </div>
       <div style={{ padding: '10px 14px', fontSize: 12, color: (data as any).content || type !== 'text' ? '#cbd5e1' : '#64748b', fontStyle: !((data as any).content) && type === 'text' ? 'italic' : 'normal', wordBreak: 'break-word', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
         {preview()}
-        {(data as any).wait_for_reply && (
+        {((data as any).wait_for_reply && !isEnd && !isStart) && (
           <div style={{ marginTop: 6, fontSize: 10, color: '#a78bfa', background: '#a78bfa15', padding: '3px 8px', borderRadius: 5, display: 'inline-block' }}>
             ⏸ Aguarda resposta
           </div>
@@ -292,8 +292,8 @@ function NodeEditor({ node, onChange, onDelete, onClose }: {
           </div>
         )}
 
-        {/* wait_for_reply for text/action nodes */}
-        {(type === 'text' || type === 'action') && (
+        {/* wait_for_reply for media and action nodes */}
+        {(type === 'text' || type === 'action' || type === 'audio' || type === 'image' || type === 'video') && (
           <div>
             <button
               onClick={() => onChange({ ...d, wait_for_reply: !d.wait_for_reply })}
@@ -308,7 +308,7 @@ function NodeEditor({ node, onChange, onDelete, onClose }: {
                 width: 38, height: 22, borderRadius: 11, background: d.wait_for_reply ? '#a78bfa' : '#334155',
                 position: 'relative', transition: 'all 0.2s'
               }}>
-                <div style={{
+              <div style={{
                   position: 'absolute', width: 16, height: 16, borderRadius: '50%', background: '#fff',
                   top: 3, left: d.wait_for_reply ? 19 : 3, transition: 'all 0.2s'
                 }} />
