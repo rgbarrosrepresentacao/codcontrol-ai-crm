@@ -1,14 +1,16 @@
 
-const LOGZZ_API_BASE = 'https://api.logzz.com.br/api/v1'
+const LOGZZ_API_BASE = 'https://app.logzz.com.br/api/v1'
 
 export interface LogzzOrder {
+    api_key?: string
     name: string
     email: string
     cpf_cnpj: string
     phone: string
-    zipcode: string
+    zip_code: string
     address: string
-    address_number: string
+    number: string
+    complement?: string
     neighborhood: string
     city: string
     state: string
@@ -32,16 +34,18 @@ export const logzzApi = {
     },
 
     async createOrder(apiKey: string, order: LogzzOrder) {
-        console.log('[Logzz] 📤 Enviando pedido para API:', JSON.stringify(order, null, 2))
+        // Incluir api_key no corpo conforme documentação de integração v1
+        const payload = { ...order, api_key: apiKey }
+        console.log('[Logzz] 📤 Enviando pedido para API (V1 External/Sales):', JSON.stringify(payload, null, 2))
         
-        const response = await fetch(`${LOGZZ_API_BASE}/external-sales`, {
+        const response = await fetch(`${LOGZZ_API_BASE}/external/sales`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${apiKey}`,
                 'Content-Type': 'application/json',
                 'Accept': 'application/json'
             },
-            body: JSON.stringify(order)
+            body: JSON.stringify(payload)
         })
 
         const responseBody = await response.json()
