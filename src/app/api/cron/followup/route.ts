@@ -16,12 +16,13 @@ const HARD_STOP_TAGS = ['PEDIDO_FECHADO', 'HUMANO', 'CANCELADO']
 export async function GET(req: NextRequest) {
     const authHeader = req.headers.get('authorization')
     if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-        // In production, return 401 here. Keeping permissive for internal calls.
+        // Silently skip
     }
 
     console.log('[CRON_FOLLOWUP] Starting follow-up routine...')
     try {
-        // Fetch open conversations with last message older than 30 min
+        // 1. Fetch leads that are "due" for follow-up
+        // LIMIT 35 to ensure we finish before the next 5-min cron run (35 * ~8s = ~280s)
         const { data: convs, error: convError } = await supabase
             .from('conversations')
             .select(`
@@ -35,6 +36,7 @@ export async function GET(req: NextRequest) {
             .eq('status', 'open')
             .lt('last_message_at', new Date(Date.now() - 30 * 60 * 1000).toISOString())
             .order('last_message_at', { ascending: true })
+            .limit(35)
 
         if (convError) {
             console.error('[CRON_FOLLOWUP] Error fetching conversations:', convError)
@@ -45,60 +47,60 @@ export async function GET(req: NextRequest) {
             return NextResponse.json({ success: true, processed: 0 })
         }
 
+        // 2. CONCURRENCY LOCK: Immediately update last_message_at for these leads
+        // This prevents another cron run from picking up the same leads while we process them.
+        const convIds = convs.map(c => c.id)
+        await supabase
+            .from('conversations')
+            .update({ last_message_at: new Date().toISOString() })
+            .in('id', convIds)
+
+        console.log(`[CRON_FOLLOWUP] Claimed ${convIds.length} conversations for processing.`)
+
         let processedCount = 0
 
         for (const item of convs) {
             const conversation = item as any
             const contact = conversation.contacts
 
-            // ── Hard Stop Tags — no follow-up ever ──────────────────────────────
-            if (contact.ai_tag && HARD_STOP_TAGS.includes(contact.ai_tag)) {
-                continue
-            }
+            // Skip if blocked by tag
+            if (contact.ai_tag && HARD_STOP_TAGS.includes(contact.ai_tag)) continue
 
             const stage = contact.followup_stage || 0
-            const lastMessageDate = new Date(conversation.last_message_at)
+            const lastMessageDate = new Date(conversation.last_message_at) // Use original date for stage logic
             const diffInMinutes = (Date.now() - lastMessageDate.getTime()) / (1000 * 60)
             const isLeadFrio = contact.ai_tag === 'LEAD_FRIO'
 
-            // ── Stage / Timing Decision ──────────────────────────────────────────
-            // Stages 0-2: rapid rescue cycle (30 min / 2 h / 24 h)
-            // LEAD_FRIO:  daily re-engagement cadence, indefinitely
             let shouldFollowUp = false
-            let followupIntent = '' // specific goal for THIS follow-up, passed to the AI
+            let followupIntent = ''
 
             if (isLeadFrio) {
-                // Daily re-engagement: one message every 24 hours
                 if (diffInMinutes >= 1440) {
                     shouldFollowUp = true
-                    followupIntent = 'Este cliente é um lead frio que ainda não fechou negócio. Tente reativá-lo de forma leve e humana, resgatando o produto ou o interesse que foi discutido na conversa. Seja curioso e amigável — não insistente. Máx 2 linhas.'
+                    followupIntent = 'Este cliente é um lead frio. Tente reativá-lo de forma leve e humana, resgatando o interesse anterior. Seja amigável, não insistente. Máx 2 linhas.'
                 }
             } else {
-                // Rapid rescue cycle for active leads
                 if (stage === 0 && diffInMinutes >= 30) {
                     shouldFollowUp = true
-                    followupIntent = 'O cliente parou de responder há cerca de 30-40 minutos. Faça um follow-up CURTO e NATURAL retomando exatamente o assunto onde a conversa parou, de forma amigável e sem pressão.'
+                    followupIntent = 'O cliente parou de responder há ~30 min. Faça um follow-up CURTO e NATURAL retomando o assunto de onde parou.'
                 } else if (stage === 1 && diffInMinutes >= 120) {
                     shouldFollowUp = true
-                    followupIntent = 'O cliente não responde há mais de 2 horas. Mande uma mensagem curta e direta com leve senso de urgência, referenciando o interesse que ele demonstrou na conversa.'
+                    followupIntent = 'O cliente não responde há mais de 2 horas. Mande uma mensagem curta com leve senso de urgência sobre o interesse dele.'
                 } else if (stage === 2 && diffInMinutes >= 1440) {
                     shouldFollowUp = true
-                    followupIntent = 'O cliente não responde desde ontem. Esta é a última tentativa do ciclo rápido. Avise de forma simpática que vai encerrar o atendimento, mas que ainda é possível garantir com condições especiais caso ele queira.'
+                    followupIntent = 'O cliente não responde desde ontem. Última tentativa do ciclo rápido. Avise que vai encerrar o atendimento, mas que ainda há condições especiais.'
                 }
 
-                // Rapid cycle exhausted with no reply → escalate to LEAD_FRIO
-                if (stage >= 3) {
+                if (stage >= 3 && !isLeadFrio) {
                     await supabase.from('contacts').update({ ai_tag: 'LEAD_FRIO' }).eq('id', contact.id)
-                    console.log(`[CRON_FOLLOWUP] Contact ${contact.id} escalated to LEAD_FRIO after rapid cycle.`)
                     continue
                 }
             }
 
             if (!shouldFollowUp) continue
 
-            // ── Safety: only follow-up if the bot sent the last message ──────────
-            // Avoids interrupting a client who re-engaged but wasn't answered yet
-            const { data: lastMessage } = await supabase
+            // Safety check: Bot must have been the last sender
+            const { data: lastMsgRecord } = await supabase
                 .from('messages')
                 .select('from_me')
                 .eq('conversation_id', conversation.id)
@@ -106,159 +108,70 @@ export async function GET(req: NextRequest) {
                 .limit(1)
                 .single()
 
-            if (!lastMessage || lastMessage.from_me === false) {
-                continue
-            }
+            if (!lastMsgRecord || !lastMsgRecord.from_me) continue
 
-            // ── Load profile & AI config ─────────────────────────────────────────
-            const { data: profile } = await supabase
-                .from('profiles')
-                .select('openai_api_key, is_admin, trial_ends_at, stripe_subscription_status')
-                .eq('id', conversation.user_id)
-                .single()
-
+            // Load credentials & config
+            const { data: profile } = await supabase.from('profiles').select('openai_api_key, is_admin, trial_ends_at, stripe_subscription_status').eq('id', conversation.user_id).single()
             if (!profile?.openai_api_key) continue
 
-            // Trial / subscription check
-            if (!profile.is_admin && profile.stripe_subscription_status !== 'active' && profile.stripe_subscription_status !== 'trialing') {
-                if (profile.trial_ends_at && new Date(profile.trial_ends_at) < new Date()) continue
-            }
-
-            // Load AI config for this instance (fallback to global)
-            let { data: aiConfigs } = await supabase
-                .from('ai_configurations')
-                .select('*')
-                .eq('user_id', conversation.user_id)
-                .eq('instance_id', conversation.instance_id)
-                .eq('is_active', true)
-                .order('updated_at', { ascending: false })
-                .limit(1)
-
-            let aiConfig = aiConfigs && aiConfigs.length > 0 ? aiConfigs[0] : null
+            let { data: aiConfigs } = await supabase.from('ai_configurations').select('*').eq('user_id', conversation.user_id).eq('instance_id', conversation.instance_id).eq('is_active', true).limit(1)
+            let aiConfig = aiConfigs?.[0]
             if (!aiConfig) {
-                const { data: globalConfigs } = await supabase
-                    .from('ai_configurations')
-                    .select('*')
-                    .eq('user_id', conversation.user_id)
-                    .is('instance_id', null)
-                    .eq('is_active', true)
-                    .order('updated_at', { ascending: false })
-                    .limit(1)
-                aiConfig = globalConfigs && globalConfigs.length > 0 ? globalConfigs[0] : null
+                const { data: glob } = await supabase.from('ai_configurations').select('*').eq('user_id', conversation.user_id).is('instance_id', null).eq('is_active', true).limit(1)
+                aiConfig = glob?.[0]
             }
             if (!aiConfig) continue
 
-            const { data: instanceRecord } = await supabase
-                .from('whatsapp_instances')
-                .select('instance_name')
-                .eq('id', conversation.instance_id)
-                .single()
+            const { data: inst } = await supabase.from('whatsapp_instances').select('instance_name').eq('id', conversation.instance_id).single()
+            if (!inst) continue
 
-            if (!instanceRecord) continue
-
-            // ── Load real conversation history (last 20 messages) ────────────────
-            const { data: history } = await supabase
-                .from('messages')
-                .select('role:from_me, content')
-                .eq('conversation_id', conversation.id)
-                .order('created_at', { ascending: false })
-                .limit(20)
-
-            const chatMessages = (history || [])
-                .reverse()
-                .map((m: any) => ({
-                    role: m.role ? 'assistant' : 'user' as 'assistant' | 'user',
-                    content: m.content || ''
-                }))
+            // Load history
+            const { data: history } = await supabase.from('messages').select('role:from_me, content').eq('conversation_id', conversation.id).order('created_at', { ascending: false }).limit(20)
+            const chatMessages = (history || []).reverse().map((m: any) => ({ role: m.role ? 'assistant' : 'user', content: m.content || '' }))
 
             const currentDate = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
 
-            // ── Generate intelligent, contextual follow-up with OpenAI ────────────
-            // The AI receives:
-            //   1. User's full system prompt (product, rules, tone — NOT generic)
-            //   2. Real conversation history (what was ACTUALLY discussed)
-            //   3. Specific goal for THIS follow-up message
+            // Generate AI reply
             const openAiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${profile.openai_api_key}`
-                },
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${profile.openai_api_key}` },
                 body: JSON.stringify({
                     model: 'gpt-4o-mini',
                     messages: [
                         {
                             role: 'system',
-                            content: `[DATA E HORA ATUAL: ${currentDate}]
-
-Você é ${aiConfig.bot_name}.
-Tom: ${aiConfig.tone}.
-Idioma: ${aiConfig.language || 'Português Brasileiro'}.
-
-── SUAS INSTRUÇÕES COMPLETAS (produto, regras, logística) ──
-${aiConfig.system_prompt}
-
-── REGRAS ABSOLUTAS PARA ESTA MENSAGEM ──
-- Escreva UMA ÚNICA mensagem curta (máx 2-3 linhas).
-- A mensagem DEVE ser baseada no histórico real da conversa. Mencione o produto, a dúvida ou o interesse que o cliente demonstrou. NUNCA envie algo genérico.
-- Seja natural, humano e direto. Sem listas, bullet points ou linguagem robótica.
-- Use no máximo 1-2 emojis.
-- Se já houve conversa, RETOME o assunto onde parou. Não recomece do zero.
-
-── OBJETIVO ESPECÍFICO DESTE FOLLOW-UP ──
-${followupIntent}`
+                            content: `[DATA/HORA: ${currentDate}]\nVocê é ${aiConfig.bot_name}.\nTom: ${aiConfig.tone}.\n\nINST: ${aiConfig.system_prompt}\n\nMérito: Escreva 1 msg curta (2-3 linhas), humana e baseada no histórico. Não seja genérico.\nOBJETIVO: ${followupIntent}`
                         },
                         ...chatMessages
                     ],
-                    temperature: 0.85,
-                    max_tokens: 180
+                    temperature: 0.85
                 })
             })
 
-            if (!openAiResponse.ok) {
-                console.error(`[CRON_FOLLOWUP] Erro OpenAI para contato ${contact.whatsapp_id}`)
-                continue
-            }
-
+            if (!openAiResponse.ok) continue
             const gptData = await openAiResponse.json()
             const botReply = gptData.choices[0].message.content?.trim()
             if (!botReply) continue
 
-            // ── Send via Evolution API ───────────────────────────────────────────
-            const remoteJid = contact.whatsapp_id
-            await evolutionApi.sendPresence(instanceRecord.instance_name, remoteJid, 'composing')
-            await new Promise(resolve => setTimeout(resolve, 2000))
-            await evolutionApi.sendTextMessage(instanceRecord.instance_name, remoteJid, botReply)
+            // Send & Log
+            await evolutionApi.sendPresence(inst.instance_name, contact.whatsapp_id, 'composing')
+            await new Promise(r => setTimeout(r, 2000))
+            await evolutionApi.sendTextMessage(inst.instance_name, contact.whatsapp_id, botReply)
 
-            // ── Persist message in DB ────────────────────────────────────────────
             await supabase.from('messages').insert({
-                user_id: conversation.user_id,
-                conversation_id: conversation.id,
-                instance_id: conversation.instance_id,
-                contact_id: contact.id,
-                from_me: true,
-                content: botReply,
-                type: 'text',
-                ai_generated: true,
-                status: 'sent',
+                user_id: conversation.user_id, conversation_id: conversation.id, instance_id: conversation.instance_id,
+                contact_id: contact.id, from_me: true, content: botReply, type: 'text', ai_generated: true, status: 'sent',
             })
 
-            // ── Update stage and contact tag ─────────────────────────────────────
             const newStage = stage + 1
             await supabase.from('contacts').update({
                 followup_stage: newStage,
-                // Escalate to LEAD_FRIO only after rapid rescue cycle is done
                 ai_tag: (!isLeadFrio && newStage >= 3) ? 'LEAD_FRIO' : contact.ai_tag
             }).eq('id', contact.id)
 
-            await supabase.from('conversations').update({
-                last_message: botReply,
-                last_message_at: new Date().toISOString(),
-            }).eq('id', conversation.id)
-
+            await supabase.from('conversations').update({ last_message: botReply, last_message_at: new Date().toISOString() }).eq('id', conversation.id)
             await supabase.rpc('increment_messages_sent', { instance_id_param: conversation.instance_id })
 
-            console.log(`[CRON_FOLLOWUP] Stage ${stage} follow-up (${isLeadFrio ? 'LEAD_FRIO daily' : 'rapid rescue'}) sent to contact ${contact.id}`)
             processedCount++
         }
 
