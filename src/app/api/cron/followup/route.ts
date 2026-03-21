@@ -22,8 +22,7 @@ export async function GET(req: NextRequest) {
     console.log('[CRON_FOLLOWUP] Starting follow-up routine...')
     try {
         // 1. Fetch leads that are "due" for follow-up
-        // LIMIT 5: each send waits 45-90s, so 5 leads fit safely in the 5-min cron window.
-        // This also mimics human typing patterns, preventing WhatsApp spam detection.
+        // LIMIT 4: each send takes ~5-10s plus 45-60s delay. 4 leads fits in 300s.
         const { data: convs, error: convError } = await supabase
             .from('conversations')
             .select(`
@@ -37,7 +36,7 @@ export async function GET(req: NextRequest) {
             .eq('status', 'open')
             .lt('last_message_at', new Date(Date.now() - 30 * 60 * 1000).toISOString())
             .order('last_message_at', { ascending: true })
-            .limit(5)
+            .limit(4)
 
         if (convError) {
             console.error('[CRON_FOLLOWUP] Error fetching conversations:', convError)
@@ -178,11 +177,11 @@ export async function GET(req: NextRequest) {
             processedCount++
 
             // ── Anti-spam delay ──────────────────────────────────────────────────
-            // Wait 45–90 seconds before the next send. This randomized pause:
+            // Wait 45–60 seconds before the next send. This randomized pause:
             //   • Mimics natural human typing cadence
             //   • Prevents WhatsApp from detecting bulk messaging patterns
             //   • Gives the server breathing room between API calls
-            const antiSpamDelay = Math.floor(Math.random() * 45000) + 45000 // 45-90s
+            const antiSpamDelay = Math.floor(Math.random() * 15000) + 45000 // 45-60s
             console.log(`[CRON_FOLLOWUP] Waiting ${Math.round(antiSpamDelay / 1000)}s before next send (anti-spam)...`)
             await new Promise(r => setTimeout(r, antiSpamDelay))
         }
