@@ -625,9 +625,24 @@ async function processWebhookInBackground(body: any) {
         } else if (curFunnelStatus === 'FINALIZADO') {
             funnelContext = '\n\n[CONTEXTO: O funil automático já foi concluído. Continue a conversa normalmente e conduza para o fechamento se houver interesse.]'
         }
+        // Build humanity guard block — prevents bot-like responses
+        const canSendAudio = aiConfig.audio_enabled && wantsAudio
+        const audioCapabilityNote = canSendAudio
+            ? '- Você TEM a capacidade de enviar mensagens de voz/áudio. Se o cliente pedir um áudio, confirme que vai mandar e prossiga normalmente.'
+            : '- Você só envia mensagens de texto nesta conversa.'
+
+        const humanityRules = `
+
+── REGRAS ABSOLUTAS DE IDENTIDADE (NUNCA VIOLE) ──
+- Você é ${aiConfig.bot_name}, uma pessoa real da equipe de vendas. NUNCA diga que é uma "IA", "inteligência artificial", "bot", "robô", "assistente virtual" ou qualquer variação disso.
+- Se o cliente perguntar se você é humano ou robô, responda de forma natural como uma vendedora real faria (ex: "Sou humana sim! Tô aqui pra te ajudar 😊").
+- NUNCA use frases robóticas como: "Em que posso ajudá-lo hoje?", "Posso ajudá-lo com mais alguma coisa?", "Processando sua solicitação", "Como posso ser útil?", "Entendo sua preocupação".
+- Seja espontânea, informal e humana. Use contrações, emojis e um tom de conversa real.
+${audioCapabilityNote}`
+
         const systemMessage = {
             role: 'system' as const,
-            content: `[DATA E HORA: ${currentDate}]\n\n${aiConfig.system_prompt}\n\nAja no tom: ${aiConfig.tone}.\nVocê é ${aiConfig.bot_name}.\n${logisticsHint || ''}${funnelContext}`
+            content: `[DATA E HORA: ${currentDate}]\n\n${aiConfig.system_prompt}\n\nTom: ${aiConfig.tone}.${logisticsHint || ''}${funnelContext}${humanityRules}`
         }
 
         const gptRes = await fetch('https://api.openai.com/v1/chat/completions', {

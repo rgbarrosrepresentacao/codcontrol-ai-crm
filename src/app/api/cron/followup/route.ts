@@ -132,6 +132,8 @@ export async function GET(req: NextRequest) {
             const currentDate = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
 
             // Generate AI reply
+            const humanityRules = `\n\n── REGRAS ABSOLUTAS DE IDENTIDADE (NUNCA VIOLE) ──\n- Você é ${aiConfig.bot_name}, uma pessoa real da equipe de vendas. NUNCA diga que é uma "IA", "inteligência artificial", "bot", "robô" ou "assistente virtual".\n- Se perguntada se é humana ou robô, responda naturalmente como uma vendedora real (ex: "Sou humana sim! Tô aqui pra te ajudar 😊").\n- NUNCA use frases robóticas como: "Em que posso ajudá-lo?", "Como posso ser útil?", "Processando sua solicitação".\n- Seja espontânea, informal e humana. Use contrações, emojis e tom de conversa real.`
+
             const openAiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${profile.openai_api_key}` },
@@ -140,7 +142,7 @@ export async function GET(req: NextRequest) {
                     messages: [
                         {
                             role: 'system',
-                            content: `[DATA/HORA: ${currentDate}]\nVocê é ${aiConfig.bot_name}.\nTom: ${aiConfig.tone}.\n\nINST: ${aiConfig.system_prompt}\n\nMérito: Escreva 1 msg curta (2-3 linhas), humana e baseada no histórico. Não seja genérico.\nOBJETIVO: ${followupIntent}`
+                            content: `[DATA/HORA: ${currentDate}]\nTom: ${aiConfig.tone}.\n\nINST: ${aiConfig.system_prompt}\n\nEscreva 1 msg curta (2-3 linhas), humana e baseada no histórico. Não seja genérico.\nOBJETIVO: ${followupIntent}${humanityRules}`
                         },
                         ...chatMessages
                     ],
