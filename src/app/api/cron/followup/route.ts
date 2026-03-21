@@ -22,7 +22,8 @@ export async function GET(req: NextRequest) {
     console.log('[CRON_FOLLOWUP] Starting follow-up routine...')
     try {
         // 1. Fetch leads that are "due" for follow-up
-        // LIMIT 35 to ensure we finish before the next 5-min cron run (35 * ~8s = ~280s)
+        // LIMIT 5: each send waits 45-90s, so 5 leads fit safely in the 5-min cron window.
+        // This also mimics human typing patterns, preventing WhatsApp spam detection.
         const { data: convs, error: convError } = await supabase
             .from('conversations')
             .select(`
@@ -36,7 +37,7 @@ export async function GET(req: NextRequest) {
             .eq('status', 'open')
             .lt('last_message_at', new Date(Date.now() - 30 * 60 * 1000).toISOString())
             .order('last_message_at', { ascending: true })
-            .limit(35)
+            .limit(5)
 
         if (convError) {
             console.error('[CRON_FOLLOWUP] Error fetching conversations:', convError)
@@ -154,8 +155,10 @@ export async function GET(req: NextRequest) {
             if (!botReply) continue
 
             // Send & Log
+            // Show "typing..." indicator for 3-5 seconds to look more human
+            const typingDelay = Math.floor(Math.random() * 2000) + 3000 // 3-5s
             await evolutionApi.sendPresence(inst.instance_name, contact.whatsapp_id, 'composing')
-            await new Promise(r => setTimeout(r, 2000))
+            await new Promise(r => setTimeout(r, typingDelay))
             await evolutionApi.sendTextMessage(inst.instance_name, contact.whatsapp_id, botReply)
 
             await supabase.from('messages').insert({
@@ -173,6 +176,15 @@ export async function GET(req: NextRequest) {
             await supabase.rpc('increment_messages_sent', { instance_id_param: conversation.instance_id })
 
             processedCount++
+
+            // ── Anti-spam delay ──────────────────────────────────────────────────
+            // Wait 45–90 seconds before the next send. This randomized pause:
+            //   • Mimics natural human typing cadence
+            //   • Prevents WhatsApp from detecting bulk messaging patterns
+            //   • Gives the server breathing room between API calls
+            const antiSpamDelay = Math.floor(Math.random() * 45000) + 45000 // 45-90s
+            console.log(`[CRON_FOLLOWUP] Waiting ${Math.round(antiSpamDelay / 1000)}s before next send (anti-spam)...`)
+            await new Promise(r => setTimeout(r, antiSpamDelay))
         }
 
         return NextResponse.json({ success: true, processed: processedCount })
