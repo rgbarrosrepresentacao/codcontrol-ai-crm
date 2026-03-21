@@ -174,7 +174,7 @@ PEDIDO_FECHADO - O cliente enviou ABSOLUTAMENTE TODOS os dados para o envio: 1) 
 POSSIVEL_COMPRADOR - Cliente demonstrou forte interesse mas parou antes de mandar os dados, ou quer comprar depois.
 INTERESSADO - Cliente apenas perguntou preço, frete, ou passou apenas o CEP para consulta. Ele ainda está na fase de negociação.
 LEAD_FRIO - Cliente parou de responder ou não tem interesse real.
-CANCELADO - Cliente desistiu explicitamente.
+CANCELADO - Cliente desistiu explicitamente ou pediu para parar de receber mensagens (ex: "não quero", "pare de mandar", "não tenho interesse", "favor remover"). Isso silenciará as automações.
 
 CRÍTICO: Nunca classifique como PEDIDO_FECHADO se o cliente mandou apenas o CEP. Ele PRECISA dos 4 itens acima (Nome, CPF, CEP, Endereço).
 
@@ -444,7 +444,10 @@ async function processWebhookInBackground(body: any) {
             push_name: pushName,
             name: pushName || phone,
             status: 'active',
-            last_message_at: new Date().toISOString()
+            last_message_at: new Date().toISOString(),
+            // Reset follow-up stage every time the client responds so the rescue cycle
+            // restarts from the beginning if they go silent again after engaging.
+            followup_stage: 0
         }, { onConflict: 'user_id,whatsapp_id' })
         .select('id, ai_tag, current_funnel_id, funnel_step_order, is_funnel_active, wants_audio')
         .single()

@@ -10,18 +10,18 @@ const supabase = createClient(
     process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
-const HANDOFF_TAGS = ['PEDIDO_FECHADO', 'HUMANO', 'CANCELADO', 'LEAD_FRIO']
+// Only these tags silence ALL follow-ups permanently
+const HARD_STOP_TAGS = ['PEDIDO_FECHADO', 'HUMANO', 'CANCELADO']
 
 export async function GET(req: NextRequest) {
-    // Basic security check (could use a secret key in params headers in production)
     const authHeader = req.headers.get('authorization')
     if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-        // Return 401 if a secret is configured but not matched. For testing, you can ignore this check or set CRON_SECRET.
+        // In production, return 401 here. Keeping permissive for internal calls.
     }
 
     console.log('[CRON_FOLLOWUP] Starting follow-up routine...')
     try {
-        // Find conversations strictly older than 30 mins that are still open, and the contact is capable of being followed up
+        // Fetch open conversations with last message older than 30 min
         const { data: convs, error: convError } = await supabase
             .from('conversations')
             .select(`
@@ -51,46 +51,53 @@ export async function GET(req: NextRequest) {
             const conversation = item as any
             const contact = conversation.contacts
 
-            // Check if contact has a blocker tag
-            if (contact.ai_tag && HANDOFF_TAGS.includes(contact.ai_tag)) {
+            // ── Hard Stop Tags — no follow-up ever ──────────────────────────────
+            if (contact.ai_tag && HARD_STOP_TAGS.includes(contact.ai_tag)) {
                 continue
             }
 
             const stage = contact.followup_stage || 0
-            if (stage >= 3) {
-                // If it's already stage 3 or more, mark as cold and close if not already
-                if (contact.ai_tag !== 'LEAD_FRIO') {
-                    await supabase.from('contacts').update({ ai_tag: 'LEAD_FRIO' }).eq('id', contact.id)
-                }
-                continue
-            }
-
             const lastMessageDate = new Date(conversation.last_message_at)
             const diffInMinutes = (Date.now() - lastMessageDate.getTime()) / (1000 * 60)
+            const isLeadFrio = contact.ai_tag === 'LEAD_FRIO'
 
-            // Evaluate if it's time based on the stage:
-            // Stage 0 -> requires 30 mins minimum
-            // Stage 1 -> requires 2 hours minimum (120 min)
-            // Stage 2 -> requires 24 hours minimum (1440 min)
+            // ── Stage / Timing Decision ──────────────────────────────────────────
+            // Stages 0-2: rapid rescue cycle (30 min / 2 h / 24 h)
+            // LEAD_FRIO:  daily re-engagement cadence, indefinitely
             let shouldFollowUp = false
-            let systemPromptAddon = ''
+            let followupIntent = '' // specific goal for THIS follow-up, passed to the AI
 
-            if (stage === 0 && diffInMinutes >= 30) {
-                shouldFollowUp = true
-                systemPromptAddon = "INSTRUÇÃO DO CORAÇÃO: O cliente não responde há cerca de 30-40 minutos. Mande uma MENSAGEM CURTA e NATURAL (máx 2 linhas) puxando o assunto de volta, se referindo ao produto/tema da conversa anterior. Exemplo de tom: 'Oi 😊 conseguiu ver a mensagem que te mandei? Se tiver qualquer dúvida posso te explicar rapidinho.'"
-            } else if (stage === 1 && diffInMinutes >= 120) {
-                shouldFollowUp = true
-                systemPromptAddon = "INSTRUÇÃO DO CORAÇÃO: O cliente já não responde há mais de 2 horas desde a última tentativa. Mande uma MENSAGEM CURTA de resgate rápido, com senso de urgência, se referindo ao produto. Exemplo de tom: 'Oi! Passando rapidinho só pra saber se ainda tem interesse. Hoje ainda tenho algumas unidades com condições especiais.'"
-            } else if (stage === 2 && diffInMinutes >= 1440) {
-                shouldFollowUp = true
-                systemPromptAddon = "INSTRUÇÃO DO CORAÇÃO: O cliente não responde desde ontem. Esta é a ÚLTIMA TENTATIVA (" + String.fromCharCode(8220) + "fechamento de atendimentos do dia" + String.fromCharCode(8221) + "). Avise que vai fechar e se quiser garantir, é só mandar mensagem. Exemplo: 'Oi! Vou encerrar os atendimentos por hoje. Se ainda quiser garantir com desconto é só me chamar que te envio o link do pedido 😊'"
+            if (isLeadFrio) {
+                // Daily re-engagement: one message every 24 hours
+                if (diffInMinutes >= 1440) {
+                    shouldFollowUp = true
+                    followupIntent = 'Este cliente é um lead frio que ainda não fechou negócio. Tente reativá-lo de forma leve e humana, resgatando o produto ou o interesse que foi discutido na conversa. Seja curioso e amigável — não insistente. Máx 2 linhas.'
+                }
+            } else {
+                // Rapid rescue cycle for active leads
+                if (stage === 0 && diffInMinutes >= 30) {
+                    shouldFollowUp = true
+                    followupIntent = 'O cliente parou de responder há cerca de 30-40 minutos. Faça um follow-up CURTO e NATURAL retomando exatamente o assunto onde a conversa parou, de forma amigável e sem pressão.'
+                } else if (stage === 1 && diffInMinutes >= 120) {
+                    shouldFollowUp = true
+                    followupIntent = 'O cliente não responde há mais de 2 horas. Mande uma mensagem curta e direta com leve senso de urgência, referenciando o interesse que ele demonstrou na conversa.'
+                } else if (stage === 2 && diffInMinutes >= 1440) {
+                    shouldFollowUp = true
+                    followupIntent = 'O cliente não responde desde ontem. Esta é a última tentativa do ciclo rápido. Avise de forma simpática que vai encerrar o atendimento, mas que ainda é possível garantir com condições especiais caso ele queira.'
+                }
+
+                // Rapid cycle exhausted with no reply → escalate to LEAD_FRIO
+                if (stage >= 3) {
+                    await supabase.from('contacts').update({ ai_tag: 'LEAD_FRIO' }).eq('id', contact.id)
+                    console.log(`[CRON_FOLLOWUP] Contact ${contact.id} escalated to LEAD_FRIO after rapid cycle.`)
+                    continue
+                }
             }
 
-            if (!shouldFollowUp) {
-                continue
-            }
+            if (!shouldFollowUp) continue
 
-            // Verify if the last message in this conversation was ACTUALLY from the bot
+            // ── Safety: only follow-up if the bot sent the last message ──────────
+            // Avoids interrupting a client who re-engaged but wasn't answered yet
             const { data: lastMessage } = await supabase
                 .from('messages')
                 .select('from_me')
@@ -100,22 +107,24 @@ export async function GET(req: NextRequest) {
                 .single()
 
             if (!lastMessage || lastMessage.from_me === false) {
-                // If the last message was from the user, it means the bot never replied.
-                // Or maybe this webhook got confused. We shouldn't send follow up if we never replied.
                 continue
             }
 
-            // Let's get everything needed to respond
-            const { data: profile } = await supabase.from('profiles').select('openai_api_key, is_admin, trial_ends_at, stripe_subscription_status').eq('id', conversation.user_id).single()
+            // ── Load profile & AI config ─────────────────────────────────────────
+            const { data: profile } = await supabase
+                .from('profiles')
+                .select('openai_api_key, is_admin, trial_ends_at, stripe_subscription_status')
+                .eq('id', conversation.user_id)
+                .single()
+
             if (!profile?.openai_api_key) continue
 
-            // Trial check
+            // Trial / subscription check
             if (!profile.is_admin && profile.stripe_subscription_status !== 'active' && profile.stripe_subscription_status !== 'trialing') {
-                if (profile.trial_ends_at && new Date(profile.trial_ends_at) < new Date()) {
-                    continue
-                }
+                if (profile.trial_ends_at && new Date(profile.trial_ends_at) < new Date()) continue
             }
 
+            // Load AI config for this instance (fallback to global)
             let { data: aiConfigs } = await supabase
                 .from('ai_configurations')
                 .select('*')
@@ -137,7 +146,6 @@ export async function GET(req: NextRequest) {
                     .limit(1)
                 aiConfig = globalConfigs && globalConfigs.length > 0 ? globalConfigs[0] : null
             }
-
             if (!aiConfig) continue
 
             const { data: instanceRecord } = await supabase
@@ -148,13 +156,13 @@ export async function GET(req: NextRequest) {
 
             if (!instanceRecord) continue
 
-            // Get chat history
+            // ── Load real conversation history (last 20 messages) ────────────────
             const { data: history } = await supabase
                 .from('messages')
                 .select('role:from_me, content')
                 .eq('conversation_id', conversation.id)
                 .order('created_at', { ascending: false })
-                .limit(15)
+                .limit(20)
 
             const chatMessages = (history || [])
                 .reverse()
@@ -165,7 +173,11 @@ export async function GET(req: NextRequest) {
 
             const currentDate = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
 
-            // Generate follow-up message with OpenAI
+            // ── Generate intelligent, contextual follow-up with OpenAI ────────────
+            // The AI receives:
+            //   1. User's full system prompt (product, rules, tone — NOT generic)
+            //   2. Real conversation history (what was ACTUALLY discussed)
+            //   3. Specific goal for THIS follow-up message
             const openAiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
                 method: 'POST',
                 headers: {
@@ -177,30 +189,48 @@ export async function GET(req: NextRequest) {
                     messages: [
                         {
                             role: 'system',
-                            content: `[DATA E HORA ATUAL DO SISTEMA: ${currentDate}]\n\nVocê é o assistente ${aiConfig.bot_name}.\n${aiConfig.system_prompt}\n\nAja no tom de conversa: ${aiConfig.tone}.\nResponda em: ${aiConfig.language}.\n\nREGRA ABSOLUTA DE COMPORTAMENTO HUMANO: Seja extremamente humano, direto e informal. Não envie mensagens robóticas, não use listas.\n\n${systemPromptAddon}`
+                            content: `[DATA E HORA ATUAL: ${currentDate}]
+
+Você é ${aiConfig.bot_name}.
+Tom: ${aiConfig.tone}.
+Idioma: ${aiConfig.language || 'Português Brasileiro'}.
+
+── SUAS INSTRUÇÕES COMPLETAS (produto, regras, logística) ──
+${aiConfig.system_prompt}
+
+── REGRAS ABSOLUTAS PARA ESTA MENSAGEM ──
+- Escreva UMA ÚNICA mensagem curta (máx 2-3 linhas).
+- A mensagem DEVE ser baseada no histórico real da conversa. Mencione o produto, a dúvida ou o interesse que o cliente demonstrou. NUNCA envie algo genérico.
+- Seja natural, humano e direto. Sem listas, bullet points ou linguagem robótica.
+- Use no máximo 1-2 emojis.
+- Se já houve conversa, RETOME o assunto onde parou. Não recomece do zero.
+
+── OBJETIVO ESPECÍFICO DESTE FOLLOW-UP ──
+${followupIntent}`
                         },
                         ...chatMessages
                     ],
-                    temperature: 0.8,
-                    max_tokens: 150
+                    temperature: 0.85,
+                    max_tokens: 180
                 })
             })
 
             if (!openAiResponse.ok) {
-                console.error(`[CRON_FOLLOWUP] Erro OpenAI para ${contact.whatsapp_id}`)
+                console.error(`[CRON_FOLLOWUP] Erro OpenAI para contato ${contact.whatsapp_id}`)
                 continue
             }
 
             const gptData = await openAiResponse.json()
-            const botReply = gptData.choices[0].message.content
+            const botReply = gptData.choices[0].message.content?.trim()
+            if (!botReply) continue
 
-            // Send via Evolution API
+            // ── Send via Evolution API ───────────────────────────────────────────
             const remoteJid = contact.whatsapp_id
             await evolutionApi.sendPresence(instanceRecord.instance_name, remoteJid, 'composing')
             await new Promise(resolve => setTimeout(resolve, 2000))
             await evolutionApi.sendTextMessage(instanceRecord.instance_name, remoteJid, botReply)
 
-            // Mark message and update stage
+            // ── Persist message in DB ────────────────────────────────────────────
             await supabase.from('messages').insert({
                 user_id: conversation.user_id,
                 conversation_id: conversation.id,
@@ -213,19 +243,22 @@ export async function GET(req: NextRequest) {
                 status: 'sent',
             })
 
+            // ── Update stage and contact tag ─────────────────────────────────────
             const newStage = stage + 1
             await supabase.from('contacts').update({
                 followup_stage: newStage,
-                ai_tag: newStage === 3 ? 'LEAD_FRIO' : contact.ai_tag // Auto Lead Frio when hitting max stage
+                // Escalate to LEAD_FRIO only after rapid rescue cycle is done
+                ai_tag: (!isLeadFrio && newStage >= 3) ? 'LEAD_FRIO' : contact.ai_tag
             }).eq('id', contact.id)
 
             await supabase.from('conversations').update({
                 last_message: botReply,
                 last_message_at: new Date().toISOString(),
             }).eq('id', conversation.id)
+
             await supabase.rpc('increment_messages_sent', { instance_id_param: conversation.instance_id })
 
-            console.log(`[CRON_FOLLOWUP] Follow-up stage ${stage} completed for contact ${contact.id}`)
+            console.log(`[CRON_FOLLOWUP] Stage ${stage} follow-up (${isLeadFrio ? 'LEAD_FRIO daily' : 'rapid rescue'}) sent to contact ${contact.id}`)
             processedCount++
         }
 
