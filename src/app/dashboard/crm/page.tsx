@@ -54,7 +54,7 @@ export default function CRMPage() {
 
     useEffect(() => {
         const load = async () => {
-            const { data: { user } } = await supabase.auth.getUser()
+            const { data: { user } } = await supabase.auth.getSession().then(res => ({ data: { user: res.data.session?.user || null } }))
             if (!user) return
             const { data } = await supabase.from('contacts').select('*').eq('user_id', user.id).order('last_message_at', { ascending: false })
             setContacts(data || [])
@@ -389,3 +389,4 @@ export default function CRMPage() {
         </div>
     )
 }
+

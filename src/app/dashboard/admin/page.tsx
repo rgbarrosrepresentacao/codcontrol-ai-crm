@@ -5,7 +5,7 @@ import { createClient } from '@supabase/supabase-js'
 
 export default async function AdminPage() {
     const supabase = await createSupabaseServerClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user } } = await supabase.auth.getSession().then(res => ({ data: { user: res.data.session?.user || null } }))
     if (!user) redirect('/login')
 
     const { data: profile } = await supabase.from('profiles').select('is_admin').eq('id', user.id).single()
@@ -34,3 +34,4 @@ export default async function AdminPage() {
         />
     )
 }
+

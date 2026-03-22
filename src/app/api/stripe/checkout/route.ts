@@ -5,7 +5,7 @@ import { createSupabaseServerClient } from '@/lib/supabase-server'
 export async function POST(req: NextRequest) {
     try {
         const supabase = await createSupabaseServerClient()
-        const { data: { user } } = await supabase.auth.getUser()
+        const { data: { user } } = await supabase.auth.getSession().then(res => ({ data: { user: res.data.session?.user || null } }))
         if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
         const { priceId } = await req.json()
@@ -47,3 +47,4 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: err.message }, { status: 500 })
     }
 }
+

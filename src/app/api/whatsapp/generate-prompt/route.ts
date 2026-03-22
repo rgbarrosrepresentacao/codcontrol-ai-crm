@@ -4,7 +4,7 @@ import { createSupabaseServerClient } from '@/lib/supabase-server'
 export async function POST(req: NextRequest) {
     try {
         const supabase = await createSupabaseServerClient()
-        const { data: { user } } = await supabase.auth.getUser()
+        const { data: { user } } = await supabase.auth.getSession().then(res => ({ data: { user: res.data.session?.user || null } }))
 
         if (!user) {
             return NextResponse.json({ error: 'Usuário não autenticado' }, { status: 401 })
@@ -88,3 +88,4 @@ Gere apenas o texto do System Prompt final em Português, pronto para uso.`
         return NextResponse.json({ error: error.message }, { status: 500 })
     }
 }
+

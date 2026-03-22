@@ -45,7 +45,7 @@ export default function LogisticaPage() {
         }
 
         setSaving(true)
-        const { data: { user } } = await supabase.auth.getUser()
+        const { data: { user } } = await supabase.auth.getSession().then(res => ({ data: { user: res.data.session?.user || null } }))
         if (!user) return
 
         const { data, error } = await supabase
@@ -201,3 +201,4 @@ export default function LogisticaPage() {
         </div>
     )
 }
+

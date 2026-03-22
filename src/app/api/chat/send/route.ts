@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
     try {
         // Verifica autenticação
         const supabase = await createSupabaseServerClient()
-        const { data: { user } } = await supabase.auth.getUser()
+        const { data: { user } } = await supabase.auth.getSession().then(res => ({ data: { user: res.data.session?.user || null } }))
         if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
 
         const { conversationId, instanceId, contactWhatsappId, message } = await req.json()
@@ -90,3 +90,4 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: msg }, { status: 500 })
     }
 }
+

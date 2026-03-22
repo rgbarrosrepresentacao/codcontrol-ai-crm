@@ -88,7 +88,7 @@ export default function ChatPage() {
 
     // Get authenticated user
     useEffect(() => {
-        supabase.auth.getUser().then(({ data: { user } }) => {
+        supabase.auth.getSession().then(res => ({ data: { user: res.data.session?.user || null } })).then(({ data: { user } }) => {
             if (user) setUserId(user.id)
         })
     }, [])
@@ -473,3 +473,4 @@ export default function ChatPage() {
         </div>
     )
 }
+

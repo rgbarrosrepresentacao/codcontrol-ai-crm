@@ -5,7 +5,7 @@ import { formatDate } from '@/lib/utils'
 
 export default async function DashboardPage() {
     const supabase = await createSupabaseServerClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user } } = await supabase.auth.getSession().then(res => ({ data: { user: res.data.session?.user || null } }))
     if (!user) redirect('/login')
 
     const [profileRes, instancesRes, contactsRes, conversationsRes, messagesRes] = await Promise.all([
@@ -173,3 +173,4 @@ export default async function DashboardPage() {
         </div>
     )
 }
+
