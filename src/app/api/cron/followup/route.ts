@@ -114,6 +114,15 @@ export async function GET(req: NextRequest) {
             const { data: profile } = await supabase.from('profiles').select('openai_api_key, is_admin, trial_ends_at, stripe_subscription_status').eq('id', conversation.user_id).single()
             if (!profile?.openai_api_key) continue
 
+            // 3b. BLOQUEIO DE SEGURANÇA - Ignora se não pagou (exceto trial vigente de antigos)
+            if (profile && !profile.is_admin && profile.stripe_subscription_status !== 'active' && profile.stripe_subscription_status !== 'trialing') {
+                const hasTrialActive = profile.trial_ends_at && new Date(profile.trial_ends_at) > new Date()
+                if (!hasTrialActive) {
+                   console.log(`[Follow-up] 🚫 Resgate bloqueado para o usuário ${conversation.user_id}: Sem assinatura ativa e sem trial vigente.`)
+                   continue
+                }
+            }
+
             let { data: aiConfigs } = await supabase.from('ai_configurations').select('*').eq('user_id', conversation.user_id).eq('instance_id', conversation.instance_id).eq('is_active', true).limit(1)
             let aiConfig = aiConfigs?.[0]
             if (!aiConfig) {

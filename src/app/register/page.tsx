@@ -42,9 +42,22 @@ function RegisterForm() {
             toast.error(error.message)
             return
         }
-        toast.success('Conta criada! Redirecionando...')
-        // Se houver plano, redireciona para a página de planos direto para checkout
-        router.push(plan ? `/dashboard/planos` : '/dashboard')
+        toast.success('Conta criada! Redirecionando para o pagamento...')
+        
+        // Mapeamento dos links de checkout da Kiwify
+        const kiwifyLinks: Record<string, string> = {
+            'basico': 'https://pay.kiwify.com.br/N6zbMjk',
+            'pro': 'https://pay.kiwify.com.br/220188P'
+        }
+
+        // Se houver plano, redireciona para a Kiwify. Caso contrário, para o dashboard (onde será bloqueado se não pagar)
+        const checkoutUrl = plan ? kiwifyLinks[plan] : null
+        
+        if (checkoutUrl) {
+            window.location.href = checkoutUrl
+        } else {
+            router.push('/dashboard')
+        }
         router.refresh()
     }
 

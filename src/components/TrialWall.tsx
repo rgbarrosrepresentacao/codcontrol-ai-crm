@@ -16,16 +16,27 @@ export function TrialWall({
     const pathname = usePathname()
     const router = useRouter()
     let isBlocked = false
-    if (!isAdmin && subscriptionStatus !== 'active' && subscriptionStatus !== 'trialing') {
-        if (trialEndsAt) {
-            const ends = new Date(trialEndsAt)
-            if (new Date() > ends) {
-                if (pathname !== '/dashboard/planos') {
-                    isBlocked = true
-                }
-            }
+    const isPlanPage = pathname === '/dashboard/planos'
+    
+    // Status Ativo ou Admin sempre liberado
+    if (isAdmin || subscriptionStatus === 'active' || subscriptionStatus === 'trialing') {
+        return <>{children}</>
+    }
+
+    // Página de planos sempre liberada para pagamento
+    if (isPlanPage) return <>{children}</>
+
+    // Lógica para usuários antigos (que possuem trial_ends_at)
+    if (trialEndsAt) {
+        const ends = new Date(trialEndsAt)
+        if (new Date() < ends) {
+            // Ainda no trial, liberado
+            return <>{children}</>
         }
     }
+
+    // Se chegou aqui (não é admin, não pagou e não tem trial ativo), bloqueia
+    isBlocked = true
 
     if (isBlocked) {
         return (
@@ -37,11 +48,11 @@ export function TrialWall({
                             <AlertTriangle className="w-8 h-8 text-red-400" />
                         </div>
                     </div>
-                    <h2 className="text-2xl font-bold text-foreground mb-3">Seu período de teste acabou!</h2>
+                    <h2 className="text-2xl font-bold text-foreground mb-3">Sua conta precisa de ativação!</h2>
                     <p className="text-muted-foreground mb-6">
-                        Você chegou ao fim dos seus 7 dias de acesso gratuito. O seu painel e automações de IA estão pausados no momento.
+                        Para liberar o seu painel de CRM e colocar suas vendedoras de IA no ar, é necessário ativar a sua assinatura. 
                         <br /><br />
-                        Para que o seu CRM e seus atendimentos voltem a funcionar instantaneamente, ative a sua assinatura.
+                        Assim que o pagamento for confirmado pela Kiwify, seu acesso será liberado instantaneamente.
                     </p>
                     <button
                         onClick={() => {

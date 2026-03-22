@@ -584,9 +584,13 @@ async function processWebhookInBackground(body: any) {
         // 8e. Funil FINALIZADO → apenas a IA responde (não toca no funil)
 
 
-        // 9. Configuração de IA
+        // 9. Configuração de IA - Bloqueio de segurança (Apenas assinantes ou trial ativo)
         if (profile && !profile.is_admin && profile.stripe_subscription_status !== 'active' && profile.stripe_subscription_status !== 'trialing') {
-            if (profile.trial_ends_at && new Date(profile.trial_ends_at) < new Date()) return
+            const hasTrialActive = profile.trial_ends_at && new Date(profile.trial_ends_at) > new Date()
+            if (!hasTrialActive) {
+                console.log(`[Webhook] 🚫 IA BLOQUEADA para o usuário ${userId}: Sem assinatura ativa e sem trial vigente.`)
+                return
+            }
         }
 
         let { data: aiConfigs } = await supabase.from('ai_configurations').select('*').eq('user_id', userId).eq('instance_id', instanceId).eq('is_active', true).limit(1)
