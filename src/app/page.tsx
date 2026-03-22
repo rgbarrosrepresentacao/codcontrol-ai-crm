@@ -348,21 +348,31 @@ export default function HomePage() {
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-border/50 py-12">
-        <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-8">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg gradient-primary flex items-center justify-center">
-              <Bot className="w-5 h-5 text-black" />
-            </div>
-            <span className="font-bold text-lg text-foreground tracking-tight italic">CodControl AI</span>
-          </div>
-          <p className="text-muted-foreground text-xs font-medium italic">© 2026 CodControl. Todos os direitos reservados. v1.0.0-beta</p>
-          <div className="flex gap-8 text-xs font-bold uppercase tracking-widest text-muted-foreground">
-            <a href="#" className="hover:text-primary transition-colors">Termos</a>
-            <a href="#" className="hover:text-primary transition-colors">Privacidade</a>
-          </div>
-        </div>
-      </footer>
+      <footer className="py-12 border-t border-border relative overflow-hidden">
+                <div className="container mx-auto px-6 text-center">
+                    <div className="flex items-center justify-center gap-2 mb-4">
+                        <div className="w-8 h-8 rounded-lg gradient-primary flex items-center justify-center">
+                            <span className="text-black font-bold text-xs">C</span>
+                        </div>
+                        <span className="font-bold text-lg tracking-tighter">CodControl <span className="text-primary">AI CRM</span></span>
+                    </div>
+                    <p className="text-muted-foreground text-sm max-w-md mx-auto mb-6">
+                        A evolução das vendas com Inteligência Artificial. 
+                        Sua empresa no próximo nível.
+                    </p>
+                    <div className="flex flex-col gap-1 mb-8">
+                        <p className="text-[11px] text-muted-foreground/60 uppercase tracking-widest font-medium">
+                            R G BARROS REPRESENTACAO
+                        </p>
+                        <p className="text-xs text-muted-foreground/80 font-bold">
+                            CNPJ: 60.047.949/0001-79
+                        </p>
+                    </div>
+                    <p className="text-muted-foreground text-xs">
+                        &copy; {new Date().getFullYear()} CodControl. Todos os direitos reservados.
+                    </p>
+                </div>
+            </footer>
     </div>
   )
 }
