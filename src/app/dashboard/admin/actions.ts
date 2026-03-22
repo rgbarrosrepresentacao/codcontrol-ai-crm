@@ -2,6 +2,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { revalidatePath } from 'next/cache'
+import { kiwify } from '@/lib/kiwify'
 
 export async function toggleUserStatusAction(userId: string, isActive: boolean) {
     const adminSupabase = createClient(
@@ -114,4 +115,34 @@ export async function deleteMaterialAction(id: string) {
     revalidatePath('/dashboard/tutoriais')
     revalidatePath('/dashboard/admin')
     return true
+}
+
+// ─── KIWIFY FINANCIAL ACTIONS ─────────────────────────────────────────
+
+export async function getKiwifyStatsAction() {
+    try {
+        const [salesData, balanceData] = await Promise.all([
+            kiwify.getSales(1, 15).catch((e) => {
+                console.error('[KIWIFY_ACTION] Sales error:', e.message)
+                return { data: [] }
+            }),
+            kiwify.getAccountBalance().catch((e) => {
+                console.error('[KIWIFY_ACTION] Balance error:', e.message)
+                return { balance: 0, pending: 0, currency: 'BRL' }
+            })
+        ])
+        return { sales: salesData.data || [], balance: balanceData }
+    } catch (e: any) {
+        throw new Error(e.message)
+    }
+}
+
+export async function refundKiwifyOrderAction(orderId: string) {
+    try {
+        await kiwify.refundSale(orderId)
+        revalidatePath('/dashboard/admin')
+        return true
+    } catch (e: any) {
+        throw new Error(e.message)
+    }
 }
