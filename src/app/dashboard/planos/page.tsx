@@ -16,10 +16,10 @@ export default async function PlanosPage() {
     ])
 
     const profile = profileRes.data as any
-    // Lógica correta para detectar se o usuário está no período de teste
-    const isTrial = profile?.stripe_subscription_status !== 'active' && !!profile?.trial_ends_at
+    const isActive = profile?.stripe_subscription_status === 'active'
+    const isTrial = !isActive && !!profile?.trial_ends_at
     const plans = plansRes.data || []
-    const currentPlanSlug = profile?.plans?.slug || (isTrial ? 'basico' : 'basico')
+    const currentPlanSlug = profile?.plans?.slug || 'basico'
 
     return (
         <div className="p-6 md:p-8 space-y-8 animate-fade-in">
@@ -94,9 +94,9 @@ export default async function PlanosPage() {
                                 ))}
                             </ul>
 
-                            {isCurrent && !isTrial ? (
-                                <div className="w-full text-center py-3 rounded-xl border border-emerald-500/30 text-emerald-400 text-sm font-semibold mt-auto">
-                                    ✓ Plano atual
+                            {isCurrent && isActive ? (
+                                <div className="w-full text-center py-3 rounded-xl border border-emerald-500/30 text-emerald-400 text-sm font-semibold mt-auto flex items-center justify-center gap-2">
+                                    <CheckCircle2 className="w-4 h-4" /> Plano Ativo
                                 </div>
                             ) : (
                                 <div className="mt-auto">
@@ -104,7 +104,7 @@ export default async function PlanosPage() {
                                         priceId={plan.stripe_price_id}
                                         kiwifyUrl={plan.kiwify_checkout_url}
                                         isPopular={isPopular}
-                                        label={isTrial ? 'Assinar Agora' : plan.slug === 'agencia' ? 'Entrar em contato' : plan.price > (plans.find((p: any) => p.slug === currentPlanSlug)?.price || 0) ? 'Fazer upgrade' : 'Fazer downgrade'}
+                                        label={(!isActive && isCurrent) ? 'Assinar Agora' : plan.slug === 'agencia' ? 'Entrar em contato' : plan.price > (plans.find((p: any) => p.slug === currentPlanSlug)?.price || 0) ? 'Fazer upgrade' : 'Fazer downgrade'}
                                     />
                                 </div>
                             )}
