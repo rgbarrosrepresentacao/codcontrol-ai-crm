@@ -12,6 +12,24 @@ export async function toggleUserStatusAction(userId: string, isActive: boolean) 
     if (error) throw new Error(error.message)
     return true
 }
+
+export async function deleteUserAction(userId: string) {
+    const adminSupabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
+    
+    // Tenta deletar do Auth (isolará do sistema de login)
+    const { error: authError } = await adminSupabase.auth.admin.deleteUser(userId)
+    
+    // Deleta do banco de dados (perfis, etc) - redundância de segurança
+    const { error: dbError } = await adminSupabase.from('profiles').delete().eq('id', userId)
+    
+    if (authError && dbError) throw new Error(authError.message || dbError.message)
+    
+    revalidatePath('/dashboard/admin')
+    return true
+}
 export async function updateUserTrialAction(userId: string, daysToAdd: number) {
     const adminSupabase = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,

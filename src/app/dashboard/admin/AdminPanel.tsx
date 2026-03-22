@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
 import { Shield, Users, Smartphone, BarChart3, Search, Ban, CheckCircle2, Loader2, Megaphone, Trash2, Send, Calendar, Clock, GraduationCap, Plus, ExternalLink, FileText } from 'lucide-react'
 import { formatDate } from '@/lib/utils'
-import { toggleUserStatusAction, updateUserTrialAction, saveAnnouncementAction, deleteAnnouncementAction, saveMaterialAction, deleteMaterialAction } from './actions'
+import { toggleUserStatusAction, updateUserTrialAction, saveAnnouncementAction, deleteAnnouncementAction, saveMaterialAction, deleteMaterialAction, deleteUserAction } from './actions'
 
 interface AdminPanelProps {
     users: any[]
@@ -18,6 +18,7 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
     const [search, setSearch] = useState('')
     const [toggling, setToggling] = useState<string | null>(null)
     const [updatingTrial, setUpdatingTrial] = useState<string | null>(null)
+    const [deletingUser, setDeletingUser] = useState<string | null>(null)
     const [localUsers, setLocalUsers] = useState(users)
     const [announcement, setAnnouncement] = useState({ title: '', content: '', type: 'info' })
     const [sending, setSending] = useState(false)
@@ -57,6 +58,20 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
             toast.error('Erro ao adicionar dias')
         }
         setUpdatingTrial(null)
+    }
+
+    const deleteUser = async (userId: string) => {
+        if (!confirm('⚠️ ATENÇÃO: Deseja excluir PERMANENTEMENTE este usuário e todos os dados dele? Esta ação não pode ser desfeita.')) return
+        
+        setDeletingUser(userId)
+        try {
+            await deleteUserAction(userId)
+            setLocalUsers(prev => prev.filter(u => u.id !== userId))
+            toast.success('Usuário removido da plataforma!')
+        } catch (e: any) {
+            toast.error('Erro ao excluir: ' + e.message)
+        }
+        setDeletingUser(null)
     }
 
     const handleSendAnnouncement = async () => {
@@ -404,6 +419,15 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
                                                 >
                                                     {toggling === user.id ? <Loader2 className="w-3 h-3 animate-spin" /> : user.is_active ? <Ban className="w-3 h-3" /> : <CheckCircle2 className="w-3 h-3" />}
                                                     {user.is_active ? 'Bloquear' : 'Ativar'}
+                                                </button>
+
+                                                <button
+                                                    onClick={() => deleteUser(user.id)}
+                                                    disabled={deletingUser === user.id}
+                                                    className="p-1.5 text-muted-foreground hover:text-red-400 hover:bg-red-500/10 border border-border/50 rounded-lg transition-all"
+                                                    title="Excluir Permanentemente"
+                                                >
+                                                    {deletingUser === user.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
                                                 </button>
                                             </div>
 
