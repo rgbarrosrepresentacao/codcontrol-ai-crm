@@ -4,16 +4,24 @@ import { ArrowRight, Loader2 } from 'lucide-react'
 
 export function CheckoutButton({
     priceId,
+    kiwifyUrl,
     isPopular,
     label
 }: {
     priceId: string | null;
+    kiwifyUrl?: string | null;
     isPopular: boolean;
     label: string;
 }) {
     const [loading, setLoading] = useState(false)
 
     const handleCheckout = async () => {
+        // Se tiver link da Kiwify, vai direto
+        if (kiwifyUrl) {
+            window.location.href = kiwifyUrl
+            return
+        }
+
         if (!priceId) return alert('Plano indísponível para assinatura online.')
         setLoading(true)
         try {

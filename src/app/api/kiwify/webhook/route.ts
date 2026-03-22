@@ -47,17 +47,26 @@ export async function POST(req: NextRequest) {
         // 1. Check if user already exists
         const { data: existingUser } = await supabase.from('profiles').select('id').eq('email', email).single()
 
+        // Mapeamento de produtos Kiwify para Slugs do sistema
+        // Adicione aqui os IDs de produto da sua Kiwify
+        const productMapping: Record<string, string> = {
+            '09522b10-2574-11f1-9c6b-eb8ffdd12023': 'basico',
+            'SUBSTITUA_PELO_ID_PRO': 'pro',
+            'SUBSTITUA_PELO_ID_PREMIUM': 'premium'
+        }
+
+        const planSlug = productMapping[product_id] || 'basico'
+
         if (existingUser) {
-            console.log(`[KIWIFY_WEBHOOK] Updating existing user: ${email}`)
+            console.log(`[KIWIFY_WEBHOOK] Updating existing user: ${email} to plan: ${planSlug}`)
             const isActive = ['paid', 'trialing'].includes(order_status)
             
             await supabase.from('profiles').update({
                 stripe_subscription_status: isActive ? 'active' : 'canceled',
-                plan_id: product_id === '09522b10-2574-11f1-9c6b-eb8ffdd12023' ? 'basico' : undefined // Custom mapping
+                plan_id: (await supabase.from('plans').select('id').eq('slug', planSlug).single()).data?.id
             }).eq('id', existingUser.id)
         } else if (order_status === 'paid' || order_status === 'trialing') {
-            // 2. Create new user if paid and doesn't exist
-            console.log(`[KIWIFY_WEBHOOK] Creating NEW user: ${email}`)
+            console.log(`[KIWIFY_WEBHOOK] Creating NEW user: ${email} for plan: ${planSlug}`)
             
             const tempPassword = Math.random().toString(36).slice(-12)
             const { data: newUser, error: createError } = await supabase.auth.admin.createUser({
@@ -74,12 +83,12 @@ export async function POST(req: NextRequest) {
                 return NextResponse.json({ error: 'Auth creation failed' }, { status: 500 })
             }
 
-            // Wait a bit for the trigger to create the profile
             await new Promise(resolve => setTimeout(resolve, 1500))
 
-            // Update plan information
+            const { data: planData } = await supabase.from('plans').select('id').eq('slug', planSlug).single()
+
             await supabase.from('profiles').update({
-                plan_id: 'basico', // Default for now
+                plan_id: planData?.id,
                 stripe_subscription_status: 'active'
             }).eq('id', newUser.user.id)
             
