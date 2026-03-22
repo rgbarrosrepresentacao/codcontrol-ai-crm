@@ -6,37 +6,45 @@ export function TrialWall({
     children,
     isAdmin,
     trialEndsAt,
-    subscriptionStatus
+    subscriptionStatus,
+    isActiveAccount
 }: {
     children: React.ReactNode,
     isAdmin: boolean,
     trialEndsAt: string | null,
-    subscriptionStatus: string | null
+    subscriptionStatus: string | null,
+    isActiveAccount?: boolean
 }) {
     const pathname = usePathname()
     const router = useRouter()
     let isBlocked = false
     const isPlanPage = pathname === '/dashboard/planos'
     
-    // Status Ativo ou Admin sempre liberado
-    if (isAdmin || subscriptionStatus === 'active' || subscriptionStatus === 'trialing') {
+    // Admin tem passe livre
+    if (isAdmin) {
         return <>{children}</>
     }
 
-    // Página de planos sempre liberada para pagamento
-    if (isPlanPage) return <>{children}</>
-
-    // Lógica para usuários antigos (que possuem trial_ends_at)
-    if (trialEndsAt) {
-        const ends = new Date(trialEndsAt)
-        if (new Date() < ends) {
-            // Ainda no trial, liberado
-            return <>{children}</>
+    // Se a conta estiver bloqueada manualmente pelo Admin (botão vermelho), bloqueia TUDO
+    if (isActiveAccount === false) {
+        isBlocked = true
+    } else {
+        // Se houver uma data de expiração, ela é SOBERANA.
+        // Isso resolve o problema de falha de webhook da Kiwify (ex: se não enviar cancelamento).
+        if (trialEndsAt) {
+            const ends = new Date(trialEndsAt)
+            if (new Date() > ends) {
+                isBlocked = true
+            }
+        } 
+        // Se NÃO tem data de expiração, a gente confia no status da subscription apenas
+        else if (subscriptionStatus !== 'active' && subscriptionStatus !== 'trialing') {
+            isBlocked = true
         }
     }
 
-    // Se chegou aqui (não é admin, não pagou e não tem trial ativo), bloqueia
-    isBlocked = true
+    // Página de planos sempre liberada para pagamento, a menos que seja um BAN manual
+    if (isPlanPage && isActiveAccount !== false) return <>{children}</>
 
     if (isBlocked) {
         return (
@@ -48,20 +56,27 @@ export function TrialWall({
                             <AlertTriangle className="w-8 h-8 text-red-400" />
                         </div>
                     </div>
-                    <h2 className="text-2xl font-bold text-foreground mb-3">Sua conta precisa de ativação!</h2>
+                    <h2 className="text-2xl font-bold text-foreground mb-3">
+                        {isActiveAccount === false ? 'Acesso Interrompido' : 'Sua conta precisa de ativação!'}
+                    </h2>
                     <p className="text-muted-foreground mb-6">
-                        Para liberar o seu painel de CRM e colocar suas vendedoras de IA no ar, é necessário ativar a sua assinatura. 
+                        {isActiveAccount === false 
+                            ? 'O seu acesso foi temporariamente bloqueado pela administração da plataforma. Entre em contato com o suporte se precisar de ajuda.'
+                            : 'Para liberar o seu painel de CRM e colocar suas vendedoras de IA no ar, é necessário ativar a sua assinatura.'
+                        }
                         <br /><br />
-                        Assim que o pagamento for confirmado pela Kiwify, seu acesso será liberado instantaneamente.
+                        {isActiveAccount !== false && 'Assim que o pagamento for confirmado pela Kiwify, seu acesso será liberado instantaneamente.'}
                     </p>
-                    <button
-                        onClick={() => {
-                            router.push('/dashboard/planos')
-                        }}
-                        className="w-full gradient-primary text-black font-bold py-3.5 rounded-xl hover:opacity-90 transition-all flex justify-center items-center gap-2"
-                    >
-                        Ver planos e ativar sistema <ArrowRight className="w-5 h-5" />
-                    </button>
+                    {isActiveAccount !== false && (
+                        <button
+                            onClick={() => {
+                                router.push('/dashboard/planos')
+                            }}
+                            className="w-full gradient-primary text-black font-bold py-3.5 rounded-xl hover:opacity-90 transition-all flex justify-center items-center gap-2"
+                        >
+                            Ver planos e ativar sistema <ArrowRight className="w-5 h-5" />
+                        </button>
+                    )}
                 </div>
             </div>
         )
