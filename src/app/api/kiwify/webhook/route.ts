@@ -11,96 +11,108 @@ export async function POST(req: NextRequest) {
     try {
         console.log('[KIWIFY_WEBHOOK] Incoming request received...')
         const rawBody = await req.text()
-        console.log('[KIWIFY_WEBHOOK] Raw body loaded.')
-        
         const body = JSON.parse(rawBody)
         console.log('[KIWIFY_WEBHOOK] Full Body received:', JSON.stringify(body, null, 2))
 
+        // Validação de assinatura (opcional)
         const signature = req.nextUrl.searchParams.get('signature')
-        
         if (process.env.KIWIFY_WEBHOOK_SECRET && signature) {
             const expectedSignature = crypto
                 .createHmac('sha1', process.env.KIWIFY_WEBHOOK_SECRET)
                 .update(rawBody)
                 .digest('hex')
-            
             if (signature !== expectedSignature) {
-                console.warn('[KIWIFY_WEBHOOK] Signature mismatch. (Continuing for verification...)')
+                console.warn('[KIWIFY_WEBPACK] Signature mismatch. Continuing for debug...')
             }
         }
 
-        const {
-            order_status,
-            customer,
-            product_id,
-        } = body
+        // ─── NORMALIZAÇÃO DO PAYLOAD ───────────────────────────────────────────
+        // A Kiwify pode enviar em snake_case OU em PascalCase dependendo da versão.
+        // Normalizamos aqui para garantir compatibilidade total.
+        const order_status  = body.order_status  || body.OrderStatus  || body.status || ''
+        const product_id    = body.product_id    || body.ProductID    || ''
+        
+        // Customer: pode ser body.Customer ou body.customer
+        const customer = body.Customer || body.customer || {}
+        
+        // Email: tenta vários campos possíveis
+        const email_raw = 
+            customer.email       || customer.Email       ||
+            body.Customer?.email || body.customer?.email ||
+            body.email           || ''
+        
+        // Subscription: pode ser body.Subscription ou body.subscription
+        const subscription = body.Subscription || body.subscription || {}
 
-        console.log(`[KIWIFY_WEBHOOK] Processing: ${order_status} | Product: ${product_id} | Email: ${customer?.email}`)
+        console.log(`[KIWIFY_WEBHOOK] Normalized → Status: "${order_status}" | Product: "${product_id}" | Email: "${email_raw}"`)
 
-        if (!customer?.email) {
-            console.warn('[KIWIFY_WEBHOOK] No customer email found in payload. Skipping processing.')
+        if (!email_raw) {
+            console.warn('[KIWIFY_WEBHOOK] No customer email found. Skipping.')
             return NextResponse.json({ received: true, info: 'No email found' })
         }
 
-        const email = customer.email.toLowerCase()
+        const email = email_raw.toLowerCase().trim()
 
-        // 1. Check if user already exists
-        const { data: existingUser } = await supabase.from('profiles').select('id').eq('email', email).single()
+        // ─── DETECÇÃO DO PLANO ─────────────────────────────────────────────────
+        let planSlug = 'basico' // padrão seguro
 
-        // Mapeamento de produtos Kiwify para Slugs do sistema
-        // Ambos os planos (Standard e Pro) usam o mesmo product_id.
-        // Diferenciamos pelo valor pago ou pelo nome do plano.
-        const productMapping: Record<string, string> = {
-            '09522b10-2574-11f1-9c6b-eb8ffdd12023': 'basico', // produto base (Standard por padrão)
-        }
+        // 1. Por preço (mais confiável): verifica valor da cobrança atual
+        const amount = 
+            subscription?.charges?.completed?.[0]?.amount ||
+            body.order?.amount || body.payment?.amount || 0
+        const amountInReais = amount > 100 ? amount / 100 : amount
 
-        let planSlug = productMapping[product_id]
-
-        // DETECÇÃO POR PREÇO: O campo mais confiável da Kiwify
-        const amount = body.order?.amount || body.payment?.amount || body.subscription?.plan?.amount || 0
-        const amountInReais = amount > 100 ? amount / 100 : amount // normaliza centavos vs reais
+        console.log(`[KIWIFY_WEBHOOK] Amount detected: R$${amountInReais}`)
 
         if (amountInReais >= 400) {
             planSlug = 'pro' // R$ 497
-        } else if (amountInReais >= 50) {
-            planSlug = 'basico' // R$ 97 ou R$ 10 (1ª cobrança)
         }
+        // R$ 97 normal ou R$ 10 de primeira cobrança → basico (padrão)
 
-        // DETECÇÃO POR NOME DO PLANO (fallback secundário)
-        const planName = (body.subscription?.plan?.name || body.product_name || '').toLowerCase()
+        // 2. Por nome do plano (fallback seguro)
+        const planName = (
+            subscription?.plan?.name || body.Subscription?.plan?.name ||
+            body.product_name || body.ProductName || ''
+        ).toLowerCase()
+
         if (planName.includes('professional') || planName.includes('pro') || planName.includes('497')) {
             planSlug = 'pro'
-        } else if (planName.includes('standard') || planName.includes('basico') || planName.includes('básico') || planName.includes('97')) {
-            planSlug = 'basico'
         }
 
-        // Fallback final: se nada identificar, usa básico
-        if (!planSlug) planSlug = 'basico'
+        console.log(`[KIWIFY_WEBHOOK] Plan resolved: "${planSlug}" | Plan name: "${planName}"`)
 
-        console.log(`[KIWIFY_WEBHOOK] Plan detected: ${planSlug} | Amount: R$${amountInReais} | Plan name: "${planName}"`)
+        // ─── PROCESSAMENTO ─────────────────────────────────────────────────────
+        const { data: existingUser } = await supabase
+            .from('profiles').select('id').eq('email', email).single()
+
+        const isActive = ['paid', 'completed', 'active'].includes(order_status.toLowerCase())
+        const isCanceled = ['canceled', 'cancelled', 'chargeback', 'refunded'].includes(order_status.toLowerCase())
 
         if (existingUser) {
-            console.log(`[KIWIFY_WEBHOOK] Updating existing user: ${email} to plan: ${planSlug}`)
-            const isActive = ['paid', 'trialing'].includes(order_status)
-            
-            // Busca o ID do plano baseado no slug
+            console.log(`[KIWIFY_WEBHOOK] Updating existing user: ${email} → status: ${isActive ? 'active' : 'canceled'}`)
             const { data: planData } = await supabase.from('plans').select('id').eq('slug', planSlug).single()
-            
+
             await supabase.from('profiles').update({
-                stripe_subscription_status: isActive ? 'active' : 'canceled',
+                stripe_subscription_status: isCanceled ? 'canceled' : (isActive ? 'active' : 'active'),
                 plan_id: planData?.id || undefined
             }).eq('id', existingUser.id)
-        } else if (order_status === 'paid' || order_status === 'trialing') {
+
+            console.log(`[KIWIFY_WEBHOOK] ✅ User updated successfully: ${email}`)
+
+        } else if (isActive) {
+            // Novo cliente pagante — cria conta automaticamente
             console.log(`[KIWIFY_WEBHOOK] Creating NEW user: ${email} for plan: ${planSlug}`)
             
+            const fullName = 
+                customer.full_name || customer.FullName || 
+                customer.name      || customer.Name     || 'Cliente'
+
             const tempPassword = Math.random().toString(36).slice(-12)
             const { data: newUser, error: createError } = await supabase.auth.admin.createUser({
                 email: email,
                 password: tempPassword,
                 email_confirm: true,
-                user_metadata: {
-                    full_name: customer.full_name || 'Cliente Kiwify'
-                }
+                user_metadata: { full_name: fullName }
             })
 
             if (createError) {
@@ -114,10 +126,13 @@ export async function POST(req: NextRequest) {
 
             await supabase.from('profiles').update({
                 plan_id: planData?.id,
-                stripe_subscription_status: 'active'
+                stripe_subscription_status: 'active',
+                name: fullName
             }).eq('id', newUser.user.id)
-            
-            console.log(`[KIWIFY_WEBHOOK] New user provisioned successfully: ${email}`)
+
+            console.log(`[KIWIFY_WEBHOOK] ✅ New user provisioned: ${email} | Plan: ${planSlug}`)
+        } else {
+            console.log(`[KIWIFY_WEBHOOK] Ignoring event "${order_status}" for non-existing user ${email}`)
         }
 
         return NextResponse.json({ received: true })
