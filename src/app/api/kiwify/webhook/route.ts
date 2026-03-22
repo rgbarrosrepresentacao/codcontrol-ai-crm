@@ -85,15 +85,38 @@ export async function POST(req: NextRequest) {
         const { data: existingUser } = await supabase
             .from('profiles').select('id').eq('email', email).single()
 
-        const isActive = ['paid', 'completed', 'active'].includes(order_status.toLowerCase())
-        const isCanceled = ['canceled', 'cancelled', 'chargeback', 'refunded'].includes(order_status.toLowerCase())
+        // ─── LÓGICA DE STATUS DO WEBHOOK ───────────────────────────────────────
+        const eventType = (body.webhook_event_type || '').toLowerCase()
+        const subStatus = (subscription?.status || '').toLowerCase()
+
+        const isCanceled = 
+            ['canceled', 'cancelled', 'chargeback', 'refunded', 'past_due', 'inactive'].includes(order_status.toLowerCase()) ||
+            ['canceled', 'cancelled', 'past_due'].includes(subStatus) ||
+            eventType.includes('canceled') || eventType.includes('refunded') || eventType.includes('chargeback') || eventType.includes('past_due')
+
+        const isActive = 
+            ['paid', 'completed', 'active'].includes(order_status.toLowerCase()) ||
+            ['active'].includes(subStatus) ||
+            eventType === 'order_approved' || eventType.includes('renewed')
+
+        const isPending = 
+            ['waiting_payment', 'pending'].includes(order_status.toLowerCase()) || 
+            eventType.includes('created')
+
+        // Se for só geração de Pix/Boleto sem pagamento, ignorar para não afetar status
+        if (isPending && !isActive && !isCanceled) {
+            console.log(`[KIWIFY_WEBHOOK] ⏳ Pending payment ignored for: ${email}`)
+            return NextResponse.json({ received: true, info: 'Pending payment - ignored' })
+        }
 
         if (existingUser) {
-            console.log(`[KIWIFY_WEBHOOK] Updating existing user: ${email} → status: ${isActive ? 'active' : 'canceled'}`)
+            const finalStatus = isCanceled ? 'canceled' : (isActive ? 'active' : 'inactive')
+            console.log(`[KIWIFY_WEBHOOK] Updating existing user: ${email} → status: ${finalStatus} (Event: ${eventType})`)
+            
             const { data: planData } = await supabase.from('plans').select('id').eq('slug', planSlug).single()
 
             await supabase.from('profiles').update({
-                stripe_subscription_status: isCanceled ? 'canceled' : (isActive ? 'active' : 'active'),
+                stripe_subscription_status: finalStatus,
                 plan_id: planData?.id || undefined
             }).eq('id', existingUser.id)
 
