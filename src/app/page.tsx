@@ -25,9 +25,9 @@ export default function HomePage() {
             <a href="#planos" className="text-muted-foreground hover:text-primary transition-colors text-sm font-medium">Planos</a>
             <div className="w-px h-4 bg-border/50 mx-2" />
             <Link href="/login" className="text-muted-foreground hover:text-foreground transition-colors text-sm font-medium">Entrar</Link>
-            <Link href="/register?plan=basico" className="gradient-primary text-black font-bold px-6 py-2.5 rounded-full text-sm hover:scale-105 transition-all shadow-lg hover:shadow-primary/20">
-              Começar grátis
-            </Link>
+            <a href="https://pay.kiwify.com.br/N6zbMjk" className="gradient-primary text-black font-bold px-6 py-2.5 rounded-full text-sm hover:scale-105 transition-all shadow-lg hover:shadow-primary/20">
+              Assinar agora
+            </a>
           </nav>
         </div>
       </header>
@@ -51,10 +51,10 @@ export default function HomePage() {
           </p>
 
           <div className="flex flex-col sm:flex-row gap-6 justify-center items-center animate-slide-up">
-            <Link href="/register?plan=basico" className="gradient-primary text-black font-black px-12 py-5 rounded-2xl text-xl hover:scale-105 transition-all glow-primary flex items-center gap-3">
-              TESTAR POR 7 DIAS GRÁTIS
+            <a href="https://pay.kiwify.com.br/N6zbMjk" className="gradient-primary text-black font-black px-12 py-5 rounded-2xl text-xl hover:scale-105 transition-all glow-primary flex items-center gap-3">
+              INICIAR POR R$ 10 AGORA
               <ArrowRight className="w-6 h-6" />
-            </Link>
+            </a>
             <div className="flex items-center gap-2 text-muted-foreground">
               <div className="flex -space-x-2">
                 {[1, 2, 3, 4].map(i => (
@@ -227,12 +227,16 @@ export default function HomePage() {
 
           <div className="grid md:grid-cols-3 gap-8 items-end max-w-6xl mx-auto">
             {/* Basic */}
-            <div className="gradient-card border border-border/50 rounded-3xl p-10 text-left hover:border-primary/20 transition-all flex flex-col h-full">
-              <h3 className="text-xl font-bold text-foreground mb-2">Standard</h3>
-              <div className="flex items-baseline gap-1 mb-8">
-                <span className="text-muted-foreground text-sm font-medium">R$</span>
-                <span className="text-5xl font-black text-foreground">97</span>
-                <span className="text-muted-foreground text-sm font-medium">/mês</span>
+            <div className="gradient-card border-2 border-primary/50 rounded-3xl p-10 text-left hover:border-primary transition-all flex flex-col h-full relative overflow-hidden">
+              <div className="absolute top-0 right-0 bg-primary text-black text-[10px] font-black px-3 py-1 rounded-bl-xl uppercase">Oferta</div>
+              <h3 className="text-xl font-bold text-foreground mb-2">Básico</h3>
+              <div className="flex flex-col mb-8">
+                <div className="flex items-baseline gap-1">
+                  <span className="text-muted-foreground text-sm font-medium">R$</span>
+                  <span className="text-5xl font-black text-foreground">10</span>
+                  <span className="text-muted-foreground text-sm font-medium">/1º mês</span>
+                </div>
+                <span className="text-[10px] text-primary font-bold uppercase tracking-wider mt-1">Depois R$ 97/mês</span>
               </div>
               <ul className="space-y-4 mb-10 flex-1">
                 <li className="flex items-center gap-3 text-sm text-muted-foreground font-medium"><CheckCircle2 className="w-5 h-5 text-primary" /> 1 WhatsApp Conectado</li>
@@ -332,11 +336,11 @@ export default function HomePage() {
             Pronto para ver sua empresa <br /> vendendo no piloto automático?
           </h2>
           <div className="flex flex-col items-center gap-6 relative z-10">
-            <Link href="/register?plan=basico" className="bg-black text-white font-black px-12 py-6 rounded-2xl text-2xl hover:scale-105 transition-all shadow-2xl flex items-center gap-3">
-              QUERO MINHA CONTA GRÁTIS AGORA!
+            <a href="https://pay.kiwify.com.br/N6zbMjk" className="bg-black text-white font-black px-12 py-6 rounded-2xl text-2xl hover:scale-105 transition-all shadow-2xl flex items-center gap-3">
+              ASSINAR POR R$ 10 AGORA!
               <ArrowRight className="w-8 h-8" />
-            </Link>
-            <p className="text-black/70 font-bold text-sm">Nenhum cartão de crédito necessário nos primeiros 7 dias.</p>
+            </a>
+            <p className="text-black/70 font-bold text-sm italic">Oferta por tempo limitado: Primeiro mês por apenas R$ 10!</p>
           </div>
         </div>
       </section>
