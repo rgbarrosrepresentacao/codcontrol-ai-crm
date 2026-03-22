@@ -48,22 +48,36 @@ export async function POST(req: NextRequest) {
         const { data: existingUser } = await supabase.from('profiles').select('id').eq('email', email).single()
 
         // Mapeamento de produtos Kiwify para Slugs do sistema
-        // Adicione aqui os IDs de produto da sua Kiwify
+        // Adicione aqui os IDs de produto da sua Kiwify (mais seguro)
         const productMapping: Record<string, string> = {
             '09522b10-2574-11f1-9c6b-eb8ffdd12023': 'basico',
             'SUBSTITUA_PELO_ID_PRO': 'pro',
             'SUBSTITUA_PELO_ID_PREMIUM': 'premium'
         }
 
-        const planSlug = productMapping[product_id] || 'basico'
+        let planSlug = productMapping[product_id]
+
+        // SEGURANÇA EXTRA: Se o ID não for reconhecido, olhamos para o nome ou preço
+        if (!planSlug && body.product_name) {
+            const name = body.product_name.toLowerCase()
+            if (name.includes('pro') || name.includes('497')) planSlug = 'pro'
+            else if (name.includes('básico') || name.includes('basico') || name.includes('97')) planSlug = 'basico'
+            else if (name.includes('agência') || name.includes('997')) planSlug = 'agencia'
+        }
+
+        // Fallback final
+        if (!planSlug) planSlug = 'basico'
 
         if (existingUser) {
             console.log(`[KIWIFY_WEBHOOK] Updating existing user: ${email} to plan: ${planSlug}`)
             const isActive = ['paid', 'trialing'].includes(order_status)
             
+            // Busca o ID do plano baseado no slug
+            const { data: planData } = await supabase.from('plans').select('id').eq('slug', planSlug).single()
+            
             await supabase.from('profiles').update({
                 stripe_subscription_status: isActive ? 'active' : 'canceled',
-                plan_id: (await supabase.from('plans').select('id').eq('slug', planSlug).single()).data?.id
+                plan_id: planData?.id || undefined
             }).eq('id', existingUser.id)
         } else if (order_status === 'paid' || order_status === 'trialing') {
             console.log(`[KIWIFY_WEBHOOK] Creating NEW user: ${email} for plan: ${planSlug}`)
