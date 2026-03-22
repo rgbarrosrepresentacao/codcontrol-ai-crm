@@ -58,10 +58,10 @@ function RegisterForm() {
                     <span className="font-bold text-xl text-foreground">CodControl AI CRM</span>
                 </Link>
                 <h1 className="text-2xl font-bold text-foreground mb-1">
-                    {plan ? `Assinar Plano ${plan.charAt(0).toUpperCase() + plan.slice(1)}` : 'Crie sua conta grátis'}
+                    {plan ? `Assinar Plano ${plan.charAt(0).toUpperCase() + plan.slice(1)}` : 'Crie sua conta'}
                 </h1>
                 <p className="text-muted-foreground text-sm">
-                    {plan ? 'Garanta sua vaga agora mesmo' : '7 dias grátis, sem cartão de crédito'}
+                    {plan ? 'Garanta sua vaga agora mesmo' : 'Experimente 30 dias por apenas R$ 10'}
                 </p>
             </div>
 
@@ -117,7 +117,7 @@ function RegisterForm() {
 
                     <button type="submit" disabled={isSubmitting} className="w-full gradient-primary text-black font-semibold py-3 rounded-lg hover:opacity-90 transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed mt-2">
                         {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
-                        {isSubmitting ? 'Criando conta...' : plan ? 'Prosseguir para Assinatura' : 'Criar conta grátis'}
+                        {isSubmitting ? 'Criando conta...' : plan ? 'Prosseguir para Assinatura' : 'Criar minha conta'}
                     </button>
 
                     <p className="text-xs text-muted-foreground text-center">

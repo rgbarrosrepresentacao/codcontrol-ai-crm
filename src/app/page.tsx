@@ -26,7 +26,7 @@ export default function HomePage() {
             <div className="w-px h-4 bg-border/50 mx-2" />
             <Link href="/login" className="text-muted-foreground hover:text-foreground transition-colors text-sm font-medium">Entrar</Link>
             <a href="https://pay.kiwify.com.br/N6zbMjk" className="gradient-primary text-black font-bold px-6 py-2.5 rounded-full text-sm hover:scale-105 transition-all shadow-lg hover:shadow-primary/20">
-              INICIAR TESTE GRÁTIS
+              Assinar Plano Básico
             </a>
           </nav>
         </div>
@@ -52,7 +52,7 @@ export default function HomePage() {
 
           <div className="flex flex-col sm:flex-row gap-6 justify-center items-center animate-slide-up">
             <a href="https://pay.kiwify.com.br/N6zbMjk" className="gradient-primary text-black font-black px-12 py-5 rounded-2xl text-xl hover:scale-105 transition-all glow-primary flex items-center gap-3">
-              7 DIAS GRÁTIS + 1º MÊS R$ 10
+              TESTAR 30 DIAS POR R$ 10
               <ArrowRight className="w-6 h-6" />
             </a>
             <div className="flex items-center gap-2 text-muted-foreground">
@@ -228,14 +228,15 @@ export default function HomePage() {
           <div className="grid md:grid-cols-3 gap-8 items-end max-w-6xl mx-auto">
             {/* Basic */}
             <div className="gradient-card border-2 border-primary/50 rounded-3xl p-10 text-left hover:border-primary transition-all flex flex-col h-full relative overflow-hidden">
-              <div className="absolute top-0 right-0 bg-primary text-black text-[10px] font-black px-3 py-1 rounded-bl-xl uppercase">MAIS POPULAR</div>
-              <h3 className="text-xl font-bold text-foreground mb-2">Básico (Combo)</h3>
+              <div className="absolute top-0 right-0 bg-primary text-black text-[10px] font-black px-3 py-1 rounded-bl-xl uppercase">OFERTA</div>
+              <h3 className="text-xl font-bold text-foreground mb-2">Básico</h3>
               <div className="flex flex-col mb-8">
                 <div className="flex items-baseline gap-2">
-                  <span className="text-4xl font-black text-foreground">7 DIAS GRÁTIS</span>
+                  <span className="text-5xl font-black text-foreground">R$ 10</span>
+                  <span className="text-muted-foreground text-sm font-medium">/30 dias</span>
                 </div>
                 <div className="mt-2 p-3 rounded-xl bg-primary/10 border border-primary/20">
-                   <p className="text-xs font-bold text-primary uppercase">+ 1º MÊS POR APENAS R$ 10</p>
+                   <p className="text-xs font-bold text-primary uppercase">APROVEITE O VALOR PROMOCIONAL</p>
                    <p className="text-[10px] text-muted-foreground mt-1">Depois apenas R$ 97/mês</p>
                 </div>
               </div>
@@ -338,10 +339,10 @@ export default function HomePage() {
           </h2>
           <div className="flex flex-col items-center gap-6 relative z-10">
             <a href="https://pay.kiwify.com.br/N6zbMjk" className="bg-black text-white font-black px-12 py-6 rounded-2xl text-2xl hover:scale-105 transition-all shadow-2xl flex items-center gap-3">
-              QUERO MEUS 7 DIAS GRÁTIS!
+              QUERO TESTAR POR R$ 10!
               <ArrowRight className="w-8 h-8" />
             </a>
-            <p className="text-black/70 font-bold text-sm italic">Combo Exclusivo: Teste por 7 dias + Primeiro mês por R$ 10.</p>
+            <p className="text-black/70 font-bold text-sm italic">Oferta de Experimentação: 30 dias de CodControl por apenas R$ 10.</p>
           </div>
         </div>
       </section>
