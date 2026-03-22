@@ -48,25 +48,36 @@ export async function POST(req: NextRequest) {
         const { data: existingUser } = await supabase.from('profiles').select('id').eq('email', email).single()
 
         // Mapeamento de produtos Kiwify para Slugs do sistema
-        // Adicione aqui os IDs de produto da sua Kiwify (mais seguro)
+        // Ambos os planos (Standard e Pro) usam o mesmo product_id.
+        // Diferenciamos pelo valor pago ou pelo nome do plano.
         const productMapping: Record<string, string> = {
-            '09522b10-2574-11f1-9c6b-eb8ffdd12023': 'basico',
-            'SUBSTITUA_PELO_ID_PRO': 'pro',
-            'SUBSTITUA_PELO_ID_PREMIUM': 'premium'
+            '09522b10-2574-11f1-9c6b-eb8ffdd12023': 'basico', // produto base (Standard por padrão)
         }
 
         let planSlug = productMapping[product_id]
 
-        // SEGURANÇA EXTRA: Se o ID não for reconhecido, olhamos para o nome ou preço
-        if (!planSlug && body.product_name) {
-            const name = body.product_name.toLowerCase()
-            if (name.includes('pro') || name.includes('497')) planSlug = 'pro'
-            else if (name.includes('básico') || name.includes('basico') || name.includes('97')) planSlug = 'basico'
-            else if (name.includes('agência') || name.includes('997')) planSlug = 'agencia'
+        // DETECÇÃO POR PREÇO: O campo mais confiável da Kiwify
+        const amount = body.order?.amount || body.payment?.amount || body.subscription?.plan?.amount || 0
+        const amountInReais = amount > 100 ? amount / 100 : amount // normaliza centavos vs reais
+
+        if (amountInReais >= 400) {
+            planSlug = 'pro' // R$ 497
+        } else if (amountInReais >= 50) {
+            planSlug = 'basico' // R$ 97 ou R$ 10 (1ª cobrança)
         }
 
-        // Fallback final
+        // DETECÇÃO POR NOME DO PLANO (fallback secundário)
+        const planName = (body.subscription?.plan?.name || body.product_name || '').toLowerCase()
+        if (planName.includes('professional') || planName.includes('pro') || planName.includes('497')) {
+            planSlug = 'pro'
+        } else if (planName.includes('standard') || planName.includes('basico') || planName.includes('básico') || planName.includes('97')) {
+            planSlug = 'basico'
+        }
+
+        // Fallback final: se nada identificar, usa básico
         if (!planSlug) planSlug = 'basico'
+
+        console.log(`[KIWIFY_WEBHOOK] Plan detected: ${planSlug} | Amount: R$${amountInReais} | Plan name: "${planName}"`)
 
         if (existingUser) {
             console.log(`[KIWIFY_WEBHOOK] Updating existing user: ${email} to plan: ${planSlug}`)
