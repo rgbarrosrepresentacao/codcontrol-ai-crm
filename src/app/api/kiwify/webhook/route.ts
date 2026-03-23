@@ -115,9 +115,22 @@ export async function POST(req: NextRequest) {
             
             const { data: planData } = await supabase.from('plans').select('id').eq('slug', planSlug).single()
 
+            // Define trial_ends_at based on Kiwify's next payment date + Grace Period
+            const nextPayment = subscription?.next_payment || subscription?.customer_access?.access_until
+            let trialEndsAt = null
+            if (nextPayment) {
+                trialEndsAt = new Date(nextPayment).toISOString()
+            } else if (isActive) {
+                // Se pagou e não for assinatura com data (venda única, etc), por segurança +30 dias:
+                const d = new Date()
+                d.setDate(d.getDate() + 30)
+                trialEndsAt = d.toISOString()
+            }
+
             await supabase.from('profiles').update({
                 stripe_subscription_status: finalStatus,
-                plan_id: planData?.id || undefined
+                plan_id: planData?.id || undefined,
+                trial_ends_at: trialEndsAt || undefined
             }).eq('id', existingUser.id)
 
             console.log(`[KIWIFY_WEBHOOK] ✅ User updated successfully: ${email}`)
@@ -147,10 +160,21 @@ export async function POST(req: NextRequest) {
 
             const { data: planData } = await supabase.from('plans').select('id').eq('slug', planSlug).single()
 
+            const nextPayment = subscription?.next_payment || subscription?.customer_access?.access_until
+            let trialEndsAt = null
+            if (nextPayment) {
+                trialEndsAt = new Date(nextPayment).toISOString()
+            } else if (isActive) {
+                const d = new Date()
+                d.setDate(d.getDate() + 30)
+                trialEndsAt = d.toISOString()
+            }
+
             await supabase.from('profiles').update({
                 plan_id: planData?.id,
                 stripe_subscription_status: 'active',
-                name: fullName
+                name: fullName,
+                trial_ends_at: trialEndsAt || undefined
             }).eq('id', newUser.user.id)
 
             console.log(`[KIWIFY_WEBHOOK] ✅ New user provisioned: ${email} | Plan: ${planSlug}`)
