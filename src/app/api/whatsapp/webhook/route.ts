@@ -601,6 +601,32 @@ async function processWebhookInBackground(body: any) {
         }
         if (!aiConfig || !profile?.openai_api_key) return
 
+        // ─── Knowledge Base: busca mídias cadastradas pelo usuário ───────────────
+        const { data: knowledgeItems } = await supabase
+            .from('ai_knowledge')
+            .select('id, name, description, media_url, media_type')
+            .eq('user_id', userId)
+
+        // Monta o bloco de contexto de conhecimento para o prompt
+        let knowledgeContext = ''
+        if (knowledgeItems && knowledgeItems.length > 0) {
+            const list = knowledgeItems.map(k =>
+                `  - ID:${k.id} | Tipo:${k.media_type} | Nome:"${k.name}" | Quando enviar: "${k.description}"`
+            ).join('\n')
+            knowledgeContext = `
+
+── MÍDIAS DISPONÍVEIS (USE COM SABEDORIA) ──
+Você tem acesso às seguintes mídias para enviar ao cliente:
+${list}
+
+REGRAS DE USO:
+- Inclua o código [SEND_MEDIA:ID_AQUI] no FINAL da sua resposta SOMENTE se o momento for propício baseado na descrição da mídia.
+- Use APENAS UM envio por resposta, no máximo.
+- NÃO force o envio desnecessariamente. Só envie se o cliente pedir para ver o produto, demonstrar interesse genuíno ou se a descrição da mídia se encaixar naturalmente no momento da conversa.
+- O código [SEND_MEDIA:ID] será removido automaticamente da mensagem. O cliente NÃO verá isso.
+- NUNCA mencione o código em voz alta ou explique que vai enviar um arquivo antes — apenas envie de forma natural.`
+        }
+
         // Anti-atropelamento
         await new Promise(r => setTimeout(r, 7000))
         if (conversationId) {
@@ -646,7 +672,7 @@ ${audioCapabilityNote}`
 
         const systemMessage = {
             role: 'system' as const,
-            content: `[DATA E HORA: ${currentDate}]\n\n${aiConfig.system_prompt}\n\nTom: ${aiConfig.tone}.${logisticsHint || ''}${funnelContext}${humanityRules}`
+            content: `[DATA E HORA: ${currentDate}]\n\n${aiConfig.system_prompt}\n\nTom: ${aiConfig.tone}.${logisticsHint || ''}${funnelContext}${knowledgeContext}${humanityRules}`
         }
 
         const gptRes = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -662,7 +688,20 @@ ${audioCapabilityNote}`
 
         if (!gptRes.ok) return
         const gptData = await gptRes.json()
-        const botReply = gptData.choices[0].message.content
+        let botReply: string = gptData.choices[0].message.content
+
+        // ─── Smart Media: detecta e processa [SEND_MEDIA:ID] ──────────────────────
+        let mediaTriggerItem: typeof knowledgeItems extends (infer T)[] | null ? T | null : null = null
+        if (knowledgeItems && knowledgeItems.length > 0) {
+            const mediaTagMatch = botReply.match(/\[SEND_MEDIA:([a-zA-Z0-9\-]+)\]/)
+            if (mediaTagMatch) {
+                const mediaId = mediaTagMatch[1].trim()
+                mediaTriggerItem = knowledgeItems.find(k => k.id === mediaId) || null
+                // Remove o código invisível da mensagem ANTES de enviar ao cliente
+                botReply = botReply.replace(/\s*\[SEND_MEDIA:[a-zA-Z0-9\-]+\]/g, '').trim()
+                console.log(`[Knowledge] 🎯 Mídia detectada: ID=${mediaId} | Encontrada: ${!!mediaTriggerItem}`)
+            }
+        }
 
         // Classificação
         const newAiTag = await classifyContact([...chatMessages, { role: 'assistant', content: botReply }], profile.openai_api_key)
@@ -744,19 +783,35 @@ ${audioCapabilityNote}`
 
         // Resposta Padrão (Voz ou Texto) se não for fechamento
         const typingTime = Math.min(Math.max(botReply.length * 50, 2000), 10000)
-        if (aiConfig.audio_enabled && wantsAudio) {
-            try {
-                await evolutionApi.sendPresence(instanceName, remoteJid, 'recording')
-                const audioB64 = await generateSpeech(botReply, aiConfig.voice_id || 'nova', profile.openai_api_key)
-                await new Promise(r => setTimeout(r, Math.max(typingTime - 2000, 1000)))
-                await evolutionApi.sendWhatsAppAudio(instanceName, remoteJid, audioB64)
-            } catch (err) {
+        if (botReply) { // Só entra se houver texto após o processamento das tags
+            if (aiConfig.audio_enabled && wantsAudio) {
+                try {
+                    await evolutionApi.sendPresence(instanceName, remoteJid, 'recording')
+                    const audioB64 = await generateSpeech(botReply, aiConfig.voice_id || 'nova', profile.openai_api_key)
+                    await new Promise(r => setTimeout(r, Math.max(typingTime - 2000, 1000)))
+                    await evolutionApi.sendWhatsAppAudio(instanceName, remoteJid, audioB64)
+                } catch (err) {
+                    await evolutionApi.sendTextMessage(instanceName, remoteJid, botReply)
+                }
+            } else {
+                await evolutionApi.sendPresence(instanceName, remoteJid, 'composing')
+                await new Promise(resolve => setTimeout(resolve, typingTime))
                 await evolutionApi.sendTextMessage(instanceName, remoteJid, botReply)
             }
-        } else {
-            await evolutionApi.sendPresence(instanceName, remoteJid, 'composing')
-            await new Promise(resolve => setTimeout(resolve, typingTime))
-            await evolutionApi.sendTextMessage(instanceName, remoteJid, botReply)
+        }
+
+        // ─── Smart Media: envia a mídia após a mensagem de texto ─────────────────
+        if (mediaTriggerItem) {
+            try {
+                // Aguarda 1.5s para parecer que a vendedora está buscando o arquivo
+                await new Promise(r => setTimeout(r, 1500))
+                const mType = mediaTriggerItem.media_type as 'image' | 'video' | 'document'
+                await evolutionApi.sendMedia(instanceName, remoteJid, mediaTriggerItem.media_url, mType)
+                console.log(`[Knowledge] ✅ Mídia enviada: ${mediaTriggerItem.name}`)
+            } catch (mediaErr: any) {
+                // Erro na mídia nunca deve quebrar a conversa principal
+                console.error('[Knowledge] ❌ Erro ao enviar mídia:', mediaErr.message)
+            }
         }
 
         // Salvar Resposta no Banco
