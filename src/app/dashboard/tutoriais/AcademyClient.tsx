@@ -11,71 +11,99 @@ import {
     FileText
 } from 'lucide-react'
 
-const lessons = [
+const courses = [
     {
-        id: 'rMaphAg8v-U',
-        title: 'Aula 1 — Boas vindas ao CodControl',
-        duration: '02:30',
-        description: 'Seja bem-vindo à revolução do atendimento com IA. Conheça a visão geral da plataforma.'
+        title: 'Dominando o CodControl',
+        lessons: [
+            {
+                id: 'rMaphAg8v-U',
+                title: 'Aula 1 — Boas vindas ao CodControl',
+                duration: '02:30',
+                description: 'Seja bem-vindo à revolução do atendimento com IA. Conheça a visão geral da plataforma.'
+            },
+            {
+                id: 'OzvQkT4MUzU',
+                title: 'Aula 2 — Explicando o sistema',
+                duration: '05:15',
+                description: 'Um tour completo por todas as funcionalidades do dashboard e ferramentas.'
+            },
+            {
+                id: 'c8E6dn-r_2I',
+                title: 'Aula 3 — Conectando seu WhatsApp',
+                duration: '04:20',
+                description: 'Aprenda o passo a passo seguro para conectar sua instância do WhatsApp via QR Code.'
+            },
+            {
+                id: 'Q9w6V78sicM',
+                title: 'Aula 4 — Como funciona a IA do atendimento',
+                duration: '08:45',
+                description: 'Entenda como treinar sua IA para responder seus clientes como se fosse você.'
+            },
+            {
+                id: 'gzs6y2WfrdQ',
+                title: 'Aula 5 — Organizando clientes com etiquetas',
+                duration: '03:50',
+                description: 'Mantenha seu CRM limpo e organizado usando o sistema inteligente de etiquetas.'
+            },
+            {
+                id: 'Dujfe58SSq4',
+                title: 'Aula 6 — Como controlar conversas',
+                duration: '06:10',
+                description: 'Aprenda a intervir quando necessário e gerenciar o chat ao vivo.'
+            },
+            {
+                id: 'cWCt-tpGPLc',
+                title: 'Aula 7 — Funil de Vendas: Estratégia para Vender',
+                duration: '12:30',
+                description: 'Estratégias avançadas para triplicar suas vendas usando funis automáticos.'
+            },
+            {
+                id: 'M622ZsQhxgg',
+                title: 'Aula 8 — Suporte e Próximos Passos',
+                duration: '03:00',
+                description: 'Onde encontrar ajuda e como escalar sua operação com o CodControl.'
+            },
+            {
+                id: 'R8CRcUliIHU',
+                title: 'Aula 9 — Como usar Gerador de Prompt de Elite',
+                duration: '06:15',
+                description: 'Aprenda a criar prompts impossíveis de serem ignorados usando nosso gerador inteligente.'
+            },
+            {
+                id: '3sWWzFI4Zmg',
+                title: 'Aula 10 — Como ativar para a IA falar por áudio',
+                duration: '04:50',
+                description: 'Configure a voz da sua atendente e humanize seu atendimento com mensagens de voz automáticas.'
+            }
+        ]
     },
     {
-        id: 'OzvQkT4MUzU',
-        title: 'Aula 2 — Explicando o sistema',
-        duration: '05:15',
-        description: 'Um tour completo por todas as funcionalidades do dashboard e ferramentas.'
-    },
-    {
-        id: 'c8E6dn-r_2I',
-        title: 'Aula 3 — Conectando seu WhatsApp',
-        duration: '04:20',
-        description: 'Aprenda o passo a passo seguro para conectar sua instância do WhatsApp via QR Code.'
-    },
-    {
-        id: 'Q9w6V78sicM',
-        title: 'Aula 4 — Como funciona a IA do atendimento',
-        duration: '08:45',
-        description: 'Entenda como treinar sua IA para responder seus clientes como se fosse você.'
-    },
-    {
-        id: 'gzs6y2WfrdQ',
-        title: 'Aula 5 — Organizando clientes com etiquetas',
-        duration: '03:50',
-        description: 'Mantenha seu CRM limpo e organizado usando o sistema inteligente de etiquetas.'
-    },
-    {
-        id: 'Dujfe58SSq4',
-        title: 'Aula 6 — Como controlar conversas',
-        duration: '06:10',
-        description: 'Aprenda a intervir quando necessário e gerenciar o chat ao vivo.'
-    },
-    {
-        id: 'cWCt-tpGPLc',
-        title: 'Aula 7 — Funil de Vendas: Estratégia para Vender',
-        duration: '12:30',
-        description: 'Estratégias avançadas para triplicar suas vendas usando funis automáticos.'
-    },
-    {
-        id: 'M622ZsQhxgg',
-        title: 'Aula 8 — Suporte e Próximos Passos',
-        duration: '03:00',
-        description: 'Onde encontrar ajuda e como escalar sua operação com o CodControl.'
-    },
-    {
-        id: 'R8CRcUliIHU',
-        title: 'Aula 9 — Como usar Gerador de Prompt de Elite',
-        duration: '06:15',
-        description: 'Aprenda a criar prompts impossíveis de serem ignorados usando nosso gerador inteligente.'
-    },
-    {
-        id: '3sWWzFI4Zmg',
-        title: 'Aula 10 — Como ativar para a IA falar por áudio',
-        duration: '04:50',
-        description: 'Configure a voz da sua atendente e humanize seu atendimento com mensagens de voz automáticas.'
+        title: 'Mini Curso: Primeira Venda',
+        lessons: [
+            {
+                id: 'JdNC2E1ccdk',
+                title: 'AULA 1 — Boas-vindas + Mapa do jogo',
+                duration: '08:12',
+                description: 'Boas-vindas ao mini-curso de primeira venda e visão geral do mapa do jogo para começar com o pé direito.'
+            },
+            {
+                id: 'UvXc7UZClGw',
+                title: 'AULA 2 — Escolhendo o produto certo',
+                duration: '12:45',
+                description: 'Aprenda a estratégia para escolher o produto ideal, com alta conversão e baixa barreira de entrada.'
+            },
+            {
+                id: 'LuAK8bbDN0c',
+                title: 'AULA 3 — Criativo que vende',
+                duration: '15:20',
+                description: 'Como criar anúncios impossíveis de serem ignorados usando IA, focados totalmente em conversão.'
+            }
+        ]
     }
 ]
 
 export default function AcademyClient({ materials }: { materials: any[] }) {
-    const [activeLesson, setActiveLesson] = useState(lessons[0])
+    const [activeLesson, setActiveLesson] = useState(courses[0].lessons[0])
 
     return (
         <div className="p-4 md:p-8 space-y-8 animate-fade-in max-w-7xl mx-auto">
@@ -162,46 +190,59 @@ export default function AcademyClient({ materials }: { materials: any[] }) {
                 </div>
 
                 {/* Playlist Sidebar */}
-                <div className="space-y-4">
+                <div className="space-y-6">
                     <h3 className="text-xl font-bold text-foreground flex items-center gap-2 px-2">
                         <PlayCircle className="w-5 h-5 text-primary" />
                         Conteúdo do Curso
                     </h3>
-                    <div className="space-y-2 max-h-[800px] overflow-y-auto pr-2 custom-scrollbar">
-                        {lessons.map((lesson, index) => {
-                            const isActive = activeLesson.id === lesson.id
-                            return (
-                                <button
-                                    key={lesson.id}
-                                    onClick={() => setActiveLesson(lesson)}
-                                    className={`w-full flex text-left gap-4 p-4 rounded-xl transition-all border ${
-                                        isActive 
-                                        ? 'bg-primary/10 border-primary/50 ring-1 ring-primary/20' 
-                                        : 'bg-secondary/10 border-transparent hover:bg-secondary/30 hover:border-border'
-                                    }`}
-                                >
-                                    <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-secondary flex items-center justify-center text-xs font-bold text-muted-foreground">
-                                        {index + 1}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <div className={`text-sm font-semibold truncate ${isActive ? 'text-primary' : 'text-foreground'}`}>
-                                            {lesson.title}
-                                        </div>
-                                        <div className="flex items-center gap-2 mt-1">
-                                            <span className="text-[10px] text-muted-foreground flex items-center gap-1 uppercase tracking-wider">
-                                                <Clock className="w-3 h-3" />
-                                                {lesson.duration}
-                                            </span>
-                                        </div>
-                                    </div>
-                                    {isActive && (
-                                        <div className="flex items-center">
-                                            <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-                                        </div>
-                                    )}
-                                </button>
-                            )
-                        })}
+                    
+                    <div className="space-y-8 max-h-[800px] overflow-y-auto pr-2 custom-scrollbar">
+                        {courses.map((course) => (
+                            <div key={course.title} className="space-y-3">
+                                <div className="flex items-center gap-2 px-2">
+                                    <div className="h-4 w-1 bg-primary rounded-full" />
+                                    <h4 className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em]">
+                                        {course.title}
+                                    </h4>
+                                </div>
+                                <div className="space-y-2">
+                                    {course.lessons.map((lesson, index) => {
+                                        const isActive = activeLesson.id === lesson.id
+                                        return (
+                                            <button
+                                                key={lesson.id}
+                                                onClick={() => setActiveLesson(lesson)}
+                                                className={`w-full flex text-left gap-4 p-4 rounded-xl transition-all border ${
+                                                    isActive 
+                                                    ? 'bg-primary/10 border-primary/50 ring-1 ring-primary/20' 
+                                                    : 'bg-secondary/10 border-transparent hover:bg-secondary/30 hover:border-border'
+                                                }`}
+                                            >
+                                                <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-secondary flex items-center justify-center text-xs font-bold text-muted-foreground">
+                                                    {index + 1}
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className={`text-sm font-semibold truncate ${isActive ? 'text-primary' : 'text-foreground'}`}>
+                                                        {lesson.title}
+                                                    </div>
+                                                    <div className="flex items-center gap-2 mt-1">
+                                                        <span className="text-[10px] text-muted-foreground flex items-center gap-1 uppercase tracking-wider">
+                                                            <Clock className="w-3 h-3" />
+                                                            {lesson.duration}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                {isActive && (
+                                                    <div className="flex items-center">
+                                                        <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                                                    </div>
+                                                )}
+                                            </button>
+                                        )
+                                    })}
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 </div>
             </div>
