@@ -39,10 +39,15 @@ export default function ConhecimentoPage() {
     useEffect(() => { loadItems() }, [])
 
     async function loadItems() {
+        const { data: { user } } = await supabase.auth.getSession().then(res => ({ data: { user: res.data.session?.user || null } }))
+        if (!user) return
+
         const { data } = await supabase
             .from('ai_knowledge')
             .select('*')
+            .eq('user_id', user.id)
             .order('created_at', { ascending: false })
+            
         if (data) setItems(data)
         setLoading(false)
     }
@@ -110,7 +115,16 @@ export default function ConhecimentoPage() {
 
     async function handleDelete(id: string) {
         if (!confirm('Remover esta mídia do conhecimento da IA?')) return
-        const { error } = await supabase.from('ai_knowledge').delete().eq('id', id)
+        
+        const { data: { user } } = await supabase.auth.getSession().then(res => ({ data: { user: res.data.session?.user || null } }))
+        if (!user) return
+
+        const { error } = await supabase
+            .from('ai_knowledge')
+            .delete()
+            .eq('id', id)
+            .eq('user_id', user.id)
+
         if (error) return toast.error('Erro ao remover.')
         setItems(prev => prev.filter(i => i.id !== id))
         toast.success('Mídia removida.')
