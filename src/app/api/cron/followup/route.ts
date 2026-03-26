@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
                 instance_id,
                 contact_id,
                 last_message_at,
-                contacts!inner ( id, ai_tag, followup_stage, whatsapp_id )
+                contacts!inner ( id, ai_tag, followup_stage, whatsapp_id, active_campaign_id )
             `)
             .eq('status', 'open')
             .lt('last_message_at', new Date(Date.now() - 30 * 60 * 1000).toISOString())
@@ -130,6 +130,21 @@ export async function GET(req: NextRequest) {
                 aiConfig = glob?.[0]
             }
             if (!aiConfig) continue
+
+            // 3c. Sobrescrever Prompt se houver campanha ativa no contato
+            if (contact.active_campaign_id) {
+                const { data: campaign } = await supabase
+                    .from('campaigns')
+                    .select('*')
+                    .eq('id', contact.active_campaign_id)
+                    .single()
+                
+                if (campaign) {
+                    console.log(`[Follow-up] 🗣️ Usando contexto da campanha: ${campaign.name}`)
+                    aiConfig.system_prompt = campaign.system_prompt
+                    aiConfig.bot_name = campaign.name
+                }
+            }
 
             const { data: inst } = await supabase.from('whatsapp_instances').select('instance_name').eq('id', conversation.instance_id).single()
             if (!inst) continue

@@ -449,13 +449,33 @@ async function processWebhookInBackground(body: any) {
             // restarts from the beginning if they go silent again after engaging.
             followup_stage: 0
         }, { onConflict: 'user_id,whatsapp_id' })
-        .select('id, ai_tag, current_funnel_id, funnel_step_order, is_funnel_active, wants_audio')
+        .select('id, ai_tag, current_funnel_id, funnel_step_order, is_funnel_active, wants_audio, active_campaign_id')
         .single()
 
         if (!contact) return
         const contactId = contact.id
         const currentAiTag = contact.ai_tag as AiTag | null
         let wantsAudio = contact.wants_audio
+        let activeCampaignId = (contact as any).active_campaign_id
+
+        // 4b. Detecção de Campanha (Multi-Produto)
+        const { data: campaigns } = await supabase
+            .from('campaigns')
+            .select('*')
+            .eq('user_id', userId)
+            .eq('instance_id', instanceId)
+            .eq('is_active', true)
+
+        if (campaigns && campaigns.length > 0) {
+            const matchedCampaign = campaigns.find(c => 
+                textMessage.toLowerCase().includes(c.trigger_phrase.toLowerCase())
+            )
+            if (matchedCampaign) {
+                console.log(`[Campaign] 🎯 Gatilho detectado: ${matchedCampaign.name} para o contato ${contactId}`)
+                activeCampaignId = matchedCampaign.id
+                await supabase.from('contacts').update({ active_campaign_id: activeCampaignId }).eq('id', contactId)
+            }
+        }
 
         const { data: conversation } = await supabase.from('conversations').upsert({
             user_id: userId,
@@ -601,11 +621,30 @@ async function processWebhookInBackground(body: any) {
         }
         if (!aiConfig || !profile?.openai_api_key) return
 
-        // ─── Knowledge Base: busca mídias cadastradas pelo usuário ───────────────
-        const { data: knowledgeItems } = await supabase
+        // 9a. Sobrescrever Prompt se houver campanha ativa
+        if (activeCampaignId && campaigns) {
+            const currentCampaign = campaigns.find(c => c.id === activeCampaignId)
+            if (currentCampaign) {
+                console.log(`[Campaign] 🗣️ Usando prompt da campanha: ${currentCampaign.name}`)
+                aiConfig.system_prompt = currentCampaign.system_prompt
+                aiConfig.bot_name = currentCampaign.name // Opcional: assume o nome da campanha se desejar
+            }
+        }
+
+        // ─── Knowledge Base: busca mídias cadastradas e filtra por campanha ──────
+        let knowledgeQuery = supabase
             .from('ai_knowledge')
-            .select('id, name, description, media_url, media_type')
+            .select('id, name, description, media_url, media_type, campaign_id')
             .eq('user_id', userId)
+
+        // Se houver campanha ativa, busca itens daquela campanha OU itens gerais (campaign_id is null)
+        if (activeCampaignId) {
+            knowledgeQuery = knowledgeQuery.or(`campaign_id.eq.${activeCampaignId},campaign_id.is.null`)
+        } else {
+            knowledgeQuery = knowledgeQuery.is('campaign_id', null)
+        }
+
+        const { data: knowledgeItems } = await knowledgeQuery
 
         // Monta o bloco de contexto de conhecimento para o prompt
         let knowledgeContext = ''

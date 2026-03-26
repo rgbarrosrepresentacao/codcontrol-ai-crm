@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabase'
 import {
     Bot, LayoutDashboard, Smartphone, Brain, Users,
     Settings, LogOut, ChevronRight, Shield, X, Menu, CreditCard, MessageCircle, MessageSquare,
-    Filter, Truck, PlayCircle, BookOpen
+    Filter, Truck, PlayCircle, BookOpen, Megaphone
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -27,6 +27,7 @@ const navItems = [
 
 const adminItems = [
     { href: '/dashboard/admin', label: 'Painel Admin', icon: Shield },
+    { href: '/dashboard/ia/campanhas', label: 'Múltiplos Produtos', icon: Megaphone },
 ]
 
 interface SidebarProps {

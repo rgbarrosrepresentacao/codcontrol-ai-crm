@@ -14,6 +14,8 @@ interface KnowledgeItem {
     media_url: string
     media_type: 'image' | 'video' | 'document'
     created_at: string
+    campaign_id?: string | null
+    campaigns?: { name: string } | null
 }
 
 const MEDIA_TYPE_CONFIG = {
@@ -34,9 +36,19 @@ export default function ConhecimentoPage() {
         description: '',
         media_url: '',
         media_type: 'image' as 'image' | 'video' | 'document',
+        campaign_id: null as string | null,
     })
+    const [campaigns, setCampaigns] = useState<{id: string, name: string}[]>([])
 
-    useEffect(() => { loadItems() }, [])
+    useEffect(() => { 
+        loadItems() 
+        loadCampaigns()
+    }, [])
+
+    async function loadCampaigns() {
+        const { data } = await supabase.from('campaigns').select('id, name').eq('is_active', true)
+        if (data) setCampaigns(data)
+    }
 
     async function loadItems() {
         const { data: { user } } = await supabase.auth.getSession().then(res => ({ data: { user: res.data.session?.user || null } }))
@@ -44,7 +56,7 @@ export default function ConhecimentoPage() {
 
         const { data } = await supabase
             .from('ai_knowledge')
-            .select('*')
+            .select('*, campaigns(name)')
             .eq('user_id', user.id)
             .order('created_at', { ascending: false })
             
@@ -103,7 +115,7 @@ export default function ConhecimentoPage() {
 
             if (error) throw error
             setItems(prev => [data, ...prev])
-            setForm({ name: '', description: '', media_url: '', media_type: 'image' })
+            setForm({ name: '', description: '', media_url: '', media_type: 'image', campaign_id: null })
             setShowForm(false)
             toast.success('Mídia adicionada ao conhecimento da IA! 🧠')
         } catch (err: any) {
@@ -131,7 +143,7 @@ export default function ConhecimentoPage() {
     }
 
     function resetForm() {
-        setForm({ name: '', description: '', media_url: '', media_type: 'image' })
+        setForm({ name: '', description: '', media_url: '', media_type: 'image', campaign_id: null })
         setShowForm(false)
     }
 
@@ -233,6 +245,26 @@ export default function ConhecimentoPage() {
                                     placeholder='Ex: "Envie quando o cliente pedir para ver o produto, quiser ver uma foto ou perguntar como é."'
                                     className="w-full bg-input border border-border rounded-lg px-4 py-3 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all text-sm resize-none"
                                 />
+                            </div>
+
+                            {/* Seleção de Campanha/Produto */}
+                            <div>
+                                <label className="block text-sm font-medium text-foreground mb-1.5">
+                                    Vincular a um Produto Específico?
+                                </label>
+                                <select
+                                    value={form.campaign_id || ''}
+                                    onChange={e => setForm(prev => ({ ...prev, campaign_id: e.target.value || null }))}
+                                    className="w-full bg-input border border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all text-sm"
+                                >
+                                    <option value="">Não (Conteúdo Geral)</option>
+                                    {campaigns.map(c => (
+                                        <option key={c.id} value={c.id}>{c.name}</option>
+                                    ))}
+                                </select>
+                                <p className="text-[10px] text-muted-foreground mt-1">
+                                    Se vinculado, a IA só enviará esta mídia para clientes interessados neste produto.
+                                </p>
                             </div>
 
                             {/* Upload / URL */}
