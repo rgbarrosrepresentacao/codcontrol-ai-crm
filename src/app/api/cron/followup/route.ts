@@ -146,6 +146,40 @@ export async function GET(req: NextRequest) {
                 }
             }
 
+            // ─── Knowledge Base: busca mídias cadastradas e filtra por campanha ──────
+            let knowledgeQuery = supabase
+                .from('ai_knowledge')
+                .select('id, name, description, media_url, media_type, campaign_id')
+                .eq('user_id', conversation.user_id)
+
+            // Se houver campanha ativa no contato, busca itens daquela campanha OU itens gerais (campaign_id is null)
+            if (contact.active_campaign_id) {
+                knowledgeQuery = knowledgeQuery.or(`campaign_id.eq.${contact.active_campaign_id},campaign_id.is.null`)
+            } else {
+                knowledgeQuery = knowledgeQuery.is('campaign_id', null)
+            }
+
+            const { data: knowledgeItems } = await knowledgeQuery
+
+            // Monta o bloco de contexto de conhecimento para o prompt
+            let knowledgeContext = ''
+            if (knowledgeItems && knowledgeItems.length > 0) {
+                const list = knowledgeItems.map(k =>
+                    `  - ID:${k.id} | Tipo:${k.media_type} | Nome:"${k.name}" | Quando enviar: "${k.description}"`
+                ).join('\n')
+                knowledgeContext = `
+
+── MÍDIAS DISPONÍVEIS (USE COM SABEDORIA) ──
+Você tem acesso às seguintes mídias para enviar ao cliente se julgar necessário para o resgate:
+${list}
+
+REGRAS DE USO:
+- Inclua o código [SEND_MEDIA:ID_AQUI] no FINAL da sua resposta SOMENTE se o momento for propício baseado na descrição da mídia.
+- Use APENAS UM envio por resposta, no máximo.
+- NÃO force o envio desnecessariamente. Só envie se o cliente pedir para ver o produto, demonstrar interesse genuíno ou se a descrição da mídia se encaixar naturalmente no momento da conversa.
+- O código [SEND_MEDIA:ID] será removido automaticamente da mensagem. O cliente NÃO verá isso.`
+            }
+
             const { data: inst } = await supabase.from('whatsapp_instances').select('instance_name').eq('id', conversation.instance_id).single()
             if (!inst) continue
 
@@ -166,7 +200,7 @@ export async function GET(req: NextRequest) {
                     messages: [
                         {
                             role: 'system',
-                            content: `[DATA/HORA: ${currentDate}]\nTom: ${aiConfig.tone}.\n\nINST: ${aiConfig.system_prompt}\n\nEscreva 1 msg curta (2-3 linhas), humana e baseada no histórico. Não seja genérico.\nOBJETIVO: ${followupIntent}${humanityRules}`
+                            content: `[DATA/HORA: ${currentDate}]\nTom: ${aiConfig.tone}.\n\nINST: ${aiConfig.system_prompt}\n\nEscreva 1 msg curta (2-3 linhas), humana e baseada no histórico. Não seja genérico.\nOBJETIVO: ${followupIntent}${knowledgeContext}${humanityRules}`
                         },
                         ...chatMessages
                     ],
@@ -179,16 +213,40 @@ export async function GET(req: NextRequest) {
             const botReply = gptData.choices[0].message.content?.trim()
             if (!botReply) continue
 
+            // ─── Processamento de Mídia ──────────────────────────────────────────
+            const mediaMatch = botReply.match(/\[SEND_MEDIA:(.*?)\]/)
+            let cleanReply = botReply.replace(/\[SEND_MEDIA:.*?\]/g, '').trim()
+
+            // Se a limpeza deixou a mensagem vazia (só tinha o código), ou muito curta, 
+            // e tem mídia, define um texto padrão para acompanhar se necessário.
+            if (cleanReply === '' && mediaMatch) {
+                cleanReply = "Dá uma olhadinha nisso aqui que eu te falei! 😊"
+            }
+
             // Send & Log
             // Show "typing..." indicator for 3-5 seconds to look more human
             const typingDelay = Math.floor(Math.random() * 2000) + 3000 // 3-5s
             await evolutionApi.sendPresence(inst.instance_name, contact.whatsapp_id, 'composing')
             await new Promise(r => setTimeout(r, typingDelay))
-            await evolutionApi.sendTextMessage(inst.instance_name, contact.whatsapp_id, botReply)
+            
+            // Envia o texto limpo
+            await evolutionApi.sendTextMessage(inst.instance_name, contact.whatsapp_id, cleanReply)
+
+            // Envia a mídia se houver
+            if (mediaMatch) {
+                const mediaId = mediaMatch[1]
+                const selectedMedia = knowledgeItems?.find(k => k.id === mediaId)
+
+                if (selectedMedia) {
+                    console.log(`[Follow-up] 📎 AI enviando mídia: ${selectedMedia.name} (${selectedMedia.media_type})`)
+                    const mType = selectedMedia.media_type as 'image' | 'video' | 'document'
+                    await evolutionApi.sendMedia(inst.instance_name, contact.whatsapp_id, selectedMedia.media_url, mType)
+                }
+            }
 
             await supabase.from('messages').insert({
                 user_id: conversation.user_id, conversation_id: conversation.id, instance_id: conversation.instance_id,
-                contact_id: contact.id, from_me: true, content: botReply, type: 'text', ai_generated: true, status: 'sent',
+                contact_id: contact.id, from_me: true, content: cleanReply, type: 'text', ai_generated: true, status: 'sent',
             })
 
             const newStage = stage + 1
@@ -197,7 +255,7 @@ export async function GET(req: NextRequest) {
                 ai_tag: (!isLeadFrio && newStage >= 3) ? 'LEAD_FRIO' : contact.ai_tag
             }).eq('id', contact.id)
 
-            await supabase.from('conversations').update({ last_message: botReply, last_message_at: new Date().toISOString() }).eq('id', conversation.id)
+            await supabase.from('conversations').update({ last_message: cleanReply, last_message_at: new Date().toISOString() }).eq('id', conversation.id)
             await supabase.rpc('increment_messages_sent', { instance_id_param: conversation.instance_id })
 
             processedCount++

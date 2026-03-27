@@ -3,7 +3,8 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import {
     Search, Send, Bot, UserCheck, Phone,
-    MessageCircle, Loader2, ChevronLeft, Mic, Image, MoreVertical
+    MessageCircle, Loader2, ChevronLeft, Mic, Image, MoreVertical,
+    Megaphone
 } from 'lucide-react'
 
 // Types
@@ -22,6 +23,8 @@ interface Conversation {
         phone: string | null
         whatsapp_id: string
         ai_tag: string | null
+        active_campaign_id: string | null
+        campaigns?: { name: string }
     }
 }
 
@@ -100,7 +103,7 @@ export default function ChatPage() {
             .from('conversations')
             .select(`
                 id, contact_id, last_message, last_message_at, status, instance_id,
-                contact:contacts(id, name, push_name, phone, whatsapp_id, ai_tag)
+                contact:contacts(id, name, push_name, phone, whatsapp_id, ai_tag, active_campaign_id, campaigns:campaigns(name))
             `)
             .eq('user_id', userId)
             .order('last_message_at', { ascending: false })
@@ -317,6 +320,11 @@ export default function ChatPage() {
                                                     {tagEmoji} {tag.label}
                                                 </span>
                                             )}
+                                            {conv.contact.campaigns?.name && (
+                                                <span className="text-[9px] px-1.5 py-0.5 rounded-full border border-primary/20 bg-primary/5 text-primary/80 font-bold flex-shrink-0">
+                                                    📦 {conv.contact.campaigns.name}
+                                                </span>
+                                            )}
                                         </div>
                                     </div>
                                 </button>
@@ -361,6 +369,11 @@ export default function ChatPage() {
                             {selected.contact.ai_tag && aiTagConfig[selected.contact.ai_tag] && (
                                 <span className={`text-xs px-2.5 py-1 rounded-full border font-semibold hidden sm:inline-flex items-center gap-1 ${aiTagConfig[selected.contact.ai_tag].bg} ${aiTagConfig[selected.contact.ai_tag].color}`}>
                                     {aiTagEmoji[selected.contact.ai_tag]} {aiTagConfig[selected.contact.ai_tag].label}
+                                </span>
+                            )}
+                            {selected.contact.campaigns?.name && (
+                                <span className="text-xs px-2.5 py-1 rounded-full border border-primary/30 bg-primary/10 text-primary font-bold hidden lg:inline-flex items-center gap-1">
+                                    <Megaphone className="w-3 h-3" /> {selected.contact.campaigns.name}
                                 </span>
                             )}
                             <button className="p-2 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg transition-colors">

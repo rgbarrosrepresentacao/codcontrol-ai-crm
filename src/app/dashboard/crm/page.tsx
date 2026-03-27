@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Users, Search, Tag, MessageSquare, Phone, ChevronRight, Loader2, Filter, Bot, UserCheck, Trash2 } from 'lucide-react'
+import { Users, Search, Tag, MessageSquare, Phone, ChevronRight, Loader2, Filter, Bot, UserCheck, Trash2, Megaphone } from 'lucide-react'
 import { formatDateTime } from '@/lib/utils'
 import { toast } from 'sonner'
 
@@ -37,6 +37,8 @@ interface Contact {
     last_message_at: string | null
     whatsapp_id: string
     ai_tag: string | null
+    active_campaign_id: string | null
+    campaigns?: { name: string }
 }
 
 export default function CRMPage() {
@@ -56,7 +58,11 @@ export default function CRMPage() {
         const load = async () => {
             const { data: { user } } = await supabase.auth.getSession().then(res => ({ data: { user: res.data.session?.user || null } }))
             if (!user) return
-            const { data } = await supabase.from('contacts').select('*').eq('user_id', user.id).order('last_message_at', { ascending: false })
+            const { data } = await supabase
+                .from('contacts')
+                .select('*, campaigns:campaigns(name)')
+                .eq('user_id', user.id)
+                .order('last_message_at', { ascending: false })
             setContacts(data || [])
             setLoading(false)
         }
@@ -132,7 +138,7 @@ export default function CRMPage() {
                 <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
                     <Users className="w-6 h-6 text-primary" />CRM de Atendimento
                 </h1>
-                <p className="text-muted-foreground text-sm mt-1">Contatos classificados automaticamente pela IA</p>
+                <p className="text-muted-foreground text-sm mt-1">Gerencie seus contatos e veja qual produto despertou interesse</p>
             </div>
 
             {/* Stats de Etiquetas IA */}
@@ -245,6 +251,11 @@ export default function CRMPage() {
                                         </div>
                                         <div className="flex items-center gap-3 mt-0.5">
                                             {contact.phone && <span className="text-xs text-muted-foreground flex items-center gap-1"><Phone className="w-3 h-3" />{contact.phone}</span>}
+                                            {contact.campaigns?.name && (
+                                                <span className="text-xs text-primary/80 font-medium flex items-center gap-1">
+                                                    <Megaphone className="w-3 h-3" /> {contact.campaigns.name}
+                                                </span>
+                                            )}
                                             {isHandoff && (
                                                 <span className="text-xs text-emerald-400 font-medium flex items-center gap-1">
                                                     <UserCheck className="w-3 h-3" /> Aguardando atendimento humano
@@ -283,6 +294,12 @@ export default function CRMPage() {
                                         <Bot className="w-3 h-3" /> {aiTagConfig[selectedContact.ai_tag].label}
                                         {HANDOFF_TAGS.includes(selectedContact.ai_tag) && <span className="opacity-70 ml-1">· IA pausada</span>}
                                     </span>
+                                )}
+                                {selectedContact.campaigns?.name && (
+                                    <div className="mt-2 text-xs font-medium text-primary flex items-center gap-1.5 px-2 py-1 bg-primary/10 border border-primary/20 rounded-lg w-fit">
+                                        <Megaphone className="w-3.5 h-3.5" />
+                                        Interesse: {selectedContact.campaigns.name}
+                                    </div>
                                 )}
                             </div>
                         </div>
