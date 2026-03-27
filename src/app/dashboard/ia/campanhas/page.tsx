@@ -81,28 +81,53 @@ export default function CampaignsPage() {
 
     try {
       const { data: { user } } = await supabase.auth.getUser()
-      const { data, error } = await supabase.from('campaigns').insert({
-        name: newName,
-        trigger_phrase: newTrigger,
-        system_prompt: newPrompt,
-        instance_id: newInstanceId,
-        user_id: user?.id,
-        is_active: true
-      }).select().single()
-
-      if (error) throw error
-      setCampaigns([data, ...campaigns])
-      setIsAdding(false)
-      toast.success('Campanha criada com sucesso!')
       
+      if (isEditing) {
+        const { error } = await supabase.from('campaigns').update({
+          name: newName,
+          trigger_phrase: newTrigger,
+          system_prompt: newPrompt,
+          instance_id: newInstanceId,
+        }).eq('id', isEditing)
+
+        if (error) throw error
+        setCampaigns(campaigns.map(c => c.id === isEditing ? { ...c, name: newName, trigger_phrase: newTrigger, system_prompt: newPrompt, instance_id: newInstanceId } : c))
+        toast.success('Campanha atualizada!')
+      } else {
+        const { data, error } = await supabase.from('campaigns').insert({
+          name: newName,
+          trigger_phrase: newTrigger,
+          system_prompt: newPrompt,
+          instance_id: newInstanceId,
+          user_id: user?.id,
+          is_active: true
+        }).select().single()
+
+        if (error) throw error
+        setCampaigns([data, ...campaigns])
+        toast.success('Campanha criada com sucesso!')
+      }
+
+      setIsAdding(false)
+      setIsEditing(null)
       // Reset form
       setNewName('')
       setNewTrigger('')
       setNewPrompt('')
+      setNewInstanceId('')
     } catch (error) {
         console.error(error)
-      toast.error('Erro ao criar campanha')
+      toast.error('Erro ao salvar campanha')
     }
+  }
+
+  function startEdit(camp: Campaign) {
+    setNewName(camp.name)
+    setNewTrigger(camp.trigger_phrase)
+    setNewPrompt(camp.system_prompt)
+    setNewInstanceId(camp.instance_id)
+    setIsEditing(camp.id)
+    setIsAdding(true)
   }
 
   async function handleDelete(id: string) {
@@ -129,7 +154,14 @@ export default function CampaignsPage() {
             <p className="text-zinc-400 mt-1">Crie personas e prompts específicos para cada produto no mesmo WhatsApp.</p>
           </div>
           <button 
-            onClick={() => setIsAdding(true)}
+            onClick={() => {
+                setIsEditing(null)
+                setNewName('')
+                setNewTrigger('')
+                setNewPrompt('')
+                setNewInstanceId('')
+                setIsAdding(true)
+            }}
             className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-all shadow-lg shadow-emerald-900/20"
           >
             <Plus size={20} />
@@ -139,7 +171,9 @@ export default function CampaignsPage() {
 
         {isAdding && (
           <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-xl mb-8 animate-in fade-in slide-in-from-top-4 duration-300">
-            <h3 className="text-lg font-semibold mb-4 text-emerald-400">Configurar Novo Produto</h3>
+            <h3 className="text-lg font-semibold mb-4 text-emerald-400">
+                {isEditing ? 'Editar Configuração do Produto' : 'Configurar Novo Produto'}
+            </h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm text-zinc-400 mb-1">Nome do Produto/Persona</label>
@@ -179,12 +213,12 @@ export default function CampaignsPage() {
               </div>
             </div>
             <div className="flex justify-end gap-3 mt-6">
-              <button onClick={() => setIsAdding(false)} className="text-zinc-400 hover:text-white transition-colors">Cancelar</button>
+              <button onClick={() => { setIsAdding(false); setIsEditing(null); }} className="text-zinc-400 hover:text-white transition-colors">Cancelar</button>
               <button 
                 onClick={handleAdd}
                 className="bg-emerald-600 hover:bg-emerald-500 px-6 py-2 rounded-lg font-semibold"
               >
-                Salvar Configuração
+                {isEditing ? 'Salvar Alterações' : 'Salvar Configuração'}
               </button>
             </div>
           </div>
@@ -212,6 +246,9 @@ export default function CampaignsPage() {
                     </span>
                   </div>
                   <div className="flex gap-2">
+                    <button onClick={() => startEdit(camp)} className="p-2 text-zinc-500 hover:text-emerald-400 hover:bg-emerald-400/10 rounded-lg transition-all">
+                      <Edit3 size={18} />
+                    </button>
                     <button onClick={() => handleDelete(camp.id)} className="p-2 text-zinc-500 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all">
                       <Trash2 size={18} />
                     </button>
