@@ -119,10 +119,8 @@ export default function CampaignsPage() {
   if (!isAdmin) return null
 
   return (
-    <div className="flex h-screen bg-zinc-950 text-white">
-      <Sidebar />
-      <main className="flex-1 overflow-y-auto p-8">
-        <header className="flex justify-between items-center mb-8">
+    <div className="p-8">
+      <header className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-3xl font-bold flex items-center gap-2">
               <Megaphone className="text-emerald-500" />
@@ -239,7 +237,6 @@ export default function CampaignsPage() {
             ))}
           </div>
         )}
-      </main>
     </div>
   )
 }
