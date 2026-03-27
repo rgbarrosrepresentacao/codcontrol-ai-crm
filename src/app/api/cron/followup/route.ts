@@ -164,9 +164,24 @@ export async function GET(req: NextRequest) {
             // Monta o bloco de contexto de conhecimento para o prompt
             let knowledgeContext = ''
             if (knowledgeItems && knowledgeItems.length > 0) {
-                const list = knowledgeItems.map(k =>
-                    `  - ID:${k.id} | Tipo:${k.media_type} | Nome:"${k.name}" | Quando enviar: "${k.description}"`
-                ).join('\n')
+                // Verifica no histórico quais mídias já foram enviadas para este contato
+                const { data: sentMessages } = await supabase
+                    .from('messages')
+                    .select('content')
+                    .eq('contact_id', contact.id)
+                    .like('content', '[MÍDIA ENVIADA:%')
+
+                const sentMediaIds = new Set()
+                sentMessages?.forEach(m => {
+                    const match = m.content?.match(/\[MÍDIA ENVIADA: ([a-f0-9-]+)/i)
+                    if (match) sentMediaIds.add(match[1])
+                })
+
+                const list = knowledgeItems.map(k => {
+                    const isSent = sentMediaIds.has(k.id)
+                    return `  - ID:${k.id} | Tipo:${k.media_type} | Nome:"${k.name}" | Já enviado: ${isSent ? 'SIM' : 'NÃO'} | Quando enviar: "${k.description}"`
+                }).join('\n')
+
                 knowledgeContext = `
 
 ── MÍDIAS DISPONÍVEIS (USE COM SABEDORIA) ──
@@ -175,8 +190,10 @@ ${list}
 
 REGRAS DE USO:
 - Inclua o código [SEND_MEDIA:ID_AQUI] no FINAL da sua resposta SOMENTE se o momento for propício baseado na descrição da mídia.
+- NUNCA envie a mesma mídia duas vezes para o mesmo cliente. Veja o campo "Já enviado" na lista acima.
+- Se o campo "Já enviado" estiver como SIM, você deve focar apenas em texto amigável para o resgate.
 - Use APENAS UM envio por resposta, no máximo.
-- NÃO force o envio desnecessariamente. Só envie se o cliente pedir para ver o produto, demonstrar interesse genuíno ou se a descrição da mídia se encaixar naturalmente no momento da conversa.
+- NÃO force o envio desnecessariamente. Só envie se a descrição da mídia se encaixar naturalmente no momento do resgate.
 - O código [SEND_MEDIA:ID] será removido automaticamente da mensagem. O cliente NÃO verá isso.`
             }
 
@@ -238,9 +255,34 @@ REGRAS DE USO:
                 const selectedMedia = knowledgeItems?.find(k => k.id === mediaId)
 
                 if (selectedMedia) {
-                    console.log(`[Follow-up] 📎 AI enviando mídia: ${selectedMedia.name} (${selectedMedia.media_type})`)
-                    const mType = selectedMedia.media_type as 'image' | 'video' | 'document'
-                    await evolutionApi.sendMedia(inst.instance_name, contact.whatsapp_id, selectedMedia.media_url, mType)
+                    // Verificação final de segurança (Double Check)
+                    const { data: doubleCheck } = await supabase
+                        .from('messages')
+                        .select('id')
+                        .eq('contact_id', contact.id)
+                        .eq('content', `[MÍDIA ENVIADA: ${selectedMedia.id} | ${selectedMedia.name}]`)
+                        .maybeSingle()
+
+                    if (doubleCheck) {
+                        console.log(`[Follow-up] 🚫 Bloqueio de segurança: Mídia ${selectedMedia.id} já enviada anteriormente para este contato.`)
+                    } else {
+                        console.log(`[Follow-up] 📎 AI enviando mídia: ${selectedMedia.name} (${selectedMedia.media_type})`)
+                        const mType = selectedMedia.media_type as 'image' | 'video' | 'document'
+                        await evolutionApi.sendMedia(inst.instance_name, contact.whatsapp_id, selectedMedia.media_url, mType)
+
+                        // Salva o registro da mídia no histórico para evitar repetições futuras
+                        await supabase.from('messages').insert({
+                            user_id: conversation.user_id,
+                            conversation_id: conversation.id,
+                            instance_id: conversation.instance_id,
+                            contact_id: contact.id,
+                            from_me: true,
+                            content: `[MÍDIA ENVIADA: ${selectedMedia.id} | ${selectedMedia.name}]`,
+                            type: mType,
+                            ai_generated: true,
+                            status: 'sent',
+                        })
+                    }
                 }
             }
 

@@ -657,9 +657,24 @@ async function processWebhookInBackground(body: any) {
         // Monta o bloco de contexto de conhecimento para o prompt
         let knowledgeContext = ''
         if (knowledgeItems && knowledgeItems.length > 0) {
-            const list = knowledgeItems.map(k =>
-                `  - ID:${k.id} | Tipo:${k.media_type} | Nome:"${k.name}" | Quando enviar: "${k.description}"`
-            ).join('\n')
+            // Verifica no histórico quais mídias já foram enviadas para este contato
+            const { data: sentMessages } = await supabase
+                .from('messages')
+                .select('content')
+                .eq('contact_id', contactId)
+                .like('content', '[MÍDIA ENVIADA:%')
+
+            const sentMediaIds = new Set()
+            sentMessages?.forEach(m => {
+                const match = m.content?.match(/\[MÍDIA ENVIADA: ([a-f0-9-]+)/i)
+                if (match) sentMediaIds.add(match[1])
+            })
+
+            const list = knowledgeItems.map(k => {
+                const isSent = sentMediaIds.has(k.id)
+                return `  - ID:${k.id} | Tipo:${k.media_type} | Nome:"${k.name}" | Já enviado: ${isSent ? 'SIM' : 'NÃO'} | Quando enviar: "${k.description}"`
+            }).join('\n')
+
             knowledgeContext = `
 
 ── MÍDIAS DISPONÍVEIS (USE COM SABEDORIA) ──
@@ -668,6 +683,8 @@ ${list}
 
 REGRAS DE USO:
 - Inclua o código [SEND_MEDIA:ID_AQUI] no FINAL da sua resposta SOMENTE se o momento for propício baseado na descrição da mídia.
+- NUNCA envie a mesma mídia duas vezes para o mesmo cliente, a menos que ele peça para ver de novo explicitamente. Veja o campo "Já enviado" na lista acima.
+- Se o cliente pedir um vídeo/demo que você já enviou, apenas mencione que ele pode ver as mensagens acima.
 - Use APENAS UM envio por resposta, no máximo.
 - NÃO force o envio desnecessariamente. Só envie se o cliente pedir para ver o produto, demonstrar interesse genuíno ou se a descrição da mídia se encaixar naturalmente no momento da conversa.
 - O código [SEND_MEDIA:ID] será removido automaticamente da mensagem. O cliente NÃO verá isso.
@@ -850,11 +867,38 @@ ${audioCapabilityNote}`
         // ─── Smart Media: envia a mídia após a mensagem de texto ─────────────────
         if (mediaTriggerItem) {
             try {
-                // Aguarda 1.5s para parecer que a vendedora está buscando o arquivo
-                await new Promise(r => setTimeout(r, 1500))
-                const mType = mediaTriggerItem.media_type as 'image' | 'video' | 'document'
-                await evolutionApi.sendMedia(instanceName, remoteJid, mediaTriggerItem.media_url, mType)
-                console.log(`[Knowledge] ✅ Mídia enviada: ${mediaTriggerItem.name}`)
+                // Verificação final de segurança: evita envio duplicado mesmo se a IA ignorar o prompt
+                const { data: doubleCheck } = await supabase
+                    .from('messages')
+                    .select('id')
+                    .eq('contact_id', contactId)
+                    .eq('content', `[MÍDIA ENVIADA: ${mediaTriggerItem.id} | ${mediaTriggerItem.name}]`)
+                    .maybeSingle()
+
+                if (doubleCheck) {
+                    console.log(`[Knowledge] 🚫 Bloqueio de segurança: Mídia ${mediaTriggerItem.id} já enviada anteriormente para este contato.`)
+                } else {
+                    // Aguarda 1.5s para parecer que a vendedora está buscando o arquivo
+                    await new Promise(r => setTimeout(r, 1500))
+                    const mType = mediaTriggerItem.media_type as 'image' | 'video' | 'document'
+                    await evolutionApi.sendMedia(instanceName, remoteJid, mediaTriggerItem.media_url, mType)
+                    console.log(`[Knowledge] ✅ Mídia enviada: ${mediaTriggerItem.name}`)
+
+                    // Salva o registro da mídia no histórico para evitar repetições futuras
+                    if (conversationId) {
+                        await supabase.from('messages').insert({
+                            user_id: userId,
+                            conversation_id: conversationId,
+                            instance_id: instanceId,
+                            contact_id: contactId,
+                            from_me: true,
+                            content: `[MÍDIA ENVIADA: ${mediaTriggerItem.id} | ${mediaTriggerItem.name}]`,
+                            type: mType,
+                            ai_generated: true,
+                            status: 'sent'
+                        })
+                    }
+                }
             } catch (mediaErr: any) {
                 // Erro na mídia nunca deve quebrar a conversa principal
                 console.error('[Knowledge] ❌ Erro ao enviar mídia:', mediaErr.message)
