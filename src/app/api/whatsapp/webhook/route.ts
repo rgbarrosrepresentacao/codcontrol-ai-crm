@@ -467,11 +467,19 @@ async function processWebhookInBackground(body: any) {
             .eq('is_active', true)
 
         if (campaigns && campaigns.length > 0) {
-            const matchedCampaign = campaigns.find(c => 
-                textMessage.toLowerCase().includes(c.trigger_phrase.toLowerCase())
-            )
+            // Função para normalizar texto (remover pontuação e espaços extras)
+            const normalize = (txt: string) => txt.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()!]/g,"").replace(/\s{2,}/g," ").trim();
+            
+            const normalizedMessage = normalize(textMessage);
+
+            const matchedCampaign = campaigns.find(c => {
+                const normalizedTrigger = normalize(c.trigger_phrase);
+                // Verifica se a mensagem contém o gatilho OU se o gatilho contém a mensagem
+                return normalizedMessage.includes(normalizedTrigger) || normalizedTrigger.includes(normalizedMessage);
+            })
+
             if (matchedCampaign) {
-                console.log(`[Campaign] 🎯 Gatilho detectado: ${matchedCampaign.name} para o contato ${contactId}`)
+                console.log(`[Campaign] 🎯 Gatilho detectado (Flexível): ${matchedCampaign.name} para o contato ${contactId}`)
                 activeCampaignId = matchedCampaign.id
                 await supabase.from('contacts').update({ active_campaign_id: activeCampaignId }).eq('id', contactId)
             }
