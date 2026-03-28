@@ -54,6 +54,12 @@ export default function WhatsAppPage() {
             toast.success('Instância criada! Escaneie o QR Code.')
             setShowCreate(false)
             setDisplayName('')
+
+            // Meta Pixel: Track Custom Event
+            if (typeof window !== 'undefined' && (window as any).fbq) {
+                (window as any).fbq('trackCustom', 'WhatsApp_CreateInstance', { display_name: displayName.trim() })
+            }
+
             await fetchInstances()
 
             if (data.qrCode) {
@@ -93,6 +99,12 @@ export default function WhatsAppPage() {
             await fetchInstances()
             if (newStatus === 'connected') {
                 toast.success('WhatsApp conectado com sucesso!')
+
+                // Meta Pixel: Track Custom Event
+                if (typeof window !== 'undefined' && (window as any).fbq) {
+                    (window as any).fbq('trackCustom', 'WhatsApp_ConnectSuccess', { instance: instanceName })
+                }
+
                 setQrModal(null)
             } else {
                 toast.info(`Status: ${newStatus}`)

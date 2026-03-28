@@ -4,7 +4,7 @@ import { usePathname, useSearchParams } from 'next/navigation'
 import { useEffect, Suspense } from 'react'
 import Script from 'next/script'
 
-const PIXEL_ID = '1490888182599053'
+const PIXEL_ID = '1622448398959009'
 
 function PixelEvents() {
   const pathname = usePathname()
@@ -45,6 +45,7 @@ export function FacebookPixel() {
           s.parentNode.insertBefore(t,s)}(window, document,'script',
           'https://connect.facebook.net/en_US/fbevents.js');
           fbq('init', '${PIXEL_ID}');
+          fbq('track', 'PageView');
         `}
       </Script>
       <noscript>

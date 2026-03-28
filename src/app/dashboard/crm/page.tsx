@@ -85,6 +85,11 @@ export default function CRMPage() {
         setEditNotes(contact.notes || '')
         setEditStatus(contact.status)
         setEditAiTag(contact.ai_tag)
+
+        // Meta Pixel: Track Custom Event
+        if (typeof window !== 'undefined' && (window as any).fbq) {
+            (window as any).fbq('trackCustom', 'CRM_OpenContact', { contact_id: contact.id })
+        }
     }
 
     const reactivateAI = async () => {
@@ -102,6 +107,16 @@ export default function CRMPage() {
         setSavingContact(true)
         await supabase.from('contacts').update({ notes: editNotes, status: editStatus as any, ai_tag: editAiTag }).eq('id', selectedContact.id)
         setContacts(prev => prev.map(c => c.id === selectedContact.id ? { ...c, notes: editNotes, status: editStatus as any, ai_tag: editAiTag } : c))
+        
+        // Meta Pixel: Track Custom Event
+        if (typeof window !== 'undefined' && (window as any).fbq) {
+            (window as any).fbq('trackCustom', 'CRM_SaveContact', { 
+                contact_id: selectedContact.id,
+                status: editStatus,
+                ai_tag: editAiTag
+            })
+        }
+
         setSavingContact(false)
         setSelectedContact(null)
     }

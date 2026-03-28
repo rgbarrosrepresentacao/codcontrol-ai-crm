@@ -42,6 +42,12 @@ function RegisterForm() {
             toast.error(error.message)
             return
         }
+        
+        // Meta Pixel: Track Complete Registration
+        if (typeof window !== 'undefined' && (window as any).fbq) {
+            (window as any).fbq('track', 'CompleteRegistration')
+        }
+
         toast.success('Conta criada! Redirecionando para o pagamento...')
         
         // Mapeamento dos links de checkout da Kiwify
@@ -54,6 +60,14 @@ function RegisterForm() {
         const checkoutUrl = plan ? kiwifyLinks[plan] : null
         
         if (checkoutUrl) {
+            // Meta Pixel: Track Initiate Checkout
+            if (typeof window !== 'undefined' && (window as any).fbq) {
+                (window as any).fbq('track', 'InitiateCheckout', {
+                    content_name: plan,
+                    currency: 'BRL',
+                    value: plan === 'basico' ? 10.0 : 497.0
+                })
+            }
             window.location.href = checkoutUrl
         } else {
             router.push('/dashboard')
