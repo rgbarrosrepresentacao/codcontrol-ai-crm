@@ -468,18 +468,37 @@ async function processWebhookInBackground(body: any) {
 
         if (campaigns && campaigns.length > 0) {
             // Função para normalizar texto (remover pontuação e espaços extras)
-            const normalize = (txt: string) => txt.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()!]/g,"").replace(/\s{2,}/g," ").trim();
+            const normalize = (txt: string) => txt?.toLowerCase()?.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()!]/g,"")?.replace(/\s{2,}/g," ")?.trim() || "";
             
             const normalizedMessage = normalize(textMessage);
 
             const matchedCampaign = campaigns.find(c => {
                 const normalizedTrigger = normalize(c.trigger_phrase);
-                // Verifica se a mensagem contém o gatilho OU se o gatilho contém a mensagem
-                return normalizedMessage.includes(normalizedTrigger) || normalizedTrigger.includes(normalizedMessage);
+                
+                // 1. Check for exact match (normalized)
+                if (normalizedMessage === normalizedTrigger) return true;
+
+                // 2. Check if one totally contains the other (the previous logic)
+                if (normalizedMessage.includes(normalizedTrigger) || normalizedTrigger.includes(normalizedMessage)) return true;
+
+                // 3. Intelligent Match: Check if the message contains at least 70% of the words from the trigger
+                // This handles cases like "sobre travesseiro" vs "sobre a travesseiro"
+                const triggerWords = normalizedTrigger.split(' ').filter(w => w.length > 2); // ignore small words like "a", "o", "de"
+                if (triggerWords.length > 0) {
+                    const matchedWords = triggerWords.filter(word => normalizedMessage.includes(word));
+                    const matchRatio = matchedWords.length / triggerWords.length;
+                    
+                    if (matchRatio >= 0.7) {
+                        console.log(`[Campaign Match] 💡 Correspondência parcial detectada (${(matchRatio * 100).toFixed(0)}%): "${c.name}"`)
+                        return true;
+                    }
+                }
+
+                return false;
             })
 
             if (matchedCampaign) {
-                console.log(`[Campaign] 🎯 Gatilho detectado (Flexível): ${matchedCampaign.name} para o contato ${contactId}`)
+                console.log(`[Campaign] 🎯 Gatilho detectado (Inteligente): ${matchedCampaign.name} para o contato ${contactId}`)
                 activeCampaignId = matchedCampaign.id
                 await supabase.from('contacts').update({ active_campaign_id: activeCampaignId }).eq('id', contactId)
             }
