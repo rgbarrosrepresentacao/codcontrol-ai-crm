@@ -467,38 +467,49 @@ async function processWebhookInBackground(body: any) {
             .eq('is_active', true)
 
         if (campaigns && campaigns.length > 0) {
-            // Função para normalizar texto (remover pontuação e espaços extras)
-            const normalize = (txt: string) => txt?.toLowerCase()?.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()!]/g,"")?.replace(/\s{2,}/g," ")?.trim() || "";
-            
+            const normalize = (txt: string) => txt?.toLowerCase()?.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[.,\/#!$%\^&\*;:{}=\-_`~()!]/g,"")?.replace(/\s{2,}/g," ")?.trim() || "";
             const normalizedMessage = normalize(textMessage);
 
-            const matchedCampaign = campaigns.find(c => {
+            const scoredCampaigns = campaigns.map(c => {
                 const normalizedTrigger = normalize(c.trigger_phrase);
-                
-                // 1. Check for exact match (normalized)
-                if (normalizedMessage === normalizedTrigger) return true;
+                const normalizedName = normalize(c.name);
+                let score = 0;
 
-                // 2. Check if one totally contains the other (the previous logic)
-                if (normalizedMessage.includes(normalizedTrigger) || normalizedTrigger.includes(normalizedMessage)) return true;
+                // 1. Correspondência exata (Gatilho) — Pontuação Máxima
+                if (normalizedMessage === normalizedTrigger) score += 1000;
 
-                // 3. Intelligent Match: Check if the message contains at least 70% of the words from the trigger
-                // This handles cases like "sobre travesseiro" vs "sobre a travesseiro"
-                const triggerWords = normalizedTrigger.split(' ').filter(w => w.length > 2); // ignore small words like "a", "o", "de"
+                // 2. Mensagem contém o nome do produto/campanha — Alta Prioridade
+                if (normalizedName.length > 3 && normalizedMessage.includes(normalizedName)) {
+                    score += (normalizedName.length * 10);
+                }
+
+                // 3. Mensagem contém a frase de gatilho
+                if (normalizedTrigger.length > 3 && normalizedMessage.includes(normalizedTrigger)) {
+                    score += normalizedTrigger.length;
+                }
+
+                // 4. Sobreposição de palavras (Match Inteligente)
+                const triggerWords = normalizedTrigger.split(' ').filter(w => w.length > 3);
                 if (triggerWords.length > 0) {
                     const matchedWords = triggerWords.filter(word => normalizedMessage.includes(word));
                     const matchRatio = matchedWords.length / triggerWords.length;
-                    
                     if (matchRatio >= 0.7) {
-                        console.log(`[Campaign Match] 💡 Correspondência parcial detectada (${(matchRatio * 100).toFixed(0)}%): "${c.name}"`)
-                        return true;
+                        score += (matchRatio * 50);
                     }
                 }
 
-                return false;
-            })
+                return { ...c, score };
+            });
+
+            // Ordena pelo melhor score (mais específico primeiro)
+            const sortedCampaigns = scoredCampaigns
+                .filter(c => c.score > 0)
+                .sort((a, b) => b.score - a.score);
+
+            const matchedCampaign = sortedCampaigns[0];
 
             if (matchedCampaign) {
-                console.log(`[Campaign] 🎯 Gatilho detectado (Inteligente): ${matchedCampaign.name} para o contato ${contactId}`)
+                console.log(`[Campaign Match] 🎯 Melhor correspondência: "${matchedCampaign.name}" | Score: ${matchedCampaign.score}`)
                 activeCampaignId = matchedCampaign.id
                 await supabase.from('contacts').update({ active_campaign_id: activeCampaignId }).eq('id', contactId)
             }
