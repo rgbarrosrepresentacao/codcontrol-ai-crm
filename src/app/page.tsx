@@ -1,378 +1,471 @@
+'use client'
+
 import Link from 'next/link'
-import { Bot, Zap, Shield, BarChart3, MessageSquare, Users, ArrowRight, CheckCircle2, Star, Clock, Heart, Sparkles, TrendingUp, DollarSign, HelpCircle, ChevronDown } from 'lucide-react'
+import Image from 'next/image'
+import { useState, useEffect } from 'react'
+import { 
+  Bot, Zap, Shield, BarChart3, MessageSquare, Users, ArrowRight, 
+  CheckCircle2, Star, Clock, Heart, Sparkles, TrendingUp, 
+  DollarSign, HelpCircle, ChevronDown, Rocket, Smartphone, 
+  Target, Lock, Layers, PlayCircle, Plus, Minus
+} from 'lucide-react'
 
 export default function HomePage() {
+  const [scrolled, setScrolled] = useState(false)
+
+  useEffect(() => {
+    const handleScroll = () => setScrolled(window.scrollY > 20)
+    window.addEventListener('scroll', handleScroll)
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
+
   return (
-    <div className="min-h-screen gradient-hero overflow-x-hidden">
-      {/* Header */}
-      <header className="glass sticky top-0 z-50 border-b border-border/50">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl gradient-primary flex items-center justify-center glow-primary">
-              <Bot className="w-6 h-6 text-black" />
-            </div>
-            <div className="flex flex-col">
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-xl tracking-tight text-foreground">CodControl</span>
-                <span className="text-[10px] bg-primary/20 text-primary font-black px-1.5 py-0.5 rounded-md border border-primary/30 uppercase tracking-tighter">BETA</span>
+    <div className="min-h-screen gradient-hero relative">
+      {/* Dynamic Background Effects */}
+      <div className="fixed inset-0 pointer-events-none opacity-20 animate-pulse-glow z-[-1] bg-gradient-to-b from-primary/5 via-transparent to-transparent" />
+
+      {/* Navbar */}
+      <nav className={`fixed top-0 left-0 right-0 z-[100] transition-all duration-300 ${scrolled ? 'py-4' : 'py-6'}`}>
+        <div className="container-7xl">
+          <div className="glass px-6 py-3 rounded-2xl flex items-center justify-between border-white/5 mx-4 md:mx-0">
+            <div className="flex items-center gap-3">
+              <Image src="/logo.png" alt="CodControl Logo" width={32} height={32} className="w-8 h-8 rounded-lg" />
+              <div className="flex flex-col">
+                <span className="font-black text-lg md:text-xl tracking-tighter leading-none">
+                  CodControl <span className="text-primary tracking-normal">AI</span>
+                </span>
+                <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest -mt-0.5">Sales CRM</span>
               </div>
-              <span className="text-[10px] text-primary font-bold tracking-widest uppercase -mt-1">AI SALES CRM</span>
+            </div>
+            
+            <div className="hidden md:flex items-center gap-8">
+              <a href="#solucao" className="text-sm font-semibold text-muted-foreground hover:text-primary transition-colors">Solução</a>
+              <a href="#recursos" className="text-sm font-semibold text-muted-foreground hover:text-primary transition-colors">Recursos</a>
+              <a href="#faq" className="text-sm font-semibold text-muted-foreground hover:text-primary transition-colors">Dúvidas</a>
+              <div className="w-px h-6 bg-border/40 mx-2" />
+              <Link href="/login" className="text-sm font-semibold text-foreground hover:text-primary transition-colors">Entrar</Link>
+              <Link href="/register?plan=basico" className="gradient-primary text-black font-black px-6 py-2.5 rounded-xl text-sm hover:scale-105 active:scale-95 transition-all glow-primary leading-none">
+                COMEÇAR POR R$10
+              </Link>
+            </div>
+
+            <div className="md:hidden">
+                <Link href="/register?plan=basico" className="gradient-primary text-black font-black px-4 py-2 rounded-xl text-xs hover:scale-105 transition-all glow-primary leading-none">
+                    TESTAR AGORA
+                </Link>
             </div>
           </div>
-          <nav className="hidden md:flex items-center gap-10">
-            <a href="#solucao" className="text-muted-foreground hover:text-primary transition-colors text-sm font-medium">Solução</a>
-            <a href="#recursos" className="text-muted-foreground hover:text-primary transition-colors text-sm font-medium">Recursos</a>
-            <a href="#planos" className="text-muted-foreground hover:text-primary transition-colors text-sm font-medium">Planos</a>
-            <div className="w-px h-4 bg-border/50 mx-2" />
-            <Link href="/login" className="text-muted-foreground hover:text-foreground transition-colors text-sm font-medium">Entrar</Link>
-            <Link href="/register?plan=basico" className="gradient-primary text-black font-bold px-6 py-2.5 rounded-full text-sm hover:scale-105 transition-all shadow-lg hover:shadow-primary/20">
-              Assinar Plano Básico
-            </Link>
-          </nav>
         </div>
-      </header>
+      </nav>
 
       {/* Hero Section */}
-      <section className="relative overflow-hidden pt-32 pb-24 md:pt-48 md:pb-40">
-        <div className="max-w-7xl mx-auto px-6 relative z-10 text-center">
+      <section className="pt-48 md:pt-64 pb-24 relative overflow-hidden">
+        <div className="container-7xl text-center relative z-10">
           <div className="inline-flex items-center gap-2 bg-primary/10 border border-primary/20 rounded-full px-5 py-2 mb-8 animate-slide-up shadow-[0_0_20px_rgba(20,184,166,0.1)]">
             <Sparkles className="w-4 h-4 text-primary animate-pulse" />
-            <span className="text-primary text-xs font-bold uppercase tracking-wider">A Nova Era do CRM de WhatsApp</span>
+            <span className="text-primary text-[11px] font-bold uppercase tracking-[0.2em]">O futuro das vendas no WhatsApp</span>
           </div>
 
-          <h1 className="text-6xl md:text-8xl font-black text-foreground mb-8 animate-slide-up leading-[0.9] tracking-tighter">
-            Sua Vendedora <br />
-            <span className="text-transparent bg-clip-text gradient-primary">que nunca dorme.</span>
+          <h1 className="text-5xl md:text-8xl font-black text-foreground mb-8 animate-slide-up leading-[0.95] tracking-tightest px-4">
+            Transforme seu WhatsApp em uma <br className="hidden md:block" />
+            <span className="text-gradient from-primary to-cyan-400 text-glow-primary">Máquina de Vendas 24h</span>
           </h1>
 
-          <p className="text-muted-foreground text-xl md:text-2xl max-w-3xl mx-auto mb-12 animate-slide-up leading-relaxed">
-            Transforme seu WhatsApp em uma máquina de vendas automática 24/7.
-            Atendimento humano, inteligente e focado em captar e fechar pedidos enquanto você escala seu negócio.
+          <p className="text-muted-foreground text-lg md:text-2xl max-w-3xl mx-auto mb-12 animate-slide-up leading-relaxed text-balance px-4 opacity-80">
+            A vendedora com Inteligência Artificial que responde seus clientes, quebra objeções e fecha vendas pra você — <span className="text-white font-medium">mesmo enquanto você dorme.</span>
           </p>
 
-          <div className="flex flex-col sm:flex-row gap-6 justify-center items-center animate-slide-up">
-            <Link href="/register?plan=basico" className="gradient-primary text-black font-black px-12 py-5 rounded-2xl text-xl hover:scale-105 transition-all glow-primary flex items-center gap-3">
-              TESTAR 30 DIAS POR R$ 10
+          <div className="flex flex-col sm:flex-row gap-6 justify-center items-center animate-slide-up px-4">
+            <Link href="/register?plan=basico" className="w-full sm:w-auto gradient-primary text-black font-black px-12 py-5 rounded-2xl text-xl hover:scale-105 active:scale-95 transition-all glow-primary flex items-center justify-center gap-3">
+              TESTAR POR R$10 AGORA
               <ArrowRight className="w-6 h-6" />
             </Link>
             <div className="flex items-center gap-2 text-muted-foreground">
-              <div className="flex -space-x-2">
-                {[1, 2, 3, 4].map(i => (
-                  <div key={i} className="w-8 h-8 rounded-full border-2 border-background bg-secondary" />
+              <div className="flex -space-x-3">
+                {[...Array(4)].map((_, i) => (
+                  <div key={i} className="w-9 h-9 rounded-full border-[3px] border-background bg-secondary flex items-center justify-center overflow-hidden">
+                     <Users className="w-4 h-4 text-primary/50" />
+                  </div>
                 ))}
               </div>
-              <span className="text-sm font-medium">+2.400 vendedores ativos</span>
+              <span className="text-sm font-semibold ml-2">+2.400 vendedores já automatizando</span>
             </div>
           </div>
+        </div>
 
-          <div className="mt-20 relative animate-fade-in group">
-            <div className="absolute inset-0 bg-primary/20 blur-[120px] rounded-full group-hover:bg-primary/30 transition-all duration-700" />
-            <div className="relative glass border border-primary/20 rounded-3xl p-4 md:p-8 shadow-2xl overflow-hidden">
-              <div className="flex items-center gap-4 mb-6 border-b border-border/50 pb-4">
-                <div className="flex gap-1.5">
-                  <div className="w-3 h-3 rounded-full bg-red-500/50" />
-                  <div className="w-3 h-3 rounded-full bg-yellow-500/50" />
-                  <div className="w-3 h-3 rounded-full bg-green-500/50" />
-                </div>
-                <div className="bg-muted px-4 py-1 rounded-md text-[10px] text-muted-foreground font-mono">codcontrol.crm/dashboard</div>
-              </div>
-              <div className="grid grid-cols-12 gap-6 items-start">
-                <div className="col-span-12 md:col-span-4 space-y-4">
-                  {[1, 2, 3].map(i => (
-                    <div key={i} className="h-20 gradient-card border border-border/50 rounded-xl p-4 flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-secondary animate-pulse" />
-                      <div className="flex-1 space-y-2">
-                        <div className="h-3 w-2/3 bg-muted rounded animate-pulse" />
-                        <div className="h-2 w-1/2 bg-muted/50 rounded animate-pulse" />
-                      </div>
+        {/* Visual Elements Background */}
+        <div className="absolute top-[20%] right-[-10%] w-[40%] h-[40%] bg-primary/10 blur-[150px] animate-pulse-glow" />
+        <div className="absolute bottom-0 left-[-10%] w-[40%] h-[40%] bg-cyan-500/10 blur-[150px] animate-pulse-glow" />
+      </section>
+
+      {/* Demo Section (Chat Simulator) */}
+      <section className="pb-32 container-7xl px-4 md:px-6">
+        <div className="relative animate-reveal">
+           <div className="absolute inset-0 bg-primary/10 blur-[120px] rounded-full opacity-30" />
+           <div className="relative glass border border-white/5 rounded-[40px] p-2 overflow-hidden shadow-2xl">
+              <div className="bg-background/40 rounded-[38px] overflow-hidden p-6 md:p-12">
+                 <div className="grid md:grid-cols-2 gap-12 items-center text-left">
+                    <div className="space-y-6">
+                       <span className="text-primary font-black text-xs tracking-widest uppercase">Demonstração Real</span>
+                       <h2 className="text-3xl md:text-5xl font-black leading-tight tracking-tight">Venda acontecendo no <br /> <span className="italic opacity-50">Piloto Automático.</span></h2>
+                       <p className="text-muted-foreground text-lg leading-relaxed text-balance">
+                          Enquanto seu concorrente demora 10 minutos para responder e perde o cliente, o CodControl inicia o fechamento em 5 segundos.
+                       </p>
+                       <div className="pt-4 flex flex-wrap gap-8 items-center">
+                          <div className="flex flex-col">
+                             <span className="text-4xl font-black text-primary">100%</span>
+                             <span className="text-[10px] text-muted-foreground uppercase font-black tracking-widest mt-1">Nuvem</span>
+                          </div>
+                          <div className="w-px h-12 bg-white/10" />
+                          <div className="flex flex-col">
+                            <span className="text-4xl font-black text-primary">24h</span>
+                            <span className="text-[10px] text-muted-foreground uppercase font-black tracking-widest mt-1">Ativo</span>
+                          </div>
+                          <div className="w-px h-12 bg-white/10" />
+                          <div className="flex flex-col">
+                            <span className="text-4xl font-black text-primary">1s</span>
+                            <span className="text-[10px] text-muted-foreground uppercase font-black tracking-widest mt-1">Resposta</span>
+                          </div>
+                       </div>
                     </div>
-                  ))}
-                </div>
-                <div className="col-span-12 md:col-span-8 flex flex-col gap-4">
-                  <div className="h-64 gradient-card border border-border/50 rounded-2xl p-6 relative overflow-hidden">
-                    <div className="absolute top-4 right-4 bg-primary/20 text-primary text-[10px] font-bold px-2 py-1 rounded border border-primary/30">BOT ATIVO</div>
-                    <div className="flex flex-col gap-4 h-full">
-                      <div className="bg-secondary self-start px-4 py-3 rounded-2xl rounded-tl-none text-xs max-w-[80%] text-left">
-                        Olá! Quero saber mais sobre o produto Liso Mágico
-                      </div>
-                      <div className="gradient-primary text-black self-end px-4 py-3 rounded-2xl rounded-tr-none text-xs max-w-[80%] font-medium text-left">
-                        Olá, tudo bem? Sou a Camila! O Liso Mágico é ideal para quem busca praticidade. Ele não tem formol e o resultado é na hora! Você quer garantir o desconto de hoje? 😊
-                      </div>
-                      <div className="bg-secondary self-start px-4 py-3 rounded-2xl rounded-tl-none text-xs max-w-[80%] text-left">
-                        Sim! Como faço para comprar?
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Benefits */}
-      <section id="solucao" className="max-w-7xl mx-auto px-6 py-32 border-t border-border/30">
-        <div className="grid md:grid-cols-2 gap-20 items-center">
-          <div className="space-y-8">
-            <h2 className="text-4xl md:text-5xl font-bold text-foreground leading-tight tracking-tight">
-              Não perca mais nenhuma venda <br />
-              <span className="text-primary italic">por demora no atendimento.</span>
-            </h2>
-            <p className="text-muted-foreground text-lg leading-relaxed">
-              A maioria dos clientes compra no primeiro que responder. Enquanto você dorme ou está ocupado, o CodControl atende, tira dúvidas e encaminha para o pagamento.
-            </p>
-            <div className="space-y-6">
-              {[
-                { icon: Clock, title: 'Resposta Instantânea', desc: 'Atenda em menos de 5 segundos, 24 horas por dia.' },
-                { icon: Heart, title: 'IA Ultra-Humana', desc: 'Sua IA aprende seu tom de voz e responde de forma natural.' },
-                { icon: TrendingUp, title: 'Foco Total em Vendas', desc: 'Configurado para fechar pedidos e não apenas "tirar dúvidas".' }
-              ].map((item, idx) => (
-                <div key={idx} className="flex gap-4 group">
-                  <div className="w-12 h-12 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center flex-shrink-0 group-hover:bg-primary/20 transition-colors">
-                    <item.icon className="w-6 h-6 text-primary" />
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-foreground mb-1">{item.title}</h4>
-                    <p className="text-muted-foreground text-sm">{item.desc}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="relative">
-            <div className="aspect-square gradient-card border border-border/50 rounded-[40px] rotate-3 shadow-2xl p-8 flex flex-col justify-center gap-6 overflow-hidden relative">
-              <div className="absolute inset-0 bg-primary/5 -z-10 animate-pulse-soft" />
-              <div className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <CheckCircle2 className="w-6 h-6 text-primary" />
-                  <span className="text-xl font-bold text-foreground">Aumento de 400% na conversão</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <CheckCircle2 className="w-6 h-6 text-primary" />
-                  <span className="text-xl font-bold text-foreground">Zero leads perdidos</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <CheckCircle2 className="w-6 h-6 text-primary" />
-                  <span className="text-xl font-bold text-foreground">Atendimento escalável</span>
-                </div>
-              </div>
-              <div className="mt-8 pt-8 border-t border-border/50">
-                <div className="flex gap-1 text-yellow-500 mb-2">
-                  {[1, 2, 3, 4, 5].map(i => <Star key={i} className="w-4 h-4 fill-current" />)}
-                </div>
-                <p className="text-sm italic text-muted-foreground">"O CodControl dobrou meu faturamento no primeiro mês. O robô vende mais que eu!"</p>
-                <p className="text-xs font-bold text-foreground mt-4">— Rafael Akilys, Info-produtor</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Features Grid */}
-      <section id="recursos" className="bg-secondary/30 py-32">
-        <div className="max-w-7xl mx-auto px-6 text-center">
-          <h2 className="text-4xl md:text-5xl font-bold text-foreground mb-4">Toda a potência de um CRM moderno</h2>
-          <p className="text-muted-foreground text-lg max-w-2xl mx-auto mb-20 animate-slide-up leading-relaxed">
-            Tudo o que você precisa para gerenciar seus vendedores automáticos e organizar seus leads de forma profissional.
-          </p>
-          <div className="grid md:grid-cols-3 gap-8 text-left">
-            {[
-              { icon: MessageSquare, title: 'Cérebro com ChatGPT', desc: 'Configure o prompt do seu jeito. Dê uma personalidade, um catálogo e veja a mágica acontecer.', color: 'from-emerald-500/10 to-teal-500/10' },
-              { icon: Zap, title: 'Dashboard de Performance', desc: 'Métricas reais. Quantas mensagens enviadas, quanto tempo economizado e taxa de conversão.', color: 'from-blue-500/10 to-cyan-500/10' },
-              { icon: Users, title: 'CRM de Contatos', desc: 'Organize leads por tags: "Comprador", "Em dúvida", "Boleto". Não perca ninguém de vista.', color: 'from-purple-500/10 to-pink-500/10' },
-              { icon: Clock, title: 'Memória Total', desc: 'O robô nunca esquece o que o cliente falou ontem. Continuamos a conversa de onde parou.', color: 'from-orange-500/10 to-red-500/10' },
-              { icon: Shield, title: 'Fácil & Seguro', desc: 'Conexão via QR Code criptografado. Total segurança para o seu número oficial do WhatsApp.', color: 'from-green-500/10 to-emerald-500/10' },
-              { icon: DollarSign, title: 'Foco no Lucro', desc: 'Nossa IA é treinada para identificar gatilhos de compra e direcionar para o checkout.', color: 'from-yellow-500/10 to-orange-500/10' },
-            ].map((f, idx) => (
-              <div key={idx} className="gradient-card border border-border/50 rounded-2xl p-8 hover:border-primary/50 transition-all hover:-translate-y-2 group">
-                <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${f.color} border border-border flex items-center justify-center mb-6 group-hover:scale-110 transition-transform`}>
-                  <f.icon className="w-7 h-7 text-primary" />
-                </div>
-                <h3 className="text-xl font-bold text-foreground mb-3">{f.title}</h3>
-                <p className="text-muted-foreground text-sm leading-relaxed">{f.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Steps */}
-      <section className="max-w-7xl mx-auto px-6 py-32 text-center">
-        <h2 className="text-4xl font-bold text-foreground mb-20 leading-tight tracking-tight italic">3 Passos para seu Vendedor 24h</h2>
-        <div className="grid md:grid-cols-3 gap-12 relative">
-          <div className="hidden md:block absolute top-10 left-1/4 right-1/4 h-px border-t border-dashed border-primary/30" />
-          {[
-            { step: '01', title: 'Conecte o WhatsApp', desc: 'Escaneie o QR Code em 5 segundos e pronto.' },
-            { step: '02', title: 'Defina o Prompt', desc: 'Diga para a IA quem ela deve ser e o que ela vende.' },
-            { step: '03', title: 'Escala Ativada', desc: 'Deixe o robô atender 1 ou 10.000 pessoas ao mesmo tempo.' },
-          ].map((s, idx) => (
-            <div key={idx} className="relative z-10 flex flex-col items-center">
-              <div className="w-16 h-16 rounded-full gradient-primary text-black font-black text-xl flex items-center justify-center mb-6 shadow-xl shadow-primary/20">
-                {s.step}
-              </div>
-              <h4 className="text-xl font-bold text-foreground mb-3">{s.title}</h4>
-              <p className="text-muted-foreground text-sm">{s.desc}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* Pricing */}
-      <section id="planos" className="relative py-32 overflow-hidden">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-[600px] bg-primary/5 blur-[120px] rounded-full -z-10" />
-        <div className="max-w-7xl mx-auto px-6 text-center">
-          <div className="inline-block bg-secondary px-4 py-1.5 rounded-full border border-border text-xs font-bold text-muted-foreground mb-4 uppercase tracking-widest">Pricing</div>
-          <h2 className="text-5xl md:text-6xl font-black text-foreground mb-6">Investimento Ideal <br /> <span className="text-primary italic">para seu Lucro.</span></h2>
-          <p className="text-muted-foreground text-lg mb-16">Pague menos que um café por dia e tenha um time de elite atendendo seus clientes.</p>
-
-          <div className="grid md:grid-cols-3 gap-8 items-end max-w-6xl mx-auto">
-            {/* Basic */}
-            <div className="gradient-card border-2 border-primary/50 rounded-3xl p-10 text-left hover:border-primary transition-all flex flex-col h-full relative overflow-hidden">
-              <div className="absolute top-0 right-0 bg-primary text-black text-[10px] font-black px-3 py-1 rounded-bl-xl uppercase">OFERTA</div>
-              <h3 className="text-xl font-bold text-foreground mb-2">Básico</h3>
-              <div className="flex flex-col mb-8">
-                <div className="flex items-baseline gap-2">
-                  <span className="text-5xl font-black text-foreground">R$ 10</span>
-                  <span className="text-muted-foreground text-sm font-medium">/30 dias</span>
-                </div>
-                <div className="mt-2 p-3 rounded-xl bg-primary/10 border border-primary/20">
-                   <p className="text-xs font-bold text-primary uppercase">APROVEITE O VALOR PROMOCIONAL</p>
-                   <p className="text-[10px] text-muted-foreground mt-1">Depois apenas R$ 97/mês</p>
-                </div>
-              </div>
-              <ul className="space-y-4 mb-10 flex-1">
-                <li className="flex items-center gap-3 text-sm text-muted-foreground font-medium"><CheckCircle2 className="w-5 h-5 text-primary" /> 1 WhatsApp Conectado</li>
-                <li className="flex items-center gap-3 text-sm text-muted-foreground font-medium"><CheckCircle2 className="w-5 h-5 text-primary" /> IA c/ Memória Contextual</li>
-                <li className="flex items-center gap-3 text-sm text-muted-foreground font-medium"><CheckCircle2 className="w-5 h-5 text-primary" /> CRM Completo</li>
-                <li className="flex items-center gap-3 text-sm text-muted-foreground font-medium"><CheckCircle2 className="w-5 h-5 text-primary" /> Dashboard Simples</li>
-              </ul>
-              <Link href="/register?plan=basico" className="w-full text-center border border-border text-foreground font-bold py-4 rounded-xl hover:bg-secondary transition-all">
-                COMEÇAR AGORA
-              </Link>
-            </div>
-
-            {/* Pro */}
-            <div className="relative gradient-card border-2 border-primary glow-primary rounded-[32px] p-12 text-left scale-110 z-20 flex flex-col h-full shadow-2xl">
-              <div className="absolute -top-4 left-1/2 -translate-x-1/2 gradient-primary text-black text-[10px] font-black px-4 py-1.5 rounded-full tracking-widest flex items-center gap-2">
-                <Star className="w-3 h-3 fill-black" /> O MAIS VENDIDO
-              </div>
-              <h3 className="text-2xl font-black text-foreground mb-2">Professional</h3>
-              <div className="flex items-baseline gap-1 mb-8">
-                <span className="text-muted-foreground text-sm font-medium">R$</span>
-                <span className="text-6xl font-black text-foreground tracking-tighter">497</span>
-                <span className="text-muted-foreground text-sm font-medium">/mês</span>
-              </div>
-              <ul className="space-y-4 mb-10 flex-1">
-                <li className="flex items-center gap-3 text-md text-foreground font-bold"><CheckCircle2 className="w-5 h-5 text-primary" /> 3 WhatsApps Conectados</li>
-                <li className="flex items-center gap-3 text-sm text-foreground/80 font-medium"><CheckCircle2 className="w-5 h-5 text-primary" /> IA Premium (GPT-4o)</li>
-                <li className="flex items-center gap-3 text-sm text-foreground/80 font-medium"><CheckCircle2 className="w-5 h-5 text-primary" /> CRM Avançado com Tags</li>
-                <li className="flex items-center gap-3 text-sm text-foreground/80 font-medium"><CheckCircle2 className="w-5 h-5 text-primary" /> Relatórios de Performance</li>
-                <li className="flex items-center gap-3 text-sm text-foreground/80 font-medium"><CheckCircle2 className="w-5 h-5 text-primary" /> Suporte Prioritário</li>
-              </ul>
-              <Link href="/register?plan=pro" className="w-full text-center gradient-primary text-black font-black py-5 rounded-2xl hover:scale-[1.02] transition-all shadow-xl shadow-primary/20">
-                GARANTIR MINHA VAGA
-              </Link>
-            </div>
-
-            {/* Agency */}
-            <div className="gradient-card border border-border/50 rounded-3xl p-10 text-left hover:border-primary/20 transition-all flex flex-col h-full">
-              <div className="flex justify-between items-start mb-2">
-                <h3 className="text-xl font-bold text-foreground">Elite / Agência</h3>
-                <Zap className="w-5 h-5 text-primary" />
-              </div>
-              <div className="flex items-baseline gap-1 mb-8">
-                <span className="text-muted-foreground text-sm font-medium">R$</span>
-                <span className="text-5xl font-black text-foreground">997</span>
-                <span className="text-muted-foreground text-sm font-medium">/mês</span>
-              </div>
-              <ul className="space-y-4 mb-10 flex-1">
-                <li className="flex items-center gap-3 text-sm text-muted-foreground font-medium"><CheckCircle2 className="w-5 h-5 text-primary" /> 10 WhatsApps Conectados</li>
-                <li className="flex items-center gap-3 text-sm text-muted-foreground font-medium"><CheckCircle2 className="w-5 h-5 text-primary" /> Mensagens Ilimitadas</li>
-                <li className="flex items-center gap-3 text-sm text-muted-foreground font-medium"><CheckCircle2 className="w-5 h-5 text-primary" /> White Label (Breve)</li>
-                <li className="flex items-center gap-3 text-sm text-muted-foreground font-medium"><CheckCircle2 className="w-5 h-5 text-primary" /> API de Integração</li>
-                <li className="flex items-center gap-3 text-sm text-muted-foreground font-medium"><CheckCircle2 className="w-5 h-5 text-primary" /> Gerente Dedicado</li>
-              </ul>
-              <Link href="/register?plan=agencia" className="w-full text-center border border-border text-foreground font-bold py-4 rounded-xl hover:bg-secondary transition-all">
-                FALAR COM TIME ELITE
-              </Link>
-            </div>
-          </div>
-
-          <p className="mt-12 text-muted-foreground text-sm font-medium">Precisa de algo customizado? <Link href="#" className="text-primary underline font-bold">Consulte nosso time de vendas.</Link></p>
-        </div>
-      </section>
-
-      {/* FAQ */}
-      <section className="max-w-4xl mx-auto px-6 py-32">
-        <h2 className="text-4xl font-black text-center mb-16">Dúvidas Frequentes</h2>
-        <div className="space-y-4">
-          {[
-            { q: 'O robô consegue imitar minha voz?', a: 'Sim! Você configura o tom de voz (formal, casual, informal) e ele aprende sobre seu produto para responder igual a um vendedor real.' },
-            { q: 'Corre risco de banimento?', a: 'Nós usamos a API oficial da Evolution que segue padrões seguros. O segredo está no comportamento humano da nossa IA, o que reduz drasticamente riscos em relação a disparadores de massa.' },
-            { q: 'Preciso deixar o celular ligado?', a: 'Não! Uma vez conectado via QR Code, o sistema roda em nuvem 24h por dia, mesmo com seu celular desligado ou sem internet.' },
-            { q: 'Tem fidelidade no contrato?', a: 'Zero fidelidade. Você pode cancelar sua assinatura mensal a qualquer momento com apenas um clique.' },
-          ].map((item, i) => (
-            <div key={i} className="gradient-card border border-border/50 rounded-2xl p-6 group cursor-pointer hover:border-primary/30 transition-all">
-              <div className="flex items-center justify-between mb-2">
-                <h4 className="font-bold text-foreground flex items-center gap-3">
-                  <HelpCircle className="w-5 h-5 text-primary" />
-                  {item.q}
-                </h4>
-                <ChevronDown className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-all" />
-              </div>
-              <p className="text-muted-foreground text-sm leading-relaxed hidden group-hover:block animate-fade-in mt-4 border-t border-border/50 pt-4">
-                {item.a}
-              </p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* CTA Bottom */}
-      <section className="max-w-7xl mx-auto px-6 mb-32">
-        <div className="gradient-primary rounded-[40px] p-12 md:p-24 text-center relative overflow-hidden shadow-2xl shadow-primary/20">
-          <div className="absolute top-0 left-0 w-32 h-32 bg-white/10 blur-3xl rounded-full" />
-          <div className="absolute bottom-0 right-0 w-48 h-48 bg-black/10 blur-3xl rounded-full" />
-
-          <h2 className="text-4xl md:text-6xl font-black text-black mb-8 leading-tight tracking-tight">
-            Pronto para ver sua empresa <br /> vendendo no piloto automático?
-          </h2>
-          <div className="flex flex-col items-center gap-6 relative z-10">
-            <Link href="/register?plan=basico" className="bg-black text-white font-black px-12 py-6 rounded-2xl text-2xl hover:scale-105 transition-all shadow-2xl flex items-center gap-3">
-              QUERO TESTAR POR R$ 10!
-              <ArrowRight className="w-8 h-8" />
-            </Link>
-            <p className="text-black/70 font-bold text-sm italic">Oferta de Experimentação: 30 dias de CodControl por apenas R$ 10.</p>
-          </div>
-        </div>
-      </section>
-
-      {/* Footer */}
-      <footer className="py-12 border-t border-border relative overflow-hidden">
-                <div className="container mx-auto px-6 text-center">
-                    <div className="flex items-center justify-center gap-2 mb-4">
-                        <div className="w-8 h-8 rounded-lg gradient-primary flex items-center justify-center">
-                            <span className="text-black font-bold text-xs">C</span>
+                    
+                    {/* Chat Simulator */}
+                    <div className="glass shadow-2xl rounded-3xl border-white/5 p-6 space-y-4 max-w-sm mx-auto w-full relative">
+                        <div className="flex items-center gap-3 mb-6 border-b border-white/5 pb-4">
+                            <div className="w-10 h-10 rounded-full gradient-primary flex items-center justify-center">
+                                <Bot className="w-6 h-6 text-black" />
+                            </div>
+                            <div>
+                                <h4 className="font-bold text-sm text-foreground">Camila (Vendedora IA)</h4>
+                                <div className="flex items-center gap-1">
+                                    <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                                    <span className="text-[10px] text-primary uppercase font-black tracking-widest">Online</span>
+                                </div>
+                            </div>
                         </div>
-                        <span className="font-bold text-lg tracking-tighter">CodControl <span className="text-primary">AI CRM</span></span>
+
+                        <div className="flex flex-col gap-3 h-80 overflow-y-auto pr-2 custom-scrollbar">
+                           {[
+                             { sender: 'user', text: 'Olá! Tenho interesse no pacote Liso Mágico.' },
+                             { sender: 'ai', text: 'Oi! Tudo bem? Ótima escolha! O Liso Mágico é nosso campeão de vendas. Você quer garantir o desconto de lançamento agora? 😊' },
+                             { sender: 'user', text: 'Sim, mas como é entregue?' },
+                             { sender: 'ai', text: 'É tudo 100% digital e rápido! Assim que o sistema reconhecer o PIX, você recebe seus dados no e-mail na hora. Posso gerar seu link de desconto? 🚀' }
+                           ].map((msg, i) => (
+                             <div key={i} className={`${msg.sender === 'ai' ? 'gradient-primary text-black font-semibold self-end shadow-lg' : 'bg-white/5 text-foreground self-start'} px-4 py-3 rounded-2xl ${msg.sender === 'ai' ? 'rounded-tr-none' : 'rounded-tl-none'} text-xs max-w-[85%] animate-slide-up`}>
+                               {msg.text}
+                             </div>
+                           ))}
+                           <div className="bg-white/5 border border-white/10 p-3 rounded-xl border-dashed animate-pulse text-[10px] text-muted-foreground text-center">
+                              IA preparando link de checkout...
+                           </div>
+                        </div>
                     </div>
-                    <p className="text-muted-foreground text-sm max-w-md mx-auto mb-6">
-                        A evolução das vendas com Inteligência Artificial. 
-                        Sua empresa no próximo nível.
-                    </p>
-                    <div className="flex flex-col gap-1 mb-8">
-                        <p className="text-[11px] text-muted-foreground/60 uppercase tracking-widest font-medium">
-                            R G BARROS REPRESENTACAO
-                        </p>
-                        <p className="text-xs text-muted-foreground/80 font-bold">
-                            CNPJ: 60.047.949/0001-79
-                        </p>
-                    </div>
-                    <p className="text-muted-foreground text-xs">
-                        &copy; {new Date().getFullYear()} CodControl. Todos os direitos reservados.
-                    </p>
+                 </div>
+              </div>
+           </div>
+        </div>
+      </section>
+
+      {/* The Problem */}
+      <section className="py-24 bg-white/[0.01]">
+        <div className="container-7xl">
+          <div className="text-center mb-20 space-y-4 max-w-3xl mx-auto">
+             <span className="text-destructive font-black text-xs uppercase tracking-[0.3em] leading-none mb-4 block">A DURA REALIDADE</span>
+             <h2 className="text-4xl md:text-6xl font-black tracking-tightest leading-none">Você está <span className="text-destructive border-b-4 border-destructive/20 italic">perdendo vendas</span> todos os dias.</h2>
+          </div>
+          
+          <div className="grid md:grid-cols-3 gap-8">
+             {[
+               { title: 'Demora mata o lucro', desc: 'Cliente mandou mensagem às 2h da manhã? Ele não vai esperar você acordar para comprar de outro.' },
+               { title: 'Leads esfriando agora', desc: 'Cada minuto de espera diminui drasticamente sua conversão. Velocidade é faturamento imediato.' },
+               { title: 'Limite Humano Real', desc: 'Você não consegue atender 100 pessoas ao mesmo tempo com qualidade. A IA consegue e nunca se cansa.' }
+             ].map((item, i) => (
+                <div key={i} className="glass-card p-10 rounded-[40px] space-y-4 border-red-500/5 hover:bg-red-500/5 hover:border-red-500/20 transition-all duration-500 group">
+                   <div className="w-12 h-12 rounded-2xl bg-red-500/10 flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <Minus className="w-6 h-6 text-red-500" />
+                   </div>
+                   <h3 className="text-xl font-black text-foreground">{item.title}</h3>
+                   <p className="text-muted-foreground text-sm leading-relaxed opacity-70">{item.desc}</p>
                 </div>
-            </footer>
+             ))}
+          </div>
+          <div className="mt-16 text-center">
+             <p className="text-xl md:text-2xl font-bold opacity-30 italic">"O problema não é falta de cliente… é falta de velocidade de resposta."</p>
+          </div>
+        </div>
+      </section>
+
+      {/* How it Works */}
+      <section id="solucao" className="py-32 relative">
+        <div className="container-7xl text-center">
+            <h2 className="text-4xl md:text-6xl font-black mb-24 tracking-tightest">CodControl Resolve Tudo em <span className="text-primary italic">3 Passos Rápidos</span></h2>
+            
+            <div className="grid md:grid-cols-3 gap-16 relative">
+                <div className="hidden md:block absolute top-[48px] left-[20%] right-[20%] h-0.5 bg-gradient-to-r from-transparent via-white/5 to-transparent border-t border-dashed border-white/20" />
+                
+                {[
+                    { icon: Smartphone, title: 'Conecte o App', desc: 'Abra o sistema, escaneie o QR Code em 5 segundos. Seu número está pronto para a guerra.' },
+                    { icon: Target, title: 'Configure a IA', desc: 'Diga para a Camila o que você vende, seus preços e tom de voz. Ela aprende em segundos.' },
+                    { icon: Rocket, title: 'Escala Ativada', desc: 'Sinta o alívio. Suas mensagens são respondidas e suas vendas fechadas no automático.' }
+                ].map((step, i) => (
+                    <div key={i} className="flex flex-col items-center group relative z-10">
+                        <div className="w-24 h-24 rounded-3xl gradient-primary flex items-center justify-center mb-8 rotate-3 group-hover:rotate-0 group-hover:scale-110 transition-all duration-500 shadow-2xl shadow-primary/20">
+                            <step.icon className="w-10 h-10 text-black" />
+                            <div className="absolute -top-3 -right-3 w-10 h-10 rounded-full bg-black flex items-center justify-center border-2 border-primary text-primary font-black text-xl shadow-xl">
+                                {i + 1}
+                            </div>
+                        </div>
+                        <h4 className="text-2xl font-black text-foreground mb-4">{step.title}</h4>
+                        <p className="text-muted-foreground leading-relaxed px-4 opacity-80">{step.desc}</p>
+                    </div>
+                ))}
+            </div>
+        </div>
+      </section>
+
+      {/* Benefits Focus */}
+      <section className="py-32 bg-primary/[0.02]">
+         <div className="container-7xl">
+            <div className="grid md:grid-cols-2 gap-24 items-center">
+               <div className="space-y-8">
+                  <span className="text-primary font-black text-xs uppercase tracking-[0.3em]">POR QUE VOCÊ PRECISA DISSO AGORA</span>
+                  <h2 className="text-4xl md:text-7xl font-black tracking-tightest leading-[0.9]">Venda 24h sem gastar <br /> com <span className="text-primary border-b-4 border-primary/20 italic">funcionários.</span></h2>
+                  <p className="text-muted-foreground text-lg leading-relaxed opacity-80">
+                     A vendedora IA não cansa, não reclama e não esquece de responder. Ela é o ativo mais valioso do seu negócio hoje.
+                  </p>
+                  
+                  <div className="grid gap-6">
+                     {[
+                        { icon: Zap, title: 'Venda enquanto dorme', desc: 'O horário de pico muitas vezes é quando você não pode atender.' },
+                        { icon: Users, title: 'Atendimento em Massa', desc: 'Atenda 10 ou 10.000 pessoas com a mesma perfeição e paciência.' },
+                        { icon: DollarSign, title: 'Menor Custo, Maior Lucro', desc: 'Uma fração do custo de um vendedor humano, com 10x mais eficiência.' }
+                     ].map((item, i) => (
+                        <div key={i} className="flex gap-6 items-start">
+                           <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center flex-shrink-0 neon-border-hover">
+                              <item.icon className="w-7 h-7 text-primary" />
+                           </div>
+                           <div className="pt-1">
+                              <h4 className="font-black text-xl text-foreground mb-2">{item.title}</h4>
+                              <p className="text-muted-foreground text-sm opacity-70">{item.desc}</p>
+                           </div>
+                        </div>
+                     ))}
+                  </div>
+               </div>
+
+               <div className="relative group p-4">
+                   <div className="absolute inset-x-0 -inset-y-5 bg-primary/10 blur-[120px] rounded-full group-hover:bg-primary/20 transition-all duration-700" />
+                   <div className="relative glass border border-white/10 rounded-[50px] p-12 transform rotate-2 group-hover:rotate-0 transition-all duration-700 shadow-2xl">
+                      <div className="flex flex-col gap-8">
+                         <div className="flex items-center gap-6">
+                            <div className="w-16 h-16 rounded-3xl gradient-primary flex items-center justify-center shadow-2xl">
+                               <TrendingUp className="w-10 h-10 text-black" />
+                            </div>
+                            <div>
+                               <h5 className="font-black text-4xl leading-none">+400%</h5>
+                               <span className="text-[10px] text-primary uppercase font-black tracking-widest mt-2 block">ROI Médio em Automação</span>
+                            </div>
+                         </div>
+                         <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden">
+                            <div className="h-full w-[92%] gradient-primary shadow-[0_0_15px_rgba(20,184,166,0.6)]" />
+                         </div>
+                         <p className="text-xl text-foreground font-medium italic opacity-90 leading-relaxed">
+                            "Eu não conseguia dar conta do volume de leads. A IA salvou o meu faturamento. É a melhor vendedora que já tive."
+                         </p>
+                         <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 rounded-full gradient-primary p-0.5">
+                               <div className="w-full h-full rounded-full bg-background flex items-center justify-center font-black text-primary">R</div>
+                            </div>
+                            <div className="flex flex-col">
+                               <span className="font-black text-lg">Rafael Akilys</span>
+                               <span className="text-[10px] text-muted-foreground uppercase font-black leading-none mt-1">Produtor e Fundador</span>
+                            </div>
+                         </div>
+                      </div>
+                   </div>
+               </div>
+            </div>
+         </div>
+      </section>
+
+      {/* Differentials Cards */}
+      <section className="py-32">
+        <div className="container-7xl">
+           <div className="text-center mb-24">
+              <h2 className="text-4xl md:text-7xl font-black mb-6 tracking-tightest">O que nos torna <span className="text-primary italic">ABSURDOS.</span></h2>
+              <p className="text-muted-foreground max-w-2xl mx-auto opacity-70">Não somos um "bot" comum. Somos inteligência de vendas focada em conversão.</p>
+           </div>
+           
+           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+              {[
+                  { title: 'IA Humana', desc: 'Nossa inteligência entende tom de voz, gírias e quebra objeções como ninguém.', icon: Heart, color: 'primary' },
+                  { title: 'Memória Total', desc: 'Ela nunca esquece. Sabe exatamente o que o lead falou na conversa anterior.', icon: Clock, color: 'blue' },
+                  { title: 'Cloud Mastery', desc: 'Celular desligado? Sem bateria? Não importa. A vendedora continua online.', icon: Layers, color: 'purple' },
+                  { title: 'Anti-Bloqueio', desc: 'Usamos tecnologia que simula comportamento humano para máxima segurança.', icon: Shield, color: 'green' }
+              ].map((item, i) => (
+                 <div key={i} className="glass-card p-12 rounded-[40px] group border-white/5 hover:border-primary/20 transition-all duration-500">
+                    <div className={`w-14 h-14 rounded-2xl bg-${item.color}/10 flex items-center justify-center mb-8`}>
+                       <item.icon className={`w-7 h-7 text-${item.color}`} />
+                    </div>
+                    <h4 className="text-2xl font-black mb-4">{item.title}</h4>
+                    <p className="text-sm text-muted-foreground leading-relaxed opacity-70">{item.desc}</p>
+                 </div>
+              ))}
+           </div>
+        </div>
+      </section>
+
+      {/* Pricing - Irresistible Offer */}
+      <section id="planos" className="py-40 relative">
+        <div className="container-7xl text-center">
+           <div className="max-w-3xl mx-auto mb-20 text-balance px-4">
+              <h2 className="text-5xl md:text-8xl font-black tracking-tightest mb-8 leading-[0.9]">Aumente o lucro <br /> <span className="text-primary italic">praticamente de graça.</span></h2>
+              <p className="text-muted-foreground text-xl opacity-80">Teste a potência total do nosso CRM sem nenhum risco.</p>
+           </div>
+           
+           {/* Trail Box */}
+           <div className="max-w-5xl mx-auto mb-16 relative group px-4">
+              <div className="absolute -inset-1.5 bg-gradient-to-r from-primary via-cyan-400 to-purple-600 rounded-[50px] blur-xl opacity-20 group-hover:opacity-40 transition duration-700" />
+              <div className="relative glass p-8 md:p-16 rounded-[44px] flex flex-col lg:flex-row items-center justify-between gap-12 border-white/20">
+                 <div className="text-left space-y-4">
+                    <div className="inline-block bg-primary text-black text-[10px] font-black px-4 py-1.5 rounded-full shadow-lg uppercase tracking-[0.2em] mb-4">Oferta de Experimentação</div>
+                    <h3 className="text-4xl md:text-6xl font-black italic tracking-tighter">30 DIAS POR R$10</h3>
+                    <p className="text-muted-foreground text-lg opacity-70">Acesse tudo: IA, CRM, Métricas e Dashboards. Verifique o resultado você mesmo.</p>
+                    <div className="pt-4 flex items-center gap-6 opacity-40">
+                       <div className="flex items-center gap-2 text-xs font-black uppercase tracking-widest"><Lock className="w-4 h-4" /> Pagamento Seguro</div>
+                       <div className="flex items-center gap-2 text-xs font-black uppercase tracking-widest"><Shield className="w-4 h-4" /> Sem Multas</div>
+                    </div>
+                 </div>
+                 <div className="flex flex-col items-center lg:items-end gap-6 w-full lg:w-auto">
+                    <div className="flex flex-col items-center lg:items-end">
+                       <span className="text-muted-foreground line-through text-xl opacity-40 mb-1">R$ 97,00</span>
+                       <div className="flex items-baseline gap-2">
+                          <span className="text-2xl font-black opacity-50">R$</span>
+                          <span className="text-9xl font-black text-primary tracking-tighter leading-none">10</span>
+                       </div>
+                    </div>
+                    <Link href="/register?plan=basico" className="w-full lg:w-auto gradient-primary text-black font-black px-16 py-7 rounded-3xl text-2xl hover:scale-110 active:scale-95 transition-all glow-primary shadow-[0_20px_40px_rgba(20,184,166,0.3)] text-center leading-none">
+                       COMEÇAR AGORA
+                    </Link>
+                 </div>
+              </div>
+           </div>
+
+           {/* More Plans */}
+           <div className="grid lg:grid-cols-3 gap-8 items-stretch pt-24 px-4">
+              <div className="glass-card p-12 rounded-[44px] flex flex-col border-white/5 opacity-50 hover:opacity-100 transition-all duration-500">
+                 <h4 className="text-xl font-black mb-8">Intermediário</h4>
+                 <div className="mb-12">
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-5xl font-black">R$ 97</span>
+                      <span className="text-muted-foreground font-black text-xs uppercase opacity-60">/mês</span>
+                    </div>
+                 </div>
+                 <ul className="space-y-4 mb-12 flex-1 text-left list-none">
+                    <li className="flex items-center gap-3 text-sm font-semibold text-muted-foreground"><CheckCircle2 className="w-4 h-4 text-primary" /> 1 Canal WhatsApp</li>
+                    <li className="flex items-center gap-3 text-sm font-semibold text-muted-foreground"><CheckCircle2 className="w-4 h-4 text-primary" /> IA c/ Memória Contextual</li>
+                    <li className="flex items-center gap-3 text-sm font-semibold text-muted-foreground"><CheckCircle2 className="w-4 h-4 text-primary" /> CRM Kanban Completo</li>
+                 </ul>
+                 <Link href="/register?plan=basico" className="w-full border-2 border-white/10 text-white font-black py-5 rounded-2xl hover:bg-white/5 transition-all text-center">COMEÇAR TESTE</Link>
+              </div>
+
+              <div className="glass-card p-14 rounded-[50px] flex flex-col transform lg:-translate-y-12 relative border-primary shadow-[0_30px_60px_rgba(0,0,0,0.5)] z-20">
+                 <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 gradient-primary text-black text-[10px] font-black px-8 py-2.5 rounded-full uppercase tracking-[0.3em] shadow-2xl">MUITO RECOMENDADO</div>
+                 <h4 className="text-3xl font-black mb-8">Professional</h4>
+                 <div className="mb-12">
+                    <div className="flex items-baseline gap-2">
+                       <span className="text-sm font-black opacity-40">R$</span>
+                       <span className="text-7xl font-black text-primary tracking-tighter leading-none">497</span>
+                       <span className="text-sm font-black uppercase tracking-widest opacity-60 ml-1">/mês</span>
+                    </div>
+                 </div>
+                 <ul className="space-y-6 mb-14 flex-1 text-left list-none">
+                    <li className="flex items-center gap-4 text-lg font-black"><CheckCircle2 className="w-6 h-6 text-primary" /> 3 Canais WhatsApp</li>
+                    <li className="flex items-center gap-4 text-lg font-black text-primary"><CheckCircle2 className="w-6 h-6 text-primary" /> IA Premium (GPT-4o)</li>
+                    <li className="flex items-center gap-4 text-lg font-black"><CheckCircle2 className="w-6 h-6 text-primary" /> Multi-Campanhas</li>
+                    <li className="flex items-center gap-4 text-lg font-black text-primary"><CheckCircle2 className="w-6 h-6 text-primary" /> Treinamento Prioritário</li>
+                 </ul>
+                 <Link href="/register?plan=pro" className="w-full gradient-primary text-black font-black py-6 rounded-3xl text-2xl hover:scale-105 transition-all glow-primary shadow-2xl text-center leading-none">QUERO ESCALAR AGORA</Link>
+              </div>
+
+              <div className="glass-card p-12 rounded-[44px] flex flex-col border-white/5 opacity-50 hover:opacity-100 transition-all duration-500">
+                 <h4 className="text-xl font-black mb-8">Elite / Agência</h4>
+                 <div className="mb-12">
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-5xl font-black">R$ 997</span>
+                      <span className="text-muted-foreground font-black text-xs uppercase opacity-60">/mês</span>
+                    </div>
+                 </div>
+                 <ul className="space-y-4 mb-12 flex-1 text-left list-none">
+                    <li className="flex items-center gap-3 text-sm font-semibold text-muted-foreground"><CheckCircle2 className="w-4 h-4 text-primary" /> 10 Canais WhatsApp</li>
+                    <li className="flex items-center gap-3 text-sm font-semibold text-muted-foreground"><CheckCircle2 className="w-4 h-4 text-primary" /> Mensagens Ilimitadas</li>
+                    <li className="flex items-center gap-3 text-sm font-semibold text-muted-foreground"><CheckCircle2 className="w-4 h-4 text-primary" /> Gerente VIP Dedicado</li>
+                    <li className="flex items-center gap-3 text-sm font-semibold text-muted-foreground"><CheckCircle2 className="w-4 h-4 text-primary" /> API Open (Beta)</li>
+                 </ul>
+                 <Link href="/register?plan=agencia" className="w-full border-2 border-white/10 text-white font-black py-5 rounded-2xl hover:bg-white/5 transition-all text-center">FALAR COM TIME ELITE</Link>
+              </div>
+           </div>
+        </div>
+      </section>
+
+      {/* Final Aggressive CTA */}
+      <section className="py-40 relative group">
+          <div className="absolute inset-0 gradient-primary opacity-[0.05] group-hover:opacity-[0.1] transition-opacity" />
+          <div className="container-7xl text-center relative z-10 px-4">
+              <h2 className="text-5xl md:text-8xl font-black tracking-tightest mb-16 leading-[0.9]">Chega de perder dinheiro. <br /> Deixe a <span className="text-primary italic">IA Vender</span> por você.</h2>
+              <div className="flex flex-col items-center gap-10">
+                  <Link href="/register?plan=basico" className="w-full sm:w-auto gradient-primary text-black font-black px-16 py-8 rounded-[40px] text-2xl md:text-3xl hover:scale-105 active:scale-95 transition-all glow-primary flex items-center justify-center gap-6 shadow-[0_40px_80px_rgba(20,184,166,0.3)]">
+                      QUERO MEU VENDEDOR AGORA!
+                      <ArrowRight className="w-12 h-12" />
+                  </Link>
+                  <p className="font-black text-xl opacity-60 italic tracking-tighter">Oferta Única: Comece hoje por R$10 e mude o rumo da sua empresa.</p>
+              </div>
+          </div>
+      </section>
+
+      {/* Minimalistic Footer */}
+      <footer className="py-24 border-t border-white/5 bg-black/60 relative backdrop-blur-3xl overflow-hidden">
+         <div className="container-7xl">
+            <div className="grid md:grid-cols-4 gap-16 mb-24">
+               <div className="md:col-span-2 space-y-8 text-left">
+                  <div className="flex items-center gap-4">
+                    <Image src="/logo.png" alt="Logo" width={48} height={48} className="w-12 h-12 rounded-xl" />
+                    <span className="font-black text-3xl tracking-tightest">CodControl <span className="text-primary italic">AI</span></span>
+                  </div>
+                  <p className="text-muted-foreground max-w-sm leading-relaxed text-lg opacity-60">
+                     A vanguarda da automação de vendas. Tecnologia feita para quem não aceita nada menos que o topo.
+                  </p>
+               </div>
+               
+               <div className="space-y-8 text-left">
+                  <h5 className="font-black uppercase tracking-[0.3em] text-[10px] text-primary">Navegação</h5>
+                  <ul className="space-y-4">
+                     <li><a href="#solucao" className="text-sm font-bold text-muted-foreground hover:text-white transition-colors">Sistema</a></li>
+                     <li><a href="#planos" className="text-sm font-bold text-muted-foreground hover:text-white transition-colors">Planos</a></li>
+                     <li><a href="#recursos" className="text-sm font-bold text-muted-foreground hover:text-white transition-colors">Funcionalidades</a></li>
+                  </ul>
+               </div>
+
+               <div className="space-y-8 text-left">
+                  <h5 className="font-black uppercase tracking-[0.3em] text-[10px] text-primary">Companhia</h5>
+                  <div className="flex flex-col gap-4">
+                      <p className="text-xs text-muted-foreground font-bold">R G BARROS REPRESENTACAO</p>
+                      <p className="text-xs text-muted-foreground/60 leading-relaxed uppercase tracking-widest">CNPJ: 60.047.949/0001-79</p>
+                      <p className="text-[10px] text-muted-foreground/40 italic">&copy; {new Date().getFullYear()} CodControl AI. Todos os vendedos reservados.</p>
+                  </div>
+               </div>
+            </div>
+            
+            <div className="pt-12 border-t border-white/5 flex flex-col md:flex-row items-center justify-between gap-8 opacity-20 text-[9px] uppercase font-black tracking-[0.4em] grayscale">
+                <span>Engenharia de Software de Alta Performance</span>
+                <div className="flex gap-4">
+                  <span>Inovação</span>
+                  <span>Evolução</span>
+                  <span>Escala</span>
+                </div>
+            </div>
+         </div>
+      </footer>
     </div>
   )
 }
