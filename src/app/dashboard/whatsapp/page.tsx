@@ -27,7 +27,7 @@ export default function WhatsAppPage() {
     const [checkingStatus, setCheckingStatus] = useState<string | null>(null)
 
     const fetchInstances = useCallback(async () => {
-        const { data: { user } } = await supabase.auth.getSession().then(res => ({ data: { user: res.data.session?.user || null } }))
+        const { data: { user } } = await supabase.auth.getUser()
         if (!user) return
         const { data } = await supabase.from('whatsapp_instances').select('*').eq('user_id', user.id).order('created_at', { ascending: false })
         setInstances(data || [])
@@ -40,7 +40,7 @@ export default function WhatsAppPage() {
         if (!displayName.trim()) { toast.error('Digite um nome para a instância'); return }
         setCreating(true)
         try {
-            const { data: { user } } = await supabase.auth.getSession().then(res => ({ data: { user: res.data.session?.user || null } }))
+            const { data: { user } } = await supabase.auth.getUser()
             if (!user) return
 
             const res = await fetch('/api/whatsapp/create', {

@@ -39,7 +39,7 @@ export default function LogzzConfig() {
   }, [])
 
   async function loadData() {
-    const { data: { user } } = await supabase.auth.getSession().then(res => ({ data: { user: res.data.session?.user || null } }))
+    const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
     const [configRes, productsRes] = await Promise.all([
@@ -58,7 +58,7 @@ export default function LogzzConfig() {
       return
     }
     setSaving(true)
-    const { data: { user } } = await supabase.auth.getSession().then(res => ({ data: { user: res.data.session?.user || null } }))
+    const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setSaving(false); return }
 
     const payload = {
@@ -90,7 +90,7 @@ export default function LogzzConfig() {
       }
 
       setSaving(true)
-      const { data: { user } } = await supabase.auth.getSession().then(res => ({ data: { user: res.data.session?.user || null } }))
+      const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
       const { error } = await supabase.from('logzz_products').insert({

@@ -4,7 +4,7 @@ import AcademyClient from './AcademyClient'
 
 export default async function TutoriaisPage() {
     const supabase = await createSupabaseServerClient()
-    const { data: { user } } = await supabase.auth.getSession().then(res => ({ data: { user: res.data.session?.user || null } }))
+    const { data: { user } } = await supabase.auth.getUser()
     if (!user) redirect('/login')
 
     const { data: materials } = await supabase

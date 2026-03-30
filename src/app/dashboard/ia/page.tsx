@@ -64,7 +64,7 @@ export default function IAPage() {
 
     useEffect(() => {
         const load = async () => {
-            const { data: { user } } = await supabase.auth.getSession().then(res => ({ data: { user: res.data.session?.user || null } }))
+            const { data: { user } } = await supabase.auth.getUser()
             if (!user) return
             const [instancesRes, configsRes, profileRes] = await Promise.all([
                 supabase.from('whatsapp_instances').select('*').eq('user_id', user.id),
@@ -99,7 +99,7 @@ export default function IAPage() {
     const handleSave = async () => {
         setSaving(true)
         try {
-            const { data: { user } } = await supabase.auth.getSession().then(res => ({ data: { user: res.data.session?.user || null } }))
+            const { data: { user } } = await supabase.auth.getUser()
             if (!user) return
             const config = currentConfig
             if (config.id) {
@@ -185,7 +185,7 @@ export default function IAPage() {
         updateConfig('is_active', newValue)
 
         try {
-            const { data: { user } } = await supabase.auth.getSession().then(res => ({ data: { user: res.data.session?.user || null } }))
+            const { data: { user } } = await supabase.auth.getUser()
             if (!user) return
             const config = currentConfig
 
@@ -232,7 +232,7 @@ export default function IAPage() {
     const handleSaveKey = async () => {
         setSavingKey(true)
         try {
-            const { data: { user } } = await supabase.auth.getSession().then(res => ({ data: { user: res.data.session?.user || null } }))
+            const { data: { user } } = await supabase.auth.getUser()
             if (!user) {
                 toast.error('Usuário não autenticado')
                 return

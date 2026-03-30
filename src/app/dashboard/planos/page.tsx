@@ -7,7 +7,7 @@ import { GoogleAdsConversion } from '@/components/GoogleAdsConversion'
 
 export default async function PlanosPage() {
     const supabase = await createSupabaseServerClient()
-    const { data: { user } } = await supabase.auth.getSession().then(res => ({ data: { user: res.data.session?.user || null } }))
+    const { data: { user } } = await supabase.auth.getUser()
     if (!user) redirect('/login')
 
     const [plansRes, profileRes] = await Promise.all([

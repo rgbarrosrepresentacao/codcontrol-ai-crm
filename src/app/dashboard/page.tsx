@@ -16,7 +16,7 @@ import { DashboardInsights, DailySummary } from './components/DashboardInsights'
 
 export default async function DashboardPage() {
     const supabase = await createSupabaseServerClient()
-    const { data: { user } } = await supabase.auth.getSession().then(res => ({ data: { user: res.data.session?.user || null } }))
+    const { data: { user } } = await supabase.auth.getUser()
     if (!user) redirect('/login')
 
     const today = startOfDay(new Date())

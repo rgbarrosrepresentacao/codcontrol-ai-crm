@@ -140,7 +140,7 @@ function NodeEditor({ node, onChange, onDelete, onClose }: {
     const toastId = toast.loading('Fazendo upload do arquivo...')
     
     try {
-      const { data: { user } } = await supabase.auth.getSession().then(res => ({ data: { user: res.data.session?.user || null } }))
+      const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Não autenticado')
 
       const fileExt = file.name.split('.').pop()
@@ -471,7 +471,7 @@ function FunnelCanvas({ selectedFunnel, onFunnelUpdate }: { selectedFunnel: Funn
   async function saveFunnel() {
     setSaving(true)
     try {
-      const { data: { user } } = await supabase.auth.getSession().then(res => ({ data: { user: res.data.session?.user || null } }))
+      const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Não autenticado')
 
       // Helper to generate local UUID
@@ -627,7 +627,7 @@ export default function FunnelsPage() {
   async function createFunnel() {
     const name = prompt('Nome do Funil:')
     if (!name) return
-    const { data: { user } } = await supabase.auth.getSession().then(res => ({ data: { user: res.data.session?.user || null } }))
+    const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
     const { data, error } = await supabase.from('funnels').insert({ name, user_id: user.id }).select().single()
     if (error) { toast.error('Erro ao criar funil'); return }
@@ -637,7 +637,7 @@ export default function FunnelsPage() {
   }
 
   async function toggleDefault(f: Funnel) {
-    const { data: { user } } = await supabase.auth.getSession().then(res => ({ data: { user: res.data.session?.user || null } }))
+    const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
     if (!f.is_default) {
       await supabase.from('funnels').update({ is_default: false }).eq('user_id', user.id)

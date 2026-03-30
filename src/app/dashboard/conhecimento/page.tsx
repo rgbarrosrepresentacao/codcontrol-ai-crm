@@ -51,7 +51,7 @@ export default function ConhecimentoPage() {
     }
 
     async function loadItems() {
-        const { data: { user } } = await supabase.auth.getSession().then(res => ({ data: { user: res.data.session?.user || null } }))
+        const { data: { user } } = await supabase.auth.getUser()
         if (!user) return
 
         const { data } = await supabase
@@ -72,7 +72,7 @@ export default function ConhecimentoPage() {
         const toastId = toast.loading('Fazendo upload da mídia...')
 
         try {
-            const { data: { user } } = await supabase.auth.getSession().then(res => ({ data: { user: res.data.session?.user || null } }))
+            const { data: { user } } = await supabase.auth.getUser()
             if (!user) throw new Error('Não autenticado')
 
             const ext = file.name.split('.').pop()
@@ -104,7 +104,7 @@ export default function ConhecimentoPage() {
 
         setSaving(true)
         try {
-            const { data: { user } } = await supabase.auth.getSession().then(res => ({ data: { user: res.data.session?.user || null } }))
+            const { data: { user } } = await supabase.auth.getUser()
             if (!user) throw new Error('Não autenticado')
 
             const { data, error } = await supabase
@@ -128,7 +128,7 @@ export default function ConhecimentoPage() {
     async function handleDelete(id: string) {
         if (!confirm('Remover esta mídia do conhecimento da IA?')) return
         
-        const { data: { user } } = await supabase.auth.getSession().then(res => ({ data: { user: res.data.session?.user || null } }))
+        const { data: { user } } = await supabase.auth.getUser()
         if (!user) return
 
         const { error } = await supabase

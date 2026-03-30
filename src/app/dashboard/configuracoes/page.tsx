@@ -17,7 +17,7 @@ export default function ConfiguracoesPage() {
 
     useEffect(() => {
         const load = async () => {
-            const { data: { user } } = await supabase.auth.getSession().then(res => ({ data: { user: res.data.session?.user || null } }))
+            const { data: { user } } = await supabase.auth.getUser()
             if (!user) return
             const { data: p } = await supabase.from('profiles').select('*, plans(name)').eq('id', user.id).single()
             setProfile(p)
@@ -32,7 +32,7 @@ export default function ConfiguracoesPage() {
     const saveProfile = async () => {
         setSaving(true)
         try {
-            const { data: { user } } = await supabase.auth.getSession().then(res => ({ data: { user: res.data.session?.user || null } }))
+            const { data: { user } } = await supabase.auth.getUser()
             if (!user) return
             await supabase.from('profiles').update({ name }).eq('id', user.id)
             toast.success('Perfil atualizado!')

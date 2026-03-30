@@ -56,7 +56,7 @@ export default function CRMPage() {
 
     useEffect(() => {
         const load = async () => {
-            const { data: { user } } = await supabase.auth.getSession().then(res => ({ data: { user: res.data.session?.user || null } }))
+            const { data: { user } } = await supabase.auth.getUser()
             if (!user) return
             const { data } = await supabase
                 .from('contacts')

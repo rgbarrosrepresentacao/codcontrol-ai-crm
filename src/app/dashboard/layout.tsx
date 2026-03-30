@@ -6,7 +6,7 @@ import { AnnouncementBanner } from '@/components/AnnouncementBanner'
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
     const supabase = await createSupabaseServerClient()
-    const { data: { user } } = await supabase.auth.getSession().then(res => ({ data: { user: res.data.session?.user || null } }))
+    const { data: { user } } = await supabase.auth.getUser()
 
     if (!user) redirect('/login')
 
