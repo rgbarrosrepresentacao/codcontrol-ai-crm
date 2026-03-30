@@ -429,6 +429,26 @@ function FunnelCanvas({ selectedFunnel, onFunnelUpdate }: { selectedFunnel: Funn
     setNodes((nds: Node[]) => [...nds, newNode])
   }, [screenToFlowPosition, setNodes])
 
+  const addNodeAtCenter = useCallback((type: NType) => {
+    if (!wrapperRef.current) return
+    const rect = wrapperRef.current.getBoundingClientRect()
+    // Adiciona no centro da área visível do canvas
+    const position = screenToFlowPosition({
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2
+    })
+
+    const newNode: Node = {
+      id: `${type}-${Date.now()}`,
+      type,
+      position,
+      data: defaultData(type),
+    }
+    setNodes((nds: Node[]) => [...nds, newNode])
+    setSelectedNode(newNode)
+    toast.success(`${NC[type].label} adicionado ao centro`)
+  }, [screenToFlowPosition, setNodes])
+
   const onNodeClick = useCallback((_: any, node: Node) => {
     setSelectedNode(node)
   }, [])
@@ -533,10 +553,12 @@ function FunnelCanvas({ selectedFunnel, onFunnelUpdate }: { selectedFunnel: Funn
               key={type}
               draggable
               onDragStart={e => { e.dataTransfer.setData('application/reactflow', type); e.dataTransfer.effectAllowed = 'move' }}
+              onClick={() => addNodeAtCenter(type)}
               style={{
                 display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px',
                 background: cfg.bg, border: `1px solid ${cfg.color}50`, borderRadius: 8,
                 cursor: 'grab', fontSize: 12, color: cfg.color, fontWeight: 600, userSelect: 'none',
+                touchAction: 'none' // Evita que o navegador tente rolar ao arrastar no mobile
               }}>
               <Icon size={12} /> {cfg.label}
             </div>
