@@ -288,7 +288,7 @@ export default function WhatsAppPage() {
                                 {/* Webhook badge */}
                                 <div className="flex items-center gap-1.5 mb-4">
                                     <div className={`w-1.5 h-1.5 rounded-full ${inst.webhook_configured ? 'bg-emerald-400' : 'bg-muted-foreground'}`} />
-                                    <span className="text-xs text-muted-foreground">{inst.webhook_configured ? 'Webhook n8n configurado' : 'Webhook não configurado'}</span>
+                                    <span className="text-xs text-muted-foreground">{inst.webhook_configured ? 'Webhook configurado' : 'Webhook não configurado'}</span>
                                 </div>
 
                                 {/* Actions */}

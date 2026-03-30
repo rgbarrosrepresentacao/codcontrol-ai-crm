@@ -255,7 +255,6 @@ export default async function DashboardPage() {
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         {[
                             { label: 'Evolution API', status: 'online', desc: 'api.codcontrolpro.bond' },
-                            { label: 'n8n Logic Core', status: 'online', desc: 'n8n.codcontrolpro.bond' },
                             { label: 'Database Node', status: 'online', desc: 'PostgreSQL Active' },
                         ].map((s) => (
                             <div key={s.label} className="gradient-card border border-border rounded-2xl p-4 flex items-center gap-3 hover:border-emerald-500/30 transition-colors group">

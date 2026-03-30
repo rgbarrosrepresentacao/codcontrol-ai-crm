@@ -10,7 +10,7 @@ const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
 export const metadata: Metadata = {
   title: 'CodControl AI CRM — Automação de WhatsApp com IA',
   description: 'Plataforma SaaS para automação de WhatsApp com Inteligência Artificial. Conecte seu WhatsApp, configure sua IA e automatize o atendimento.',
-  keywords: 'WhatsApp, IA, CRM, automação, chatbot, n8n, Evolution API',
+  keywords: 'WhatsApp, IA, CRM, automação, chatbot, Evolution API',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

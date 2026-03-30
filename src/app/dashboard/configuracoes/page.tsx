@@ -136,7 +136,6 @@ export default function ConfiguracoesPage() {
                     <div className="space-y-2">
                         {[
                             { label: 'Evolution API', value: 'api.codcontrolpro.bond', status: true },
-                            { label: 'n8n Webhook', value: 'n8n.codcontrolpro.bond', status: true },
                             { label: 'Supabase', value: 'jzbsutrmprzfuvaripwb.supabase.co', status: true },
                         ].map(i => (
                             <div key={i.label} className="flex items-center justify-between bg-secondary/50 rounded-lg px-4 py-2.5">
