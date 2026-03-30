@@ -260,45 +260,81 @@ async function executeFunnelGraph(
     let handle = useHandle
 
     while (currentNodeId) {
+        // Anti-stalling: check if contact is still in "EM_ANDAMENTO" or if a human paused it
+        const { data: latestContact } = await supabase.from('contacts').select('funnel_status, is_funnel_active').eq('id', contactId).single()
+        if (latestContact?.funnel_status === 'PAUSADO' || latestContact?.is_funnel_active === false) {
+            console.log(`[Funnel] Execução interrompida: status=${latestContact?.funnel_status}`)
+            return
+        }
+
         const { data: node } = await supabase
             .from('funnel_steps').select('*').eq('id', currentNodeId).single() as { data: any }
         if (!node) break
 
+        console.log(`[Funnel] Executando nó: ${node.node_type} (${currentNodeId})`)
+
         // Update position in DB
         await supabase.from('contacts').update({ funnel_current_node_id: currentNodeId, funnel_status: 'EM_ANDAMENTO' }).eq('id', contactId)
 
-        // Execute the node
-        if (node.node_type === 'delay') {
-            const secs = node.node_data?.delay_seconds || node.delay_seconds || 5
-            await new Promise(r => setTimeout(r, secs * 1000))
-        } else if (node.node_type === 'text') {
-            if (node.delay_seconds > 0) await new Promise(r => setTimeout(r, node.delay_seconds * 1000))
-            const content = node.content || node.node_data?.content || ''
-            if (content) await evolutionApi.sendTextMessage(instanceName, remoteJid, content)
-        } else if (node.node_type === 'audio') {
-            const url = node.content || node.node_data?.content || ''
-            if (url) await evolutionApi.sendMedia(instanceName, remoteJid, url, 'audio')
-        } else if (node.node_type === 'image') {
-            const url = node.content || node.node_data?.content || ''
-            if (url) await evolutionApi.sendMedia(instanceName, remoteJid, url, 'image', node.node_data?.caption || '')
-        } else if (node.node_type === 'video') {
-            const url = node.content || node.node_data?.content || ''
-            if (url) await evolutionApi.sendMedia(instanceName, remoteJid, url, 'video', node.node_data?.caption || '')
-        } else if (node.node_type === 'action') {
-            const url = node.content || node.node_data?.url || ''
-            const caption = node.node_data?.caption || ''
-            if (url) await evolutionApi.sendTextMessage(instanceName, remoteJid, caption ? `${caption}\n${url}` : url)
-        } else if (node.node_type === 'end') {
-            const msg = node.content || node.node_data?.content || ''
-            if (msg) await evolutionApi.sendTextMessage(instanceName, remoteJid, msg)
-            await supabase.from('contacts').update({ funnel_status: 'FINALIZADO', funnel_lock_until: null, is_funnel_active: false }).eq('id', contactId)
-            return
-        } else if (node.node_type === 'condition' || node.node_type === 'start') {
-            // condition and start just route to next node; condition pauses for client response
-            if (node.node_type === 'condition') {
-                await supabase.from('contacts').update({ funnel_status: 'PAUSADO', funnel_lock_until: null }).eq('id', contactId)
+        // Execute the node with presence indicators and error safety
+        try {
+            if (node.node_type === 'delay') {
+                const secs = node.node_data?.delay_seconds || node.delay_seconds || 5
+                console.log(`[Funnel] Aguardando ${secs}s...`)
+                await new Promise(r => setTimeout(r, secs * 1000))
+            } else if (node.node_type === 'text') {
+                await evolutionApi.sendPresence(instanceName, remoteJid, 'composing')
+                const typingSecs = Math.min(Math.max((node.content?.length || 20) * 0.05, 2), 5)
+                await new Promise(r => setTimeout(r, typingSecs * 1000))
+                
+                const content = node.content || node.node_data?.content || ''
+                if (content) await evolutionApi.sendTextMessage(instanceName, remoteJid, content)
+            } else if (node.node_type === 'audio') {
+                await evolutionApi.sendPresence(instanceName, remoteJid, 'recording')
+                const url = node.content || node.node_data?.content || ''
+                if (url) {
+                    try {
+                        const mediaRes = await fetch(url)
+                        if (mediaRes.ok) {
+                            const buffer = await mediaRes.arrayBuffer()
+                            const base64 = Buffer.from(buffer).toString('base64')
+                            await evolutionApi.sendWhatsAppAudio(instanceName, remoteJid, base64)
+                        } else {
+                            await evolutionApi.sendMedia(instanceName, remoteJid, url, 'audio')
+                        }
+                    } catch (audioErr) {
+                        console.error('[Funnel] Erro no áudio, tentando fallback:', audioErr)
+                        await evolutionApi.sendMedia(instanceName, remoteJid, url, 'audio')
+                    }
+                }
+            } else if (node.node_type === 'image') {
+                const url = node.content || node.node_data?.content || ''
+                if (url) await evolutionApi.sendMedia(instanceName, remoteJid, url, 'image', node.node_data?.caption || '')
+            } else if (node.node_type === 'video') {
+                const url = node.content || node.node_data?.content || ''
+                if (url) await evolutionApi.sendMedia(instanceName, remoteJid, url, 'video', node.node_data?.caption || '')
+            } else if (node.node_type === 'action') {
+                const url = node.content || node.node_data?.url || ''
+                const caption = node.node_data?.caption || ''
+                if (url) await evolutionApi.sendTextMessage(instanceName, remoteJid, caption ? `${caption}\n${url}` : url)
+            } else if (node.node_type === 'end') {
+                const msg = node.content || node.node_data?.content || ''
+                if (msg) await evolutionApi.sendTextMessage(instanceName, remoteJid, msg)
+                await supabase.from('contacts').update({ funnel_status: 'FINALIZADO', funnel_lock_until: null, is_funnel_active: false }).eq('id', contactId)
                 return
+            } else if (node.node_type === 'condition' || node.node_type === 'start') {
+                if (node.node_type === 'condition') {
+                    await supabase.from('contacts').update({ funnel_status: 'PAUSADO', funnel_lock_until: null }).eq('id', contactId)
+                    return
+                }
             }
+
+            // Intervalo de segurança entre blocos para evitar bloqueios/atropelamento
+            await new Promise(r => setTimeout(r, 1500))
+
+        } catch (execErr) {
+            console.error(`[Funnel] Erro ao executar nó ${node.node_type}:`, execErr)
+            // Não paramos o loop aqui para tentar o próximo nó se possível
         }
 
         // If wait_for_reply — pause here and wait for client
@@ -449,7 +485,7 @@ async function processWebhookInBackground(body: any) {
             // restarts from the beginning if they go silent again after engaging.
             followup_stage: 0
         }, { onConflict: 'user_id,whatsapp_id' })
-        .select('id, ai_tag, current_funnel_id, funnel_step_order, is_funnel_active, wants_audio, active_campaign_id')
+        .select('id, ai_tag, current_funnel_id, funnel_step_order, is_funnel_active, wants_audio, active_campaign_id, funnel_status, funnel_current_node_id, funnel_lock_until')
         .single()
 
         if (!contact) return
@@ -565,14 +601,14 @@ async function processWebhookInBackground(body: any) {
 
         // 8a. LOCK anti-duplicação: se outra thread já está executando, ignora
         if (funnelLockUntil && new Date(funnelLockUntil) > new Date()) {
-            console.log(`[Funnel] Lock ativo até ${funnelLockUntil} — ignorando execução duplicada`)
-            // Cai para IA responder normalmente
+            console.log(`[Funnel] Lock ativo até ${funnelLockUntil} — Abortando para evitar duplicidade`)
+            return
         }
         // 8b. Funil ativo e cliente respondeu → PAUSAR automaticamente, IA assume
         else if ((funnelStatus === 'EM_ANDAMENTO' || funnelStatus === 'INICIADO') && funnelId) {
-            console.log(`[Funnel] Cliente respondeu enquanto funil estava ${funnelStatus}. Pausando.`)
-            await supabase.from('contacts').update({ funnel_status: 'PAUSADO' }).eq('id', contactId)
-            // Cai para IA com contexto do funil (ver seção 9)
+            console.log(`[Funnel] Cliente respondeu enquanto funil estava ${funnelStatus}. Pausando automação.`)
+            await supabase.from('contacts').update({ funnel_status: 'PAUSADO', funnel_lock_until: null }).eq('id', contactId)
+            // Agora a IA poderá responder no passo 9 porque o status mudou para PAUSADO
         }
         // 8c. Funil pausado em nó de CONDIÇÃO → determinar caminho (sim/não) baseado em ai_tag
         else if (funnelStatus === 'PAUSADO' && currentNodeId && funnelId) {
@@ -582,14 +618,14 @@ async function processWebhookInBackground(body: any) {
                 const isPositive = /\b(sim|quero|pode|ok|vamos|vai|interesse|comprar|quero sim|aceito|combinado|topo)\b/i.test(textMessage) || (currentAiTag === 'POSSIVEL_COMPRADOR' || currentAiTag === 'INTERESSADO')
                 const handle = isPositive ? 'yes' : 'no'
                 console.log(`[Funnel] Condição respondida com handle: ${handle}`)
-                const lock = new Date(Date.now() + 30000).toISOString()
+                const lock = new Date(Date.now() + 300000).toISOString() // 5 min lock
                 await supabase.from('contacts').update({ funnel_status: 'INICIADO', funnel_lock_until: lock }).eq('id', contactId)
                 executeFunnelGraph(funnelId, currentNodeId, instanceName, remoteJid, contactId, handle).catch(console.error)
                 return
             }
             // Funil pausado em wait_for_reply → retomar a partir do próximo nó
             if (funnelId && currentNodeId) {
-                const lock = new Date(Date.now() + 30000).toISOString()
+                const lock = new Date(Date.now() + 300000).toISOString() // 5 min lock
                 await supabase.from('contacts').update({ funnel_status: 'INICIADO', funnel_lock_until: lock }).eq('id', contactId)
                 // Find next node via edges
                 const { data: nextEdge } = await supabase.from('funnel_edges').select('target_node_id').eq('source_node_id', currentNodeId).eq('source_handle', 'default').maybeSingle()
@@ -625,7 +661,7 @@ async function processWebhookInBackground(body: any) {
 
                 const firstNodeId = startNode?.id || firstStep?.id
                 if (firstNodeId) {
-                    const lock = new Date(Date.now() + 30000).toISOString()
+                    const lock = new Date(Date.now() + 300000).toISOString() // 5 min lock
                     await supabase.from('contacts').update({
                         current_funnel_id: defaultFunnel.id,
                         funnel_status: 'INICIADO',
@@ -639,7 +675,11 @@ async function processWebhookInBackground(body: any) {
                 }
             }
         }
-        // 8e. Funil FINALIZADO → apenas a IA responde (não toca no funil)
+        // 8e. Se o funil ainda está ativo e NÃO foi pausado acima, não deixamos a IA responder agora
+        if (funnelStatus === 'INICIADO' || funnelStatus === 'EM_ANDAMENTO') {
+            console.log(`[Funnel] Automação em curso. IA silenciada.`)
+            return
+        }
 
 
         // 9. Configuração de IA - Bloqueio de segurança (Apenas assinantes ou trial ativo)
