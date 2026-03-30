@@ -262,8 +262,16 @@ async function executeFunnelGraph(
     while (currentNodeId) {
         // Anti-stalling: check if contact is still in "EM_ANDAMENTO" or if a human paused it
         const { data: latestContact } = await supabase.from('contacts').select('funnel_status, is_funnel_active').eq('id', contactId).single()
-        if (latestContact?.funnel_status === 'PAUSADO' || latestContact?.is_funnel_active === false) {
-            console.log(`[Funnel] Execução interrompida: status=${latestContact?.funnel_status}`)
+        
+        // Se o status for PAUSADO mas tivermos um handle, significa que estamos retomando de uma condição
+        // Caso contrário, se estiver pausado externamente, interrompemos.
+        if (latestContact?.funnel_status === 'PAUSADO' && handle === 'default') {
+            console.log(`[Funnel] Execução interrompida: status=PAUSADO`)
+            return
+        }
+
+        if (latestContact?.is_funnel_active === false) {
+            console.log(`[Funnel] Execução interrompida: funil desativado`)
             return
         }
 
@@ -291,6 +299,10 @@ async function executeFunnelGraph(
                 if (content) await evolutionApi.sendTextMessage(instanceName, remoteJid, content)
             } else if (node.node_type === 'audio') {
                 await evolutionApi.sendPresence(instanceName, remoteJid, 'recording')
+                // Realismo: espera o tempo de "gravação" proporcional ou fixo
+                const recordingSecs = Math.min(Math.max((node.content?.length || 100) * 0.02, 3), 10)
+                await new Promise(r => setTimeout(r, recordingSecs * 1000))
+                
                 const url = node.content || node.node_data?.content || ''
                 if (url) {
                     try {
@@ -324,8 +336,15 @@ async function executeFunnelGraph(
                 return
             } else if (node.node_type === 'condition' || node.node_type === 'start') {
                 if (node.node_type === 'condition') {
-                    await supabase.from('contacts').update({ funnel_status: 'PAUSADO', funnel_lock_until: null }).eq('id', contactId)
-                    return
+                    // Se estivermos executando com 'default', precisamos parar e esperar o cliente responder.
+                    // Se tivermos um 'handle' (yes/no), pulamos a execução e vamos direto para o próximo nó.
+                    if (handle === 'default') {
+                        console.log(`[Funnel] Nó de condição atingido. Pausando e aguardando resposta do cliente.`)
+                        await supabase.from('contacts').update({ funnel_status: 'PAUSADO', funnel_lock_until: null }).eq('id', contactId)
+                        return
+                    } else {
+                        console.log(`[Funnel] Processando handle '${handle}' para o nó de condição.`)
+                    }
                 }
             }
 
@@ -615,7 +634,7 @@ async function processWebhookInBackground(body: any) {
             const { data: pausedNode } = await supabase.from('funnel_steps').select('node_type').eq('id', currentNodeId).maybeSingle()
             if (pausedNode?.node_type === 'condition') {
                 // Detectar intenção do cliente para escolher caminho SIM ou NÃO
-                const isPositive = /\b(sim|quero|pode|ok|vamos|vai|interesse|comprar|quero sim|aceito|combinado|topo)\b/i.test(textMessage) || (currentAiTag === 'POSSIVEL_COMPRADOR' || currentAiTag === 'INTERESSADO')
+                const isPositive = /\b(sim|quero|pode|ok|vamos|vai|interesse|comprar|quero sim|aceito|combinado|topo|gostei|manda|tenho interesse)\b/i.test(textMessage) || (currentAiTag === 'POSSIVEL_COMPRADOR' || currentAiTag === 'INTERESSADO')
                 const handle = isPositive ? 'yes' : 'no'
                 console.log(`[Funnel] Condição respondida com handle: ${handle}`)
                 const lock = new Date(Date.now() + 300000).toISOString() // 5 min lock
@@ -677,12 +696,20 @@ async function processWebhookInBackground(body: any) {
         }
         // 8e. Se o funil ainda está ativo e NÃO foi pausado acima, não deixamos a IA responder agora
         if (funnelStatus === 'INICIADO' || funnelStatus === 'EM_ANDAMENTO') {
-            console.log(`[Funnel] Automação em curso. IA silenciada.`)
+            console.log(`[Funnel] Automação em curso (status: ${funnelStatus}). IA silenciada.`)
             return
         }
 
 
         // 9. Configuração de IA - Bloqueio de segurança (Apenas assinantes ou trial ativo)
+        // Antes de prosseguir com a IA, pegamos o status MAIS RECENTE do contato para evitar responder se um funil acabou de iniciar em background
+        const { data: finalContactCheck } = await supabase.from('contacts').select('funnel_status, is_funnel_active, ai_tag').eq('id', contactId).single()
+        if (finalContactCheck?.funnel_status === 'INICIADO' || finalContactCheck?.funnel_status === 'EM_ANDAMENTO') {
+             console.log(`[Funnel] Bloqueio final de segurança: Funil reativado, abortando IA.`)
+             return
+        }
+
+        const currentAiTagForAI = finalContactCheck?.ai_tag as AiTag | null
         if (profile && !profile.is_admin && profile.stripe_subscription_status !== 'active' && profile.stripe_subscription_status !== 'trialing') {
             const hasTrialActive = profile.trial_ends_at && new Date(profile.trial_ends_at) > new Date()
             if (!hasTrialActive) {
