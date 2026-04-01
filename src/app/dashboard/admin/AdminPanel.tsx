@@ -26,6 +26,7 @@ interface AdminPanelProps {
 export default function AdminPanel({ users, instances, plans, initialAnnouncements, initialMaterials }: AdminPanelProps) {
     const [activeTab, setActiveTab] = useState<'users' | 'finance' | 'academy' | 'communications'>('users')
     const [search, setSearch] = useState('')
+    const [userFilter, setUserFilter] = useState<'all' | 'paid' | 'no_payment'>('all')
     const [toggling, setToggling] = useState<string | null>(null)
     const [updatingTrial, setUpdatingTrial] = useState<string | null>(null)
     const [deletingUser, setDeletingUser] = useState<string | null>(null)
@@ -80,10 +81,23 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
         }
     }
 
-    const filtered = localUsers.filter(u =>
-        u.name?.toLowerCase().includes(search.toLowerCase()) ||
-        u.email?.toLowerCase().includes(search.toLowerCase())
-    )
+    // Classificação: pagante = tem stripe_subscription_status 'active' OU kiwify_subscription_status 'active'
+    const isPaid = (u: any) => u.stripe_subscription_status === 'active' || u.kiwify_subscription_status === 'active'
+    const isNoPayment = (u: any) => !isPaid(u) && !u.is_admin
+
+    const paidCount = localUsers.filter(isPaid).length
+    const noPaymentCount = localUsers.filter(isNoPayment).length
+
+    const filtered = localUsers
+        .filter(u => {
+            if (userFilter === 'paid') return isPaid(u)
+            if (userFilter === 'no_payment') return isNoPayment(u)
+            return true
+        })
+        .filter(u =>
+            u.name?.toLowerCase().includes(search.toLowerCase()) ||
+            u.email?.toLowerCase().includes(search.toLowerCase())
+        )
 
     const toggleUser = async (userId: string, isActive: boolean) => {
         setToggling(userId)
@@ -185,9 +199,9 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
 
     const statsOverview = [
         { label: 'Total Usuários', value: localUsers.length, icon: Users, color: 'from-blue-500/20 to-cyan-500/20', textColor: 'text-blue-400' },
-        { label: 'WhatsApps Conectados', value: connectedCount, icon: Smartphone, color: 'from-emerald-500/20 to-teal-500/20', textColor: 'text-emerald-400' },
-        { label: 'Total Instâncias', value: instances.length, icon: Smartphone, color: 'from-purple-500/20 to-pink-500/20', textColor: 'text-purple-400' },
-        { label: 'MRR (estimado)', value: `R$${totalRevenue.toFixed(0)}`, icon: BarChart3, color: 'from-orange-500/20 to-red-500/20', textColor: 'text-orange-400' },
+        { label: 'Clientes Pagantes', value: paidCount, icon: CheckCircle2, color: 'from-emerald-500/20 to-teal-500/20', textColor: 'text-emerald-400' },
+        { label: 'Só Cadastro', value: noPaymentCount, icon: AlertCircle, color: 'from-orange-500/20 to-red-500/20', textColor: 'text-orange-400' },
+        { label: 'WhatsApps Conectados', value: connectedCount, icon: Smartphone, color: 'from-purple-500/20 to-pink-500/20', textColor: 'text-purple-400' },
     ]
 
     return (
@@ -254,17 +268,74 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
 
                     {/* Users Table */}
                     <div className="gradient-card border border-border rounded-xl overflow-hidden">
-                        <div className="p-4 border-b border-border flex flex-col md:flex-row md:items-center gap-3">
-                            <h2 className="font-semibold text-foreground flex-1">👥 Gestão de Assinantes</h2>
-                            <div className="relative">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                                <input
-                                    value={search}
-                                    onChange={(e) => setSearch(e.target.value)}
-                                    placeholder="Buscar por nome ou email..."
-                                    className="bg-input border border-border rounded-lg pl-9 pr-4 py-2 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm w-full md:w-64"
-                                />
+                        <div className="p-4 border-b border-border flex flex-col gap-3">
+                            <div className="flex flex-col md:flex-row md:items-center gap-3">
+                                <h2 className="font-semibold text-foreground flex-1">👥 Gestão de Assinantes</h2>
+                                <div className="relative">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                    <input
+                                        value={search}
+                                        onChange={(e) => setSearch(e.target.value)}
+                                        placeholder="Buscar por nome ou email..."
+                                        className="bg-input border border-border rounded-lg pl-9 pr-4 py-2 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm w-full md:w-64"
+                                    />
+                                </div>
                             </div>
+                            {/* Filtros de conversão */}
+                            <div className="flex flex-wrap gap-2">
+                                <button
+                                    onClick={() => setUserFilter('all')}
+                                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                                        userFilter === 'all'
+                                            ? 'bg-primary text-black border-primary shadow-lg shadow-primary/20'
+                                            : 'border-border text-muted-foreground hover:border-primary/40 hover:text-foreground'
+                                    }`}
+                                >
+                                    <Users className="w-3 h-3" />
+                                    Todos
+                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-black ${
+                                        userFilter === 'all' ? 'bg-black/20' : 'bg-secondary/80'
+                                    }`}>{localUsers.length}</span>
+                                </button>
+
+                                <button
+                                    onClick={() => setUserFilter('paid')}
+                                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                                        userFilter === 'paid'
+                                            ? 'bg-emerald-500 text-black border-emerald-500 shadow-lg shadow-emerald-500/20'
+                                            : 'border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10'
+                                    }`}
+                                >
+                                    <CheckCircle2 className="w-3 h-3" />
+                                    💰 Pagantes
+                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-black ${
+                                        userFilter === 'paid' ? 'bg-black/20' : 'bg-emerald-500/20'
+                                    }`}>{paidCount}</span>
+                                </button>
+
+                                <button
+                                    onClick={() => setUserFilter('no_payment')}
+                                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                                        userFilter === 'no_payment'
+                                            ? 'bg-orange-500 text-black border-orange-500 shadow-lg shadow-orange-500/20'
+                                            : 'border-orange-500/30 text-orange-400 hover:bg-orange-500/10'
+                                    }`}
+                                >
+                                    <AlertCircle className="w-3 h-3" />
+                                    🎯 Só Cadastro (Não Pagou)
+                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-black ${
+                                        userFilter === 'no_payment' ? 'bg-black/20' : 'bg-orange-500/20'
+                                    }`}>{noPaymentCount}</span>
+                                </button>
+                            </div>
+                            {userFilter === 'no_payment' && noPaymentCount > 0 && (
+                                <div className="flex items-start gap-2 bg-orange-500/8 border border-orange-500/20 rounded-lg p-3">
+                                    <AlertCircle className="w-4 h-4 text-orange-400 shrink-0 mt-0.5" />
+                                    <p className="text-[11px] text-orange-300 leading-relaxed">
+                                        <span className="font-bold">Leads não convertidos:</span> Esses usuários criaram conta mas não realizaram pagamento. Use os botões <span className="font-bold">+7d / +15d / +30d</span> para oferecer um período de avaliação e recuperar essas vendas.
+                                    </p>
+                                </div>
+                            )}
                         </div>
                         <div className="overflow-x-auto">
                             <table className="w-full">
@@ -279,14 +350,19 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
                                 </thead>
                                 <tbody className="divide-y divide-border">
                                     {filtered.map((user: any) => (
-                                        <tr key={user.id} className="hover:bg-secondary/20 transition-colors">
+                                        <tr key={user.id} className={`hover:bg-secondary/20 transition-colors ${isNoPayment(user) ? 'border-l-2 border-l-orange-500/40' : ''}`}>
                                             <td className="px-4 py-4">
                                                 <div className="flex items-center gap-3">
-                                                    <div className="w-9 h-9 rounded-full gradient-primary flex items-center justify-center text-black font-bold text-sm shadow-inner">
+                                                    <div className={`w-9 h-9 rounded-full flex items-center justify-center text-black font-bold text-sm shadow-inner ${isNoPayment(user) ? 'bg-orange-500/70' : 'gradient-primary'}`}>
                                                         {(user.name || 'U').slice(0, 2).toUpperCase()}
                                                     </div>
                                                     <div>
-                                                        <div className="text-sm font-semibold text-foreground">{user.name || 'Sem nome'}</div>
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="text-sm font-semibold text-foreground">{user.name || 'Sem nome'}</div>
+                                                            {isNoPayment(user) && (
+                                                                <span className="px-1.5 py-0.5 bg-orange-500/15 border border-orange-500/30 text-orange-400 text-[9px] rounded font-black uppercase tracking-wide">Não Pagou</span>
+                                                            )}
+                                                        </div>
                                                         <div className="text-[11px] text-muted-foreground font-mono">{user.email}</div>
                                                     </div>
                                                 </div>
