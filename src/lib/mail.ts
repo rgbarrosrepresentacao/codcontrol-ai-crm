@@ -1,18 +1,28 @@
 import nodemailer from 'nodemailer'
 
-// ── Transporter singleton (criado uma única vez no servidor) ──────────────────
-const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT) || 465,
-    secure: process.env.SMTP_SECURE === 'true',
-    auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-    },
-    tls: {
-        rejectUnauthorized: false, // compatibilidade com Hostinger
-    },
-})
+// ── Transporter criado sob demanda (evita crash no Server Component) ──────────
+function createTransporter() {
+    const host = process.env.SMTP_HOST
+    const user = process.env.SMTP_USER
+    const pass = process.env.SMTP_PASS
+
+    if (!host || !user || !pass) {
+        throw new Error(
+            `[MAIL] Variáveis SMTP não configuradas. ` +
+            `SMTP_HOST=${host}, SMTP_USER=${user ? '***' : 'undefined'}`
+        )
+    }
+
+    return nodemailer.createTransport({
+        host,
+        port: Number(process.env.SMTP_PORT) || 465,
+        secure: process.env.SMTP_SECURE === 'true',
+        auth: { user, pass },
+        tls: {
+            rejectUnauthorized: false, // compatibilidade com Hostinger
+        },
+    })
+}
 
 // ── Tipos ────────────────────────────────────────────────────────────────────
 export interface SendEmailOptions {
@@ -33,6 +43,7 @@ export async function sendEmail({ to, toName, subject, htmlBody }: SendEmailOpti
     const fromName = process.env.SMTP_FROM_NAME || 'CodControl AI CRM'
     const fromEmail = process.env.SMTP_USER
 
+    const transporter = createTransporter()
     await transporter.sendMail({
         from: `"${fromName}" <${fromEmail}>`,
         to: toName ? `"${toName}" <${to}>` : to,
