@@ -3,16 +3,17 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
 import { 
-    Shield, Users, Smartphone, BarChart3, Search, Ban, CheckCircle2, 
-    Loader2, Megaphone, Trash2, Send, Calendar, Clock, GraduationCap, 
+    Shield, Users, Smartphone, Search, Ban, CheckCircle2, 
+    Loader2, Megaphone, Trash2, Send, Clock, GraduationCap, 
     Plus, ExternalLink, FileText, Wallet, History, RefreshCcw, DollarSign,
-    AlertCircle
+    AlertCircle, Mail, UserCheck, UserX, UsersRound
 } from 'lucide-react'
 import { formatDate, formatCurrency } from '@/lib/utils'
 import { 
     toggleUserStatusAction, updateUserTrialAction, saveAnnouncementAction, 
     deleteAnnouncementAction, saveMaterialAction, deleteMaterialAction, 
-    deleteUserAction, getKiwifyStatsAction, refundKiwifyOrderAction 
+    deleteUserAction, getKiwifyStatsAction, refundKiwifyOrderAction,
+    sendMarketingEmailAction
 } from './actions'
 
 interface AdminPanelProps {
@@ -24,7 +25,7 @@ interface AdminPanelProps {
 }
 
 export default function AdminPanel({ users, instances, plans, initialAnnouncements, initialMaterials }: AdminPanelProps) {
-    const [activeTab, setActiveTab] = useState<'users' | 'finance' | 'academy' | 'communications'>('users')
+    const [activeTab, setActiveTab] = useState<'users' | 'finance' | 'academy' | 'communications' | 'marketing'>('users')
     const [search, setSearch] = useState('')
     const [userFilter, setUserFilter] = useState<'all' | 'paid' | 'no_payment'>('all')
     const [toggling, setToggling] = useState<string | null>(null)
@@ -46,6 +47,13 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
     // Academy Materials State
     const [material, setMaterial] = useState({ title: '', type: 'PDF', link: '' })
     const [savingMaterial, setSavingMaterial] = useState(false)
+
+    // Email Marketing State
+    const [emailAudience, setEmailAudience] = useState<'leads' | 'paid' | 'all'>('leads')
+    const [emailSubject, setEmailSubject] = useState('')
+    const [emailBody, setEmailBody] = useState('')
+    const [sendingEmail, setSendingEmail] = useState(false)
+    const [emailResult, setEmailResult] = useState<{ sent: number; failed: number; errors: string[] } | null>(null)
     const [localMaterials, setLocalMaterials] = useState(initialMaterials)
     const [deletingMaterial, setDeletingMaterial] = useState<string | null>(null)
 
@@ -227,6 +235,9 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
                 </button>
                 <button onClick={() => setActiveTab('communications')} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${activeTab === 'communications' ? 'bg-primary text-black' : 'text-muted-foreground hover:bg-secondary/50'}`}>
                     <Megaphone className="w-4 h-4" /> Comunicados
+                </button>
+                <button onClick={() => { setActiveTab('marketing'); setEmailResult(null) }} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${activeTab === 'marketing' ? 'bg-primary text-black' : 'text-muted-foreground hover:bg-secondary/50'}`}>
+                    <Mail className="w-4 h-4" /> E-mail Marketing
                 </button>
             </div>
 
@@ -660,6 +671,190 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
                                         </button>
                                     </div>
                                 ))}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* TAB: E-MAIL MARKETING */}
+            {activeTab === 'marketing' && (
+                <div className="space-y-6 animate-slide-up">
+
+                    {/* Aviso de segurança */}
+                    <div className="flex items-start gap-3 bg-orange-500/8 border border-orange-500/25 rounded-xl p-4">
+                        <AlertCircle className="w-5 h-5 text-orange-400 shrink-0 mt-0.5" />
+                        <div>
+                            <p className="text-sm font-bold text-orange-300 mb-0.5">Atenção antes de disparar</p>
+                            <p className="text-xs text-orange-300/70 leading-relaxed">
+                                Os e-mails serão enviados um a um via SMTP da Hostinger. Selecione o público com cuidado.
+                                <strong className="text-orange-300"> Clientes pagantes</strong> devem receber comunicações de valor, não spam.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="grid lg:grid-cols-2 gap-6">
+
+                        {/* Formulário de disparo */}
+                        <div className="gradient-card border border-border rounded-xl p-6 space-y-5">
+                            <h2 className="font-semibold text-foreground flex items-center gap-2">
+                                <Mail className="w-5 h-5 text-primary" /> Compor E-mail
+                            </h2>
+
+                            {/* Seleção de público */}
+                            <div>
+                                <label className="text-xs text-muted-foreground mb-2 block font-semibold uppercase tracking-wide">Público-alvo</label>
+                                <div className="grid grid-cols-3 gap-2">
+                                    <button
+                                        onClick={() => setEmailAudience('leads')}
+                                        className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border text-xs font-bold transition-all ${
+                                            emailAudience === 'leads'
+                                                ? 'bg-orange-500 text-black border-orange-500 shadow-lg shadow-orange-500/20'
+                                                : 'border-orange-500/30 text-orange-400 hover:bg-orange-500/10'
+                                        }`}
+                                    >
+                                        <UserX className="w-4 h-4" />
+                                        <span>Leads</span>
+                                        <span className="text-[10px] opacity-70">Não pagaram</span>
+                                    </button>
+                                    <button
+                                        onClick={() => setEmailAudience('paid')}
+                                        className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border text-xs font-bold transition-all ${
+                                            emailAudience === 'paid'
+                                                ? 'bg-emerald-500 text-black border-emerald-500 shadow-lg shadow-emerald-500/20'
+                                                : 'border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10'
+                                        }`}
+                                    >
+                                        <UserCheck className="w-4 h-4" />
+                                        <span>Pagantes</span>
+                                        <span className="text-[10px] opacity-70">Clientes ativos</span>
+                                    </button>
+                                    <button
+                                        onClick={() => setEmailAudience('all')}
+                                        className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border text-xs font-bold transition-all ${
+                                            emailAudience === 'all'
+                                                ? 'bg-primary text-black border-primary shadow-lg shadow-primary/20'
+                                                : 'border-border text-muted-foreground hover:border-primary/40 hover:text-foreground'
+                                        }`}
+                                    >
+                                        <UsersRound className="w-4 h-4" />
+                                        <span>Todos</span>
+                                        <span className="text-[10px] opacity-70">{localUsers.filter(u => !u.is_admin).length} usuários</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Assunto */}
+                            <div>
+                                <label className="text-xs text-muted-foreground mb-1.5 block font-semibold uppercase tracking-wide">Assunto do E-mail</label>
+                                <input
+                                    value={emailSubject}
+                                    onChange={e => setEmailSubject(e.target.value)}
+                                    placeholder="Ex: 🎁 Oferta especial para você!"
+                                    className="w-full bg-secondary/50 border border-border rounded-lg px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
+                                />
+                            </div>
+
+                            {/* Corpo */}
+                            <div>
+                                <label className="text-xs text-muted-foreground mb-1.5 block font-semibold uppercase tracking-wide">Mensagem</label>
+                                <textarea
+                                    value={emailBody}
+                                    onChange={e => setEmailBody(e.target.value)}
+                                    placeholder={`Ex: Olá! Notamos que você se cadastrou mas ainda não começou sua jornada de automação.\n\nPor isso, preparamos uma condição especial exclusiva para você: 30 dias grátis para testar tudo sem compromisso.\n\nClique no botão abaixo e comece agora!`}
+                                    rows={8}
+                                    className="w-full bg-secondary/50 border border-border rounded-lg px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40 resize-none"
+                                />
+                                <p className="text-[10px] text-muted-foreground mt-1">Use quebras de linha — elas serão preservadas no e-mail.</p>
+                            </div>
+
+                            {/* Botão de disparo */}
+                            <button
+                                onClick={async () => {
+                                    if (!emailSubject.trim() || !emailBody.trim()) {
+                                        return toast.error('Preencha o assunto e a mensagem.')
+                                    }
+                                    const audienceLabel = emailAudience === 'leads' ? 'leads (não pagaram)' : emailAudience === 'paid' ? 'clientes pagantes' : 'TODOS os usuários'
+                                    if (!confirm(`⚠️ Confirmar disparo de e-mail para ${audienceLabel}?\n\nAssunto: "${emailSubject}"\n\nEste envio é irreversível.`)) return
+                                    setSendingEmail(true)
+                                    setEmailResult(null)
+                                    try {
+                                        const result = await sendMarketingEmailAction(emailSubject, emailBody, emailAudience)
+                                        setEmailResult(result)
+                                        if (result.sent > 0) {
+                                            toast.success(`✅ ${result.sent} e-mail(s) enviado(s) com sucesso!`)
+                                            setEmailSubject('')
+                                            setEmailBody('')
+                                        }
+                                        if (result.failed > 0) {
+                                            toast.error(`⚠️ ${result.failed} falha(s) de envio. Veja o relatório.`)
+                                        }
+                                    } catch (err: any) {
+                                        toast.error('Erro crítico: ' + err.message)
+                                    } finally {
+                                        setSendingEmail(false)
+                                    }
+                                }}
+                                disabled={sendingEmail || !emailSubject.trim() || !emailBody.trim()}
+                                className="w-full gradient-primary text-black font-bold h-12 rounded-xl text-sm flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                            >
+                                {sendingEmail ? (
+                                    <><Loader2 className="w-4 h-4 animate-spin" /> Enviando...</>
+                                ) : (
+                                    <><Send className="w-4 h-4" /> Disparar E-mail Marketing</>
+                                )}
+                            </button>
+                        </div>
+
+                        {/* Painel direito: resultado + dicas */}
+                        <div className="space-y-4">
+
+                            {/* Resultado do último disparo */}
+                            {emailResult && (
+                                <div className="gradient-card border border-border rounded-xl p-6 space-y-4">
+                                    <h3 className="font-semibold text-foreground flex items-center gap-2">
+                                        <Send className="w-4 h-4 text-primary" /> Relatório do Disparo
+                                    </h3>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 text-center">
+                                            <div className="text-3xl font-black text-emerald-400">{emailResult?.sent ?? 0}</div>
+                                            <div className="text-xs text-emerald-400/70 mt-1">✅ Enviados</div>
+                                        </div>
+                                        <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 text-center">
+                                            <div className="text-3xl font-black text-red-400">{emailResult?.failed ?? 0}</div>
+                                            <div className="text-xs text-red-400/70 mt-1">❌ Falhas</div>
+                                        </div>
+                                    </div>
+                                    {(emailResult?.errors?.length ?? 0) > 0 && (
+                                        <div className="bg-secondary/30 rounded-lg p-3 space-y-1 max-h-40 overflow-y-auto">
+                                            <p className="text-xs font-bold text-muted-foreground mb-2">Detalhes das falhas:</p>
+                                            {emailResult?.errors?.map((err, i) => (
+                                                <p key={i} className="text-[10px] text-red-400 font-mono">{err}</p>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+
+                            {/* Dicas de uso */}
+                            <div className="gradient-card border border-border rounded-xl p-6 space-y-4">
+                                <h3 className="font-semibold text-foreground">💡 Dicas para boa conversão</h3>
+                                <div className="space-y-3">
+                                    {[
+                                        { icon: '🎯', title: 'Leads (Não Pagaram)', tip: 'Ofereça um bônus, desconto ou período grátis. Crie urgência com prazo.' },
+                                        { icon: '⭐', title: 'Clientes Pagantes', tip: 'Comunique novidades, atualizações e recursos exclusivos. Eles valorizam atenção.' },
+                                        { icon: '📝', title: 'Bons assuntos', tip: 'Use emojis, números e palavras como "exclusivo", "grátis" ou o nome deles.' },
+                                    ].map(item => (
+                                        <div key={item.title} className="flex gap-3">
+                                            <span className="text-lg shrink-0">{item.icon}</span>
+                                            <div>
+                                                <p className="text-xs font-bold text-foreground">{item.title}</p>
+                                                <p className="text-[11px] text-muted-foreground leading-relaxed">{item.tip}</p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
                         </div>
                     </div>

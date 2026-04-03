@@ -3,6 +3,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { revalidatePath } from 'next/cache'
 import { kiwify } from '@/lib/kiwify'
+import { sendEmail, buildEmailTemplate, BulkEmailResult } from '@/lib/mail'
 
 export async function toggleUserStatusAction(userId: string, isActive: boolean) {
     const adminSupabase = createClient(
@@ -145,4 +146,74 @@ export async function refundKiwifyOrderAction(orderId: string) {
     } catch (e: any) {
         throw new Error(e.message)
     }
+}
+
+// ─── MARKETING EMAIL ACTION ────────────────────────────────────────────────
+
+export async function sendMarketingEmailAction(
+    subject: string,
+    bodyContent: string,
+    audience: 'leads' | 'paid' | 'all'
+): Promise<BulkEmailResult> {
+    // 1. Cliente admin do Supabase (service role)
+    const adminSupabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
+
+    // 2. Validações de segurança
+    if (!subject?.trim() || !bodyContent?.trim()) {
+        throw new Error('Assunto e corpo do e-mail são obrigatórios.')
+    }
+    if (!['leads', 'paid', 'all'].includes(audience)) {
+        throw new Error('Público inválido.')
+    }
+
+    // 3. Buscar usuários conforme público selecionado
+    const { data: allUsers, error } = await adminSupabase
+        .from('profiles')
+        .select('id, name, email, stripe_subscription_status, kiwify_subscription_status, is_admin')
+        .eq('is_active', true)
+        .not('email', 'is', null)
+
+    if (error) throw new Error('Erro ao buscar usuários: ' + error.message)
+
+    const isPaid = (u: any) =>
+        u.stripe_subscription_status === 'active' || u.kiwify_subscription_status === 'active'
+    const isLead = (u: any) => !isPaid(u) && !u.is_admin
+
+    let targets = (allUsers || []).filter(u => {
+        if (u.is_admin) return false // nunca envia para si mesmo
+        if (audience === 'paid') return isPaid(u)
+        if (audience === 'leads') return isLead(u)
+        return true // 'all'
+    })
+
+    // 4. Disparo com controle de resultado (fire-and-collect)
+    const result: BulkEmailResult = { sent: 0, failed: 0, errors: [] }
+
+    for (const user of targets) {
+        try {
+            const html = buildEmailTemplate({
+                userName: user.name || 'Usuário',
+                subject,
+                bodyContent,
+            })
+            await sendEmail({
+                to: user.email,
+                toName: user.name || undefined,
+                subject,
+                htmlBody: html,
+            })
+            result.sent++
+            // Pequeno delay para não sobrecarregar o SMTP
+            await new Promise(r => setTimeout(r, 150))
+        } catch (err: any) {
+            result.failed++
+            result.errors.push(`${user.email}: ${err.message}`)
+            console.error(`[MAIL] Falha ao enviar para ${user.email}:`, err.message)
+        }
+    }
+
+    return result
 }
