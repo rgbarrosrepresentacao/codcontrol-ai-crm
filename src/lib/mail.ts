@@ -5,6 +5,9 @@ function createTransporter() {
     const host = process.env.SMTP_HOST
     const user = process.env.SMTP_USER
     const pass = process.env.SMTP_PASS
+    const port = Number(process.env.SMTP_PORT) || 465
+    // secure=true para porta 465 (SSL direto), false para 587 (STARTTLS)
+    const secure = port === 465
 
     if (!host || !user || !pass) {
         throw new Error(
@@ -13,13 +16,19 @@ function createTransporter() {
         )
     }
 
+    console.log(`[MAIL] Criando transporter: host=${host} port=${port} secure=${secure} user=${user}`)
+
     return nodemailer.createTransport({
         host,
-        port: Number(process.env.SMTP_PORT) || 465,
-        secure: process.env.SMTP_SECURE === 'true',
+        port,
+        secure,
         auth: { user, pass },
+        connectionTimeout: 10000,
+        greetingTimeout: 10000,
+        socketTimeout: 30000,
         tls: {
             rejectUnauthorized: false, // compatibilidade com Hostinger
+            minVersion: 'TLSv1.2',
         },
     })
 }
@@ -44,12 +53,18 @@ export async function sendEmail({ to, toName, subject, htmlBody }: SendEmailOpti
     const fromEmail = process.env.SMTP_USER
 
     const transporter = createTransporter()
-    await transporter.sendMail({
-        from: `"${fromName}" <${fromEmail}>`,
-        to: toName ? `"${toName}" <${to}>` : to,
-        subject,
-        html: htmlBody,
-    })
+    try {
+        const info = await transporter.sendMail({
+            from: `"${fromName}" <${fromEmail}>`,
+            to: toName ? `"${toName}" <${to}>` : to,
+            subject,
+            html: htmlBody,
+        })
+        console.log(`[MAIL] Enviado com sucesso para ${to} — messageId: ${info.messageId}`)
+    } catch (err: any) {
+        console.error(`[MAIL] ERRO ao enviar para ${to}:`, err.message, err.code, err.response)
+        throw err
+    }
 }
 
 // ── Template HTML profissional da CodControl ─────────────────────────────────
