@@ -488,7 +488,21 @@ async function processWebhookInBackground(body: any) {
             } catch (err) { console.error('Vision extraction error:', err) }
         }
 
-        if (!textMessage) return
+        // 3d. Fallbacks de conteúdo para disparar funis mesmo sem transcrição (p/ quem não usa IA ou IA falhou)
+        if (!textMessage) {
+            if (messageData.audioMessage) textMessage = '[Áudio]'
+            else if (messageData.imageMessage) textMessage = '[Imagem]'
+            else if (messageData.videoMessage) textMessage = '[Vídeo]'
+            else if (messageData.stickerMessage) textMessage = '[Figurinha]'
+            else if (messageData.documentMessage) textMessage = '[Documento]'
+            else if (messageData.contactMessage || messageData.contactsArrayMessage) textMessage = '[Contato]'
+            else if (messageData.locationMessage) textMessage = '[Localização]'
+        }
+
+        if (!textMessage) {
+            console.log(`[Webhook] Mensagem ignorada: Tipo não suportado ou sem conteúdo para a instância ${instanceName}`)
+            return
+        }
 
         // 4. Salvar Contato no CRM
         const { data: contact } = await supabase.from('contacts').upsert({
