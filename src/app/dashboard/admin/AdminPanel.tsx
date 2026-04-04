@@ -13,7 +13,7 @@ import {
     toggleUserStatusAction, updateUserTrialAction, saveAnnouncementAction, 
     deleteAnnouncementAction, saveMaterialAction, deleteMaterialAction, 
     deleteUserAction, getKiwifyStatsAction, refundKiwifyOrderAction,
-    sendMarketingEmailAction
+    sendMarketingEmailAction, type EmailActionResult
 } from './actions'
 
 interface AdminPanelProps {
@@ -53,7 +53,7 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
     const [emailSubject, setEmailSubject] = useState('')
     const [emailBody, setEmailBody] = useState('')
     const [sendingEmail, setSendingEmail] = useState(false)
-    const [emailResult, setEmailResult] = useState<{ sent: number; failed: number; errors: string[] } | null>(null)
+    const [emailResult, setEmailResult] = useState<EmailActionResult | null>(null)
     const [localMaterials, setLocalMaterials] = useState(initialMaterials)
     const [deletingMaterial, setDeletingMaterial] = useState<string | null>(null)
 
@@ -778,10 +778,11 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
                                     if (!confirm(`⚠️ Confirmar disparo de e-mail para ${audienceLabel}?\n\nAssunto: "${emailSubject}"\n\nEste envio é irreversível.`)) return
                                     setSendingEmail(true)
                                     setEmailResult(null)
-                                    try {
-                                        const result = await sendMarketingEmailAction(emailSubject, emailBody, emailAudience)
+                                    const result = await sendMarketingEmailAction(emailSubject, emailBody, emailAudience)
                                         setEmailResult(result)
-                                        if (result.sent > 0) {
+                                        if (result.error) {
+                                            toast.error('❌ Erro: ' + result.error)
+                                        } else if (result.sent > 0) {
                                             toast.success(`✅ ${result.sent} e-mail(s) enviado(s) com sucesso!`)
                                             setEmailSubject('')
                                             setEmailBody('')
@@ -789,11 +790,7 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
                                         if (result.failed > 0) {
                                             toast.error(`⚠️ ${result.failed} falha(s) de envio. Veja o relatório.`)
                                         }
-                                    } catch (err: any) {
-                                        toast.error('Erro crítico: ' + err.message)
-                                    } finally {
                                         setSendingEmail(false)
-                                    }
                                 }}
                                 disabled={sendingEmail || !emailSubject.trim() || !emailBody.trim()}
                                 className="w-full gradient-primary text-black font-bold h-12 rounded-xl text-sm flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all"

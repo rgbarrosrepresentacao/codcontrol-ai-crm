@@ -150,70 +150,93 @@ export async function refundKiwifyOrderAction(orderId: string) {
 
 // ─── MARKETING EMAIL ACTION ────────────────────────────────────────────────
 
+export type EmailActionResult = BulkEmailResult & { error?: string }
+
 export async function sendMarketingEmailAction(
     subject: string,
     bodyContent: string,
     audience: 'leads' | 'paid' | 'all'
-): Promise<BulkEmailResult> {
-    // 1. Cliente admin do Supabase (service role)
-    const adminSupabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
-
-    // 2. Validações de segurança
-    if (!subject?.trim() || !bodyContent?.trim()) {
-        throw new Error('Assunto e corpo do e-mail são obrigatórios.')
-    }
-    if (!['leads', 'paid', 'all'].includes(audience)) {
-        throw new Error('Público inválido.')
-    }
-
-    // 3. Buscar usuários conforme público selecionado
-    const { data: allUsers, error } = await adminSupabase
-        .from('profiles')
-        .select('id, name, email, stripe_subscription_status, kiwify_subscription_status, is_admin')
-        .eq('is_active', true)
-        .not('email', 'is', null)
-
-    if (error) throw new Error('Erro ao buscar usuários: ' + error.message)
-
-    const isPaid = (u: any) =>
-        u.stripe_subscription_status === 'active' || u.kiwify_subscription_status === 'active'
-    const isLead = (u: any) => !isPaid(u) && !u.is_admin
-
-    let targets = (allUsers || []).filter(u => {
-        if (u.is_admin) return false // nunca envia para si mesmo
-        if (audience === 'paid') return isPaid(u)
-        if (audience === 'leads') return isLead(u)
-        return true // 'all'
-    })
-
-    // 4. Disparo com controle de resultado (fire-and-collect)
-    const result: BulkEmailResult = { sent: 0, failed: 0, errors: [] }
-
-    for (const user of targets) {
-        try {
-            const html = buildEmailTemplate({
-                userName: user.name || 'Usuário',
-                subject,
-                bodyContent,
-            })
-            await sendEmail({
-                to: user.email,
-                toName: user.name || undefined,
-                subject,
-                htmlBody: html,
-            })
-            result.sent++
-            // Pequeno delay para não sobrecarregar o SMTP
-            await new Promise(r => setTimeout(r, 150))
-        } catch (err: any) {
-            result.failed++
-            result.errors.push(`${user.email}: ${err.message}`)
-            console.error(`[MAIL] Falha ao enviar para ${user.email}:`, err.message)
+): Promise<EmailActionResult> {
+    try {
+        // 1. Validações de segurança
+        if (!subject?.trim() || !bodyContent?.trim()) {
+            return { sent: 0, failed: 0, errors: [], error: 'Assunto e corpo do e-mail são obrigatórios.' }
         }
-    }
+        if (!['leads', 'paid', 'all'].includes(audience)) {
+            return { sent: 0, failed: 0, errors: [], error: 'Público inválido.' }
+        }
 
-    return result
+        // 2. Checar variáveis SMTP antes de tudo
+        const smtpHost = process.env.SMTP_HOST
+        const smtpUser = process.env.SMTP_USER
+        const smtpPass = process.env.SMTP_PASS
+        if (!smtpHost || !smtpUser || !smtpPass) {
+            console.error('[MAIL] SMTP não configurado:', { smtpHost, smtpUser: !!smtpUser, smtpPass: !!smtpPass })
+            return { sent: 0, failed: 0, errors: [], error: `SMTP não configurado: SMTP_HOST=${smtpHost || 'undefined'}` }
+        }
+
+        // 3. Cliente admin do Supabase (service role)
+        const adminSupabase = createClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.SUPABASE_SERVICE_ROLE_KEY!
+        )
+
+        // 4. Buscar usuários conforme público selecionado
+        const { data: allUsers, error } = await adminSupabase
+            .from('profiles')
+            .select('id, name, email, stripe_subscription_status, kiwify_subscription_status, is_admin')
+            .eq('is_active', true)
+            .not('email', 'is', null)
+
+        if (error) {
+            console.error('[MAIL] Erro ao buscar usuários:', error.message)
+            return { sent: 0, failed: 0, errors: [], error: 'Erro ao buscar usuários: ' + error.message }
+        }
+
+        const isPaid = (u: any) =>
+            u.stripe_subscription_status === 'active' || u.kiwify_subscription_status === 'active'
+        const isLead = (u: any) => !isPaid(u) && !u.is_admin
+
+        const targets = (allUsers || []).filter(u => {
+            if (u.is_admin) return false
+            if (audience === 'paid') return isPaid(u)
+            if (audience === 'leads') return isLead(u)
+            return true
+        })
+
+        console.log(`[MAIL] Iniciando disparo para ${targets.length} usuários (audience: ${audience})`)
+
+        // 5. Disparo com controle de resultado
+        const result: EmailActionResult = { sent: 0, failed: 0, errors: [] }
+
+        for (const user of targets) {
+            try {
+                const html = buildEmailTemplate({
+                    userName: user.name || 'Usuário',
+                    subject,
+                    bodyContent,
+                })
+                await sendEmail({
+                    to: user.email,
+                    toName: user.name || undefined,
+                    subject,
+                    htmlBody: html,
+                })
+                result.sent++
+                await new Promise(r => setTimeout(r, 150))
+            } catch (err: any) {
+                result.failed++
+                result.errors.push(`${user.email}: ${err.message}`)
+                console.error(`[MAIL] Falha ao enviar para ${user.email}:`, err.message)
+            }
+        }
+
+        console.log(`[MAIL] Disparo concluído: ${result.sent} enviados, ${result.failed} falhas`)
+        return result
+
+    } catch (err: any) {
+        // Nunca deixa o erro vazar como exceção para o cliente
+        console.error('[MAIL] Erro crítico no sendMarketingEmailAction:', err.message)
+        return { sent: 0, failed: 0, errors: [], error: err.message }
+    }
 }
