@@ -152,18 +152,80 @@ export async function refundKiwifyOrderAction(orderId: string) {
 
 export type EmailActionResult = BulkEmailResult & { error?: string }
 
+// Validação básica de formato de e-mail
+function isValidEmail(email: string): boolean {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
+}
+
+// Parseia uma string de e-mails (um por linha ou separados por vírgula/ponto-e-vírgula)
+export function parseEmailList(raw: string): { valid: string[]; invalid: string[]; duplicates: number } {
+    const tokens = raw.split(/[\n,;]+/).map(e => e.trim().toLowerCase()).filter(Boolean)
+    const seen = new Set<string>()
+    const valid: string[] = []
+    const invalid: string[] = []
+    let duplicates = 0
+
+    for (const token of tokens) {
+        if (!isValidEmail(token)) {
+            invalid.push(token)
+        } else if (seen.has(token)) {
+            duplicates++
+        } else {
+            seen.add(token)
+            valid.push(token)
+        }
+    }
+    return { valid, invalid, duplicates }
+}
+
 export async function sendMarketingEmailAction(
     subject: string,
     bodyContent: string,
-    audience: 'leads' | 'paid' | 'all'
+    audience: 'leads' | 'paid' | 'all' | 'external',
+    externalEmailList?: string // raw string with emails for audience === 'external'
 ): Promise<EmailActionResult> {
     try {
         // 1. Validações de segurança
         if (!subject?.trim() || !bodyContent?.trim()) {
             return { sent: 0, failed: 0, errors: [], error: 'Assunto e corpo do e-mail são obrigatórios.' }
         }
-        if (!['leads', 'paid', 'all'].includes(audience)) {
+        if (!['leads', 'paid', 'all', 'external'].includes(audience)) {
             return { sent: 0, failed: 0, errors: [], error: 'Público inválido.' }
+        }
+
+        // 3. Para lista externa, não precisa do banco
+        if (audience === 'external') {
+            if (!externalEmailList?.trim()) {
+                return { sent: 0, failed: 0, errors: [], error: 'Cole pelo menos um e-mail na lista externa.' }
+            }
+            const { valid, invalid, duplicates } = parseEmailList(externalEmailList)
+            if (valid.length === 0) {
+                return { sent: 0, failed: 0, errors: [], error: `Nenhum e-mail válido encontrado. ${invalid.length} inválido(s).` }
+            }
+            console.log(`[MAIL] Lista externa: ${valid.length} válidos, ${invalid.length} inválidos, ${duplicates} duplicatas removidas`)
+
+            const result: EmailActionResult = { sent: 0, failed: 0, errors: [] }
+            for (const email of valid) {
+                try {
+                    const html = buildEmailTemplate({
+                        userName: email.split('@')[0], // usa parte local do email como nome
+                        subject,
+                        bodyContent,
+                    })
+                    await sendEmail({ to: email, subject, htmlBody: html })
+                    result.sent++
+                    await new Promise(r => setTimeout(r, 150))
+                } catch (err: any) {
+                    result.failed++
+                    result.errors.push(`${email}: ${err.message}`)
+                    console.error(`[MAIL] Falha ao enviar para ${email}:`, err.message)
+                }
+            }
+            if (invalid.length > 0) {
+                result.errors.push(`--- ${invalid.length} e-mail(s) ignorado(s) por formato inválido: ${invalid.slice(0, 5).join(', ')}${invalid.length > 5 ? '...' : ''}`)
+            }
+            console.log(`[MAIL] Lista externa concluída: ${result.sent} enviados, ${result.failed} falhas`)
+            return result
         }
 
         // 2. Checar variáveis SMTP antes de tudo
