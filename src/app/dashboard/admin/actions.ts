@@ -184,7 +184,7 @@ export async function sendMarketingEmailAction(
         // 4. Buscar usuários conforme público selecionado
         const { data: allUsers, error } = await adminSupabase
             .from('profiles')
-            .select('id, name, email, stripe_subscription_status, kiwify_subscription_status, is_admin')
+            .select('id, name, email, stripe_subscription_status, is_admin')
             .eq('is_active', true)
             .not('email', 'is', null)
 
@@ -194,7 +194,7 @@ export async function sendMarketingEmailAction(
         }
 
         const isPaid = (u: any) =>
-            u.stripe_subscription_status === 'active' || u.kiwify_subscription_status === 'active'
+            u.stripe_subscription_status === 'active'
         const isLead = (u: any) => !isPaid(u) && !u.is_admin
 
         const targets = (allUsers || []).filter(u => {
