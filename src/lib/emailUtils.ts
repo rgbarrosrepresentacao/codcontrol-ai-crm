@@ -1,4 +1,8 @@
+import { BulkEmailResult } from './mail'
+
 // Utilitário de e-mail — pode ser importado tanto no client quanto no server
+
+export type EmailActionResult = BulkEmailResult & { error?: string }
 
 /** Valida formato básico de e-mail */
 export function isValidEmail(email: string): boolean {

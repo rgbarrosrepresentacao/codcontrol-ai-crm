@@ -13,9 +13,9 @@ import {
     toggleUserStatusAction, updateUserTrialAction, saveAnnouncementAction, 
     deleteAnnouncementAction, saveMaterialAction, deleteMaterialAction, 
     deleteUserAction, getKiwifyStatsAction, refundKiwifyOrderAction,
-    sendMarketingEmailAction, type EmailActionResult
+    sendMarketingEmailAction
 } from './actions'
-import { parseEmailList } from '@/lib/emailUtils'
+import { parseEmailList, type EmailActionResult } from '@/lib/emailUtils'
 
 interface AdminPanelProps {
     users: any[]

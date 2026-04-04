@@ -148,11 +148,7 @@ export async function refundKiwifyOrderAction(orderId: string) {
     }
 }
 
-// ─── MARKETING EMAIL ACTION ────────────────────────────────────────────────
-
-export type EmailActionResult = BulkEmailResult & { error?: string }
-
-import { parseEmailList } from '@/lib/emailUtils'
+import { parseEmailList, type EmailActionResult } from '@/lib/emailUtils'
 
 export async function sendMarketingEmailAction(
     subject: string,
