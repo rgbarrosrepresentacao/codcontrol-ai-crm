@@ -15,6 +15,7 @@ const navItems = [
     { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/dashboard/whatsapp', label: 'WhatsApp', icon: Smartphone },
     { href: '/dashboard/ia', label: 'Inteligência Artificial', icon: Brain },
+    { href: '/dashboard/ia/campanhas', label: 'Múltiplos Produtos', icon: Megaphone },
     { href: '/dashboard/crm', label: 'CRM', icon: Users },
     { href: '/dashboard/chat', label: 'Chat ao Vivo', icon: MessageSquare },
     { href: '/dashboard/funis', label: 'Funis de Venda', icon: Filter },
@@ -27,7 +28,6 @@ const navItems = [
 
 const adminItems = [
     { href: '/dashboard/admin', label: 'Painel Admin', icon: Shield },
-    { href: '/dashboard/ia/campanhas', label: 'Múltiplos Produtos', icon: Megaphone },
 ]
 
 interface SidebarProps {

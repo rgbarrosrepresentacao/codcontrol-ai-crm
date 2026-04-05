@@ -26,7 +26,6 @@ export default function CampaignsPage() {
   const [instances, setInstances] = useState<Instance[]>([])
   const [loading, setLoading] = useState(true)
   const [isEditing, setIsEditing] = useState<string | null>(null)
-  const [isAdmin, setIsAdmin] = useState(false)
   
   // New Campaign Form
   const [newName, setNewName] = useState('')
@@ -36,21 +35,8 @@ export default function CampaignsPage() {
   const [isAdding, setIsAdding] = useState(false)
 
   useEffect(() => {
-    checkAdmin()
     fetchData()
   }, [])
-
-  async function checkAdmin() {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (user) {
-      const { data: profile } = await supabase.from('profiles').select('is_admin').eq('id', user.id).single()
-      if (!profile?.is_admin) {
-        window.location.href = '/dashboard'
-      } else {
-        setIsAdmin(true)
-      }
-    }
-  }
 
   async function fetchData() {
     setLoading(true)
@@ -141,15 +127,13 @@ export default function CampaignsPage() {
     }
   }
 
-  if (!isAdmin) return null
-
   return (
     <div className="p-8">
       <header className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-3xl font-bold flex items-center gap-2">
               <Megaphone className="text-emerald-500" />
-              Gestão de Múltiplos Produtos (Beta Admin)
+              Gestão de Múltiplos Produtos
             </h1>
             <p className="text-zinc-400 mt-1">Crie personas e prompts específicos para cada produto no mesmo WhatsApp.</p>
           </div>
