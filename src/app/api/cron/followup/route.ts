@@ -111,7 +111,7 @@ export async function GET(req: NextRequest) {
             if (!lastMsgRecord || !lastMsgRecord.from_me) continue
 
             // Load credentials & config
-            const { data: profile } = await supabase.from('profiles').select('openai_api_key, is_admin, trial_ends_at, stripe_subscription_status').eq('id', conversation.user_id).single()
+            const { data: profile } = await supabase.from('profiles').select('openai_api_key, is_admin, trial_ends_at, stripe_subscription_status, vapi_api_key').eq('id', conversation.user_id).single()
             if (!profile?.openai_api_key) continue
 
             // 3b. BLOQUEIO DE SEGURANÇA - Ignora se não pagou (exceto trial vigente de antigos)
@@ -145,6 +145,76 @@ export async function GET(req: NextRequest) {
                     aiConfig.bot_name = campaign.name
                 }
             }
+
+            // ── ADMIN LAB: Vapi.ai - Ligação Automática (stage 1 = 2h+) ──────────
+            // Esta lógica só ativa para o perfil admin com chave Vapi configurada.
+            // Assim testamos em produção de forma isolada sem afetar usuários comuns.
+            if (profile.is_admin && profile.vapi_api_key && stage === 1 && !isLeadFrio) {
+                console.log(`[CRON_FOLLOWUP] 📞 [ADMIN LAB] Iniciando ligação Vapi para contato ${contact.id}`)
+                try {
+                    const rawNumber = contact.whatsapp_id.replace('@s.whatsapp.net', '').replace(/\D/g, '')
+                    const e164Number = rawNumber.startsWith('55') ? `+${rawNumber}` : `+55${rawNumber}`
+                    const botName = aiConfig.bot_name || 'Camila'
+
+                    const vapiResponse = await fetch('https://api.vapi.ai/call/phone', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${profile.vapi_api_key}`
+                        },
+                        body: JSON.stringify({
+                            customer: { number: e164Number },
+                            phoneNumberId: process.env.VAPI_PHONE_NUMBER_ID || undefined,
+                            assistant: {
+                                model: {
+                                    provider: 'openai',
+                                    model: 'gpt-4o-mini',
+                                    messages: [{
+                                        role: 'system',
+                                        content: `${aiConfig.system_prompt || 'Você é uma vendedora experiente e amigável.'}\n\n` +
+                                            `CONTEXTO: O cliente não responde às mensagens de WhatsApp há mais de 2 horas. ` +
+                                            `Faça uma ligação curta, natural e humana para retomar o interesse, tirar dúvidas e tentar fechar a venda. ` +
+                                            `Seja calorosa, não pressione. Fale como ${botName}, uma vendedora real.`
+                                    }]
+                                },
+                                voice: { provider: '11labs', voiceId: 'paula' },
+                                serverUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://codcontrolpro.bond'}/api/vapi/webhook`,
+                                firstMessage: `Oi! Aqui é a ${botName}. Você tinha demonstrado interesse mas não me respondeu mais, queria checar se ficou alguma dúvida que eu possa te ajudar a resolver. Tem um minutinho?`,
+                                maxDurationSeconds: 180,
+                            }
+                        })
+                    })
+
+                    if (vapiResponse.ok) {
+                        const vapiData = await vapiResponse.json()
+                        console.log(`[CRON_FOLLOWUP] 📞 Ligação Vapi iniciada: ${vapiData.id}`)
+                        await supabase.from('messages').insert({
+                            user_id: conversation.user_id,
+                            conversation_id: conversation.id,
+                            instance_id: conversation.instance_id,
+                            contact_id: contact.id,
+                            from_me: true,
+                            content: `[📞 LIGAÇÃO AUTOMÁTICA INICIADA] A IA está ligando para o cliente agora (Vapi ID: ${vapiData.id})`,
+                            type: 'text',
+                            ai_generated: true,
+                            status: 'sent',
+                        })
+                        await supabase.from('contacts').update({ followup_stage: stage + 1 }).eq('id', contact.id)
+                        await supabase.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', conversation.id)
+                        processedCount++
+                    } else {
+                        const errText = await vapiResponse.text()
+                        console.error(`[CRON_FOLLOWUP] ❌ Erro Vapi: ${errText}`)
+                        // Fallback: segue para fluxo de texto abaixo
+                    }
+                } catch (vapiErr: any) {
+                    console.error('[CRON_FOLLOWUP] ❌ Exceção ao chamar Vapi:', vapiErr.message)
+                    // Fallback: segue para fluxo de texto abaixo
+                }
+                await new Promise(r => setTimeout(r, 5000))
+                continue
+            }
+            // ── FIM DO BLOCO ADMIN LAB ────────────────────────────────────────────
 
             // ─── Knowledge Base: busca mídias cadastradas e filtra por campanha ──────
             let knowledgeQuery = supabase
