@@ -2,31 +2,37 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
 export async function POST(req: NextRequest) {
+    // Usar o mesmo padrão do cron para garantir conexão
     const supabase = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_KEY!
+        process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     )
 
     try {
-        const { phone, userId } = await req.json()
+        const body = await req.json().catch(() => ({}))
+        const { phone, userId } = body
 
         if (!phone || !userId) {
             return NextResponse.json({ error: 'phone e userId são obrigatórios' }, { status: 400 })
         }
 
         // Busca perfil e valida que é admin
-        const { data: profile } = await supabase
+        const { data: profile, error: profileError } = await supabase
             .from('profiles')
             .select('is_admin, vapi_api_key, vapi_enabled')
             .eq('id', userId)
             .single()
 
-        if (!profile?.is_admin) {
+        if (profileError || !profile) {
+            return NextResponse.json({ error: 'Perfil não encontrado ou erro no banco' }, { status: 404 })
+        }
+
+        if (!profile.is_admin) {
             return NextResponse.json({ error: 'Acesso restrito a administradores' }, { status: 403 })
         }
 
-        if (!profile?.vapi_api_key) {
-            return NextResponse.json({ error: 'Salve sua Vapi API Key nas configurações primeiro' }, { status: 400 })
+        if (!profile.vapi_api_key) {
+            return NextResponse.json({ error: 'Chave Vapi não encontrada. Salve a chave primeiro.' }, { status: 400 })
         }
 
         // Formata número para E.164
@@ -63,17 +69,30 @@ export async function POST(req: NextRequest) {
             body: JSON.stringify(vapiBody)
         })
 
-        if (!vapiRes.ok) {
-            const errText = await vapiRes.text()
-            console.error('[VAPI_TEST] Erro:', errText)
-            return NextResponse.json({ error: `Vapi retornou erro: ${errText}` }, { status: 500 })
+        const resText = await vapiRes.text()
+        let vapiData: any = {}
+        try {
+            vapiData = JSON.parse(resText)
+        } catch (e) {
+            console.error('[VAPI_TEST] Erro ao parsear resposta da Vapi:', resText)
         }
 
-        const vapiData = await vapiRes.json()
-        return NextResponse.json({ success: true, callId: vapiData.id, message: `Ligação iniciada para ${e164}` })
+        if (!vapiRes.ok) {
+            return NextResponse.json({ 
+                error: vapiData?.message || `Erro na Vapi (Status ${vapiRes.status})`,
+                details: vapiData
+            }, { status: vapiRes.status })
+        }
+
+        return NextResponse.json({ 
+            success: true, 
+            callId: vapiData.id, 
+            message: `Ligação iniciada para ${e164}` 
+        })
 
     } catch (err: any) {
-        console.error('[VAPI_TEST] Exceção:', err.message)
-        return NextResponse.json({ error: err.message }, { status: 500 })
+        console.error('[VAPI_TEST] Exceção:', err)
+        return NextResponse.json({ error: 'Erro interno no servidor: ' + err.message }, { status: 500 })
     }
 }
+

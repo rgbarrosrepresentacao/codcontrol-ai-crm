@@ -92,18 +92,30 @@ export default function LigacaoIAPage() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ phone: testPhone, userId })
             })
-            const data = await res.json()
 
-            if (!res.ok) throw new Error(data.error || 'Erro desconhecido')
+            const text = await res.text()
+            let data: any
+            try {
+                data = JSON.parse(text)
+            } catch (e) {
+                console.error('Resposta não-JSON da API:', text)
+                throw new Error('O servidor retornou uma resposta inválida (não-JSON). Entre em contato com o suporte.')
+            }
+
+            if (!res.ok) {
+                throw new Error(data.error || data.message || `Erro do servidor (Status ${res.status})`)
+            }
 
             setLastCallId(data.callId)
             toast.success(`✅ Ligação iniciada! ID: ${data.callId}`)
         } catch (err: any) {
-            toast.error('Erro ao disparar ligação: ' + err.message)
+            console.error('Erro ao disparar ligação:', err)
+            toast.error(err.message || 'Erro inesperado ao disparar ligação')
         } finally {
             setTesting(false)
         }
     }
+
 
     if (loading) {
         return (

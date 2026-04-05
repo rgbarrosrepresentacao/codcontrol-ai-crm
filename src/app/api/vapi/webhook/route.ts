@@ -8,6 +8,15 @@ const supabase = createClient(
 )
 
 /**
+ * GET /api/vapi/webhook
+ * 
+ * Usado apenas para validação da Vapi.ai ao salvar o Webhook no painel.
+ */
+export async function GET() {
+    return NextResponse.json({ status: 'ok', message: 'Vapi Webhook Active' })
+}
+
+/**
  * POST /api/vapi/webhook
  * 
  * Recebe os eventos da Vapi.ai durante e após uma ligação telefônica.

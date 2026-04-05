@@ -156,52 +156,8 @@ export default function ConfiguracoesPage() {
                 </div>
             )}
 
-            {/* Vapi.ai - Ligações Automáticas (SOMENTE ADMIN) */}
-            {isAdmin && (
-                <div className="gradient-card border border-amber-500/30 rounded-xl p-6 space-y-4">
-                    <div className="flex items-center gap-2">
-                        <Phone className="w-4 h-4 text-amber-400" />
-                        <h2 className="font-semibold text-foreground">Ligações Automáticas de IA</h2>
-                        <span className="text-[10px] bg-amber-500/20 text-amber-400 font-bold px-1.5 py-0.5 rounded border border-amber-500/30 uppercase">Admin Lab</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                        Integração com <strong className="text-amber-400">Vapi.ai</strong> para realizar ligações telefônicas automáticas no follow-up de 2h+.
-                        Quando ativado, a IA liga para o cliente em vez de mandar mensagem de texto. Em fase de testes internos antes de liberar para usuários.
-                    </p>
-                    <div>
-                        <label className="block text-sm font-medium text-foreground mb-1.5">Vapi API Key</label>
-                        <input
-                            type="password"
-                            value={vapiKey}
-                            onChange={(e) => setVapiKey(e.target.value)}
-                            placeholder="vapi_...."
-                            className="w-full bg-input border border-amber-500/30 rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500 transition-all text-sm font-mono"
-                        />
-                        <p className="text-xs text-muted-foreground mt-1">Acesse <strong>vapi.ai</strong> → Dashboard → API Keys para gerar sua chave.</p>
-                    </div>
-                    <button
-                        onClick={async () => {
-                            setSavingVapi(true)
-                            try {
-                                const { data: { user } } = await supabase.auth.getUser()
-                                if (!user) return
-                                await supabase.from('profiles').update({ vapi_api_key: vapiKey || null }).eq('id', user.id)
-                                toast.success('Chave Vapi salva com sucesso!')
-                            } catch {
-                                toast.error('Erro ao salvar chave Vapi')
-                            } finally {
-                                setSavingVapi(false)
-                            }
-                        }}
-                        disabled={savingVapi}
-                        className="bg-amber-500/20 border border-amber-500/40 text-amber-400 hover:bg-amber-500/30 font-medium px-4 py-2.5 rounded-lg transition-all flex items-center gap-2 text-sm disabled:opacity-60"
-                    >
-                        {savingVapi ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                        {savingVapi ? 'Salvando...' : 'Salvar Chave Vapi'}
-                    </button>
-                </div>
-            )}
         </div>
     )
 }
+
 
