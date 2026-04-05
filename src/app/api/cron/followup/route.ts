@@ -111,7 +111,7 @@ export async function GET(req: NextRequest) {
             if (!lastMsgRecord || !lastMsgRecord.from_me) continue
 
             // Load credentials & config
-            const { data: profile } = await supabase.from('profiles').select('openai_api_key, is_admin, trial_ends_at, stripe_subscription_status, vapi_api_key').eq('id', conversation.user_id).single()
+            const { data: profile } = await supabase.from('profiles').select('openai_api_key, is_admin, trial_ends_at, stripe_subscription_status, vapi_api_key, vapi_enabled, vapi_stage').eq('id', conversation.user_id).single()
             if (!profile?.openai_api_key) continue
 
             // 3b. BLOQUEIO DE SEGURANÇA - Ignora se não pagou (exceto trial vigente de antigos)
@@ -146,10 +146,10 @@ export async function GET(req: NextRequest) {
                 }
             }
 
-            // ── ADMIN LAB: Vapi.ai - Ligação Automática (stage 1 = 2h+) ──────────
-            // Esta lógica só ativa para o perfil admin com chave Vapi configurada.
-            // Assim testamos em produção de forma isolada sem afetar usuários comuns.
-            if (profile.is_admin && profile.vapi_api_key && stage === 1 && !isLeadFrio) {
+            // ── ADMIN LAB: Vapi.ai - Ligação Automática ─────────────────────────────────
+            // Ativa apenas se: admin + chave Vapi + vapi_enabled + stage configurado
+            const vapiTargetStage = profile.vapi_stage ?? 1
+            if (profile.is_admin && profile.vapi_api_key && profile.vapi_enabled && stage === vapiTargetStage && !isLeadFrio) {
                 console.log(`[CRON_FOLLOWUP] 📞 [ADMIN LAB] Iniciando ligação Vapi para contato ${contact.id}`)
                 try {
                     const rawNumber = contact.whatsapp_id.replace('@s.whatsapp.net', '').replace(/\D/g, '')
