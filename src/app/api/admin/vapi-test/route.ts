@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
 
     try {
         const body = await req.json().catch(() => ({}))
-        const { phone, userId, vapiPhoneId } = body
+        const { phone, userId, vapiPhoneId, vapiAssistantId } = body
 
         if (!phone || !userId) {
             return NextResponse.json({ error: 'phone e userId são obrigatórios' }, { status: 400 })
@@ -39,10 +39,16 @@ export async function POST(req: NextRequest) {
         const rawNumber = phone.replace(/\D/g, '')
         const e164 = rawNumber.startsWith('55') ? `+${rawNumber}` : `+55${rawNumber}`
 
-        const vapiBody = {
+        const vapiBody: any = {
             customer: { number: e164 },
             phoneNumberId: vapiPhoneId || process.env.VAPI_PHONE_NUMBER_ID || undefined,
-            assistant: {
+        }
+
+        // Se o usuário passou um Assistant ID, usa ele. Caso contrário, usa o padrão.
+        if (vapiAssistantId) {
+            vapiBody.assistantId = vapiAssistantId
+        } else {
+            vapiBody.assistant = {
                 model: {
                     provider: 'openai',
                     model: 'gpt-4o-mini',

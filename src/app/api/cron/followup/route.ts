@@ -111,7 +111,7 @@ export async function GET(req: NextRequest) {
             if (!lastMsgRecord || !lastMsgRecord.from_me) continue
 
             // Load credentials & config
-            const { data: profile } = await supabase.from('profiles').select('openai_api_key, is_admin, trial_ends_at, stripe_subscription_status, vapi_api_key, vapi_enabled, vapi_stage, vapi_phone_number_id').eq('id', conversation.user_id).single()
+            const { data: profile } = await supabase.from('profiles').select('openai_api_key, is_admin, trial_ends_at, stripe_subscription_status, vapi_api_key, vapi_enabled, vapi_stage, vapi_phone_number_id, vapi_assistant_id').eq('id', conversation.user_id).single()
             if (!profile?.openai_api_key) continue
 
             // 3b. BLOQUEIO DE SEGURANÇA - Ignora se não pagou (exceto trial vigente de antigos)
@@ -156,33 +156,42 @@ export async function GET(req: NextRequest) {
                     const e164Number = rawNumber.startsWith('55') ? `+${rawNumber}` : `+55${rawNumber}`
                     const botName = aiConfig.bot_name || 'Camila'
 
+                    const vapiBody: any = {
+                        customer: { number: e164Number },
+                        phoneNumberId: profile.vapi_phone_number_id || process.env.VAPI_PHONE_NUMBER_ID || undefined,
+                    }
+
+                    // Se o admin configurou um Assistant ID específico (ex: Camila), usa ele.
+                    // Caso contrário, gera um assistente dinâmico baseado no prompt da campanha/config.
+                    if (profile.vapi_assistant_id) {
+                        vapiBody.assistantId = profile.vapi_assistant_id
+                    } else {
+                        vapiBody.assistant = {
+                            model: {
+                                provider: 'openai',
+                                model: 'gpt-4o-mini',
+                                messages: [{
+                                    role: 'system',
+                                    content: `${aiConfig.system_prompt || 'Você é uma vendedora experiente e amigável.'}\n\n` +
+                                        `CONTEXTO: O cliente não responde às mensagens de WhatsApp há mais de 2 horas. ` +
+                                        `Faça uma ligação curta, natural e humana para retomar o interesse, tirar dúvidas e tentar fechar a venda. ` +
+                                        `Seja calorosa, não pressione. Fale como ${botName}, uma vendedora real.`
+                                }]
+                            },
+                            voice: { provider: '11labs', voiceId: 'paula' },
+                            serverUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://codcontrolpro.bond'}/api/vapi/webhook`,
+                            firstMessage: `Oi! Aqui é a ${botName}. Você tinha demonstrado interesse mas não me respondeu mais, queria checar se ficou alguma dúvida que eu possa te ajudar a resolver. Tem um minutinho?`,
+                            maxDurationSeconds: 180,
+                        }
+                    }
+
                     const vapiResponse = await fetch('https://api.vapi.ai/call/phone', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
                             'Authorization': `Bearer ${profile.vapi_api_key}`
                         },
-                        body: JSON.stringify({
-                            customer: { number: e164Number },
-                            phoneNumberId: profile.vapi_phone_number_id || process.env.VAPI_PHONE_NUMBER_ID || undefined,
-                            assistant: {
-                                model: {
-                                    provider: 'openai',
-                                    model: 'gpt-4o-mini',
-                                    messages: [{
-                                        role: 'system',
-                                        content: `${aiConfig.system_prompt || 'Você é uma vendedora experiente e amigável.'}\n\n` +
-                                            `CONTEXTO: O cliente não responde às mensagens de WhatsApp há mais de 2 horas. ` +
-                                            `Faça uma ligação curta, natural e humana para retomar o interesse, tirar dúvidas e tentar fechar a venda. ` +
-                                            `Seja calorosa, não pressione. Fale como ${botName}, uma vendedora real.`
-                                    }]
-                                },
-                                voice: { provider: '11labs', voiceId: 'paula' },
-                                serverUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://codcontrolpro.bond'}/api/vapi/webhook`,
-                                firstMessage: `Oi! Aqui é a ${botName}. Você tinha demonstrado interesse mas não me respondeu mais, queria checar se ficou alguma dúvida que eu possa te ajudar a resolver. Tem um minutinho?`,
-                                maxDurationSeconds: 180,
-                            }
-                        })
+                        body: JSON.stringify(vapiBody)
                     })
 
                     if (vapiResponse.ok) {
