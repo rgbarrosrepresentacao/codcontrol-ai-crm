@@ -95,9 +95,10 @@ export async function POST(req: NextRequest) {
             eventType.includes('canceled') || eventType.includes('refunded') || eventType.includes('chargeback') || eventType.includes('past_due')
 
         const isActive = 
-            ['paid', 'completed', 'active'].includes(order_status.toLowerCase()) ||
+            ['paid', 'completed', 'active', 'pago', 'aprovado', 'approved'].includes(order_status.toLowerCase()) ||
             ['active'].includes(subStatus) ||
-            eventType === 'order_approved' || eventType.includes('renewed')
+            ['order_approved', 'payment_approved'].includes(eventType) || 
+            eventType.includes('renewed')
 
         const isPending = 
             ['waiting_payment', 'pending'].includes(order_status.toLowerCase()) || 

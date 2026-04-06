@@ -381,7 +381,7 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
                                                 </div>
                                             </td>
                                             <td className="px-4 py-4">
-                                                {(!user.is_admin && user.stripe_subscription_status !== 'active' && user.trial_ends_at) ? (
+                                                {(!user.is_admin && !isPaid(user) && user.trial_ends_at) ? (
                                                     <span className="px-2 py-0.5 bg-orange-500/15 border border-orange-500/30 text-orange-400 text-[10px] rounded-md font-bold uppercase">Manual / Demo</span>
                                                 ) : (
                                                     <span className="px-2 py-0.5 bg-primary/10 border border-primary/30 text-primary text-[10px] rounded-md font-bold uppercase">
