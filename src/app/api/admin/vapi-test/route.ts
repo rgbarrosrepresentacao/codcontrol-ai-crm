@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
 
     try {
         const body = await req.json().catch(() => ({}))
-        const { phone, userId } = body
+        const { phone, userId, vapiPhoneId } = body
 
         if (!phone || !userId) {
             return NextResponse.json({ error: 'phone e userId são obrigatórios' }, { status: 400 })
@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
 
         const vapiBody = {
             customer: { number: e164 },
-            phoneNumberId: process.env.VAPI_PHONE_NUMBER_ID || undefined,
+            phoneNumberId: vapiPhoneId || process.env.VAPI_PHONE_NUMBER_ID || undefined,
             assistant: {
                 model: {
                     provider: 'openai',

@@ -18,6 +18,7 @@ export default function LigacaoIAPage() {
 
     // Config
     const [vapiKey, setVapiKey] = useState('')
+    const [vapiPhoneId, setVapiPhoneId] = useState('')
     const [vapiEnabled, setVapiEnabled] = useState(false)
     const [vapiStage, setVapiStage] = useState<number>(1)
 
@@ -35,7 +36,7 @@ export default function LigacaoIAPage() {
 
         const { data: profile } = await supabase
             .from('profiles')
-            .select('is_admin, vapi_api_key, vapi_enabled, vapi_stage')
+            .select('is_admin, vapi_api_key, vapi_enabled, vapi_stage, vapi_phone_number_id')
             .eq('id', user.id)
             .single()
 
@@ -47,6 +48,7 @@ export default function LigacaoIAPage() {
 
         setUserId(user.id)
         setVapiKey(profile.vapi_api_key || '')
+        setVapiPhoneId(profile.vapi_phone_number_id || '')
         setVapiEnabled(profile.vapi_enabled || false)
         setVapiStage(profile.vapi_stage || 1)
         setLoading(false)
@@ -60,6 +62,7 @@ export default function LigacaoIAPage() {
                 .from('profiles')
                 .update({
                     vapi_api_key: vapiKey || null,
+                    vapi_phone_number_id: vapiPhoneId || null,
                     vapi_enabled: vapiEnabled,
                     vapi_stage: vapiStage,
                 })
@@ -90,7 +93,7 @@ export default function LigacaoIAPage() {
             const res = await fetch('/api/admin/vapi-test', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ phone: testPhone, userId })
+                body: JSON.stringify({ phone: testPhone, userId, vapiPhoneId })
             })
 
             const text = await res.text()
@@ -184,6 +187,21 @@ export default function LigacaoIAPage() {
                     />
                     <p className="text-xs text-gray-500">
                         Acesse <a href="https://dashboard.vapi.ai/org/api-keys" target="_blank" rel="noreferrer" className="text-purple-400 hover:underline">dashboard.vapi.ai → API Keys</a> → copie a <strong>Chave Privada</strong>
+                    </p>
+                </div>
+
+                {/* Phone Number ID */}
+                <div className="space-y-2">
+                    <label className="text-sm font-medium text-gray-300">Vapi Phone Number ID</label>
+                    <input
+                        type="text"
+                        value={vapiPhoneId}
+                        onChange={e => setVapiPhoneId(e.target.value)}
+                        placeholder="ID do número no Vapi (ex: uuid)"
+                        className="input w-full"
+                    />
+                    <p className="text-xs text-gray-500">
+                        Acesse <a href="https://dashboard.vapi.ai/phone-numbers" target="_blank" rel="noreferrer" className="text-purple-400 hover:underline">dashboard.vapi.ai → Phone Numbers</a> → copie o <strong>ID</strong> do número.
                     </p>
                 </div>
 

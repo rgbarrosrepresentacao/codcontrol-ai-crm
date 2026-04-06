@@ -111,7 +111,7 @@ export async function GET(req: NextRequest) {
             if (!lastMsgRecord || !lastMsgRecord.from_me) continue
 
             // Load credentials & config
-            const { data: profile } = await supabase.from('profiles').select('openai_api_key, is_admin, trial_ends_at, stripe_subscription_status, vapi_api_key, vapi_enabled, vapi_stage').eq('id', conversation.user_id).single()
+            const { data: profile } = await supabase.from('profiles').select('openai_api_key, is_admin, trial_ends_at, stripe_subscription_status, vapi_api_key, vapi_enabled, vapi_stage, vapi_phone_number_id').eq('id', conversation.user_id).single()
             if (!profile?.openai_api_key) continue
 
             // 3b. BLOQUEIO DE SEGURANÇA - Ignora se não pagou (exceto trial vigente de antigos)
@@ -164,7 +164,7 @@ export async function GET(req: NextRequest) {
                         },
                         body: JSON.stringify({
                             customer: { number: e164Number },
-                            phoneNumberId: process.env.VAPI_PHONE_NUMBER_ID || undefined,
+                            phoneNumberId: profile.vapi_phone_number_id || process.env.VAPI_PHONE_NUMBER_ID || undefined,
                             assistant: {
                                 model: {
                                     provider: 'openai',
