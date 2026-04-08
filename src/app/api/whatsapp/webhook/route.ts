@@ -50,6 +50,15 @@ async function extractOrderData(messages: any[], openaiKey: string): Promise<any
     }
 }
 
+// Função para limpar o texto que vai para o áudio, evitando que a IA leia links estranhos
+function cleanTextForAudio(text: string): string {
+    // Regex para capturar URLs (http, https, www e domínios comuns como .com, .top, .bond, etc)
+    const urlRegex = /(https?:\/\/[^\s]+|www\.[^\s]+|[a-zA-Z0-9-]+\.(com|net|org|io|app|bond|shop|top|site|online|me|app)[^\s]*)/gi;
+    
+    // Se encontrar um link, substitui por uma frase amigável para o áudio
+    return text.replace(urlRegex, 'o link que te mandei aqui no texto');
+}
+
 // Usamos um cliente do Supabase com Service Role Key para ignorar RLS nesta rota de background e poder buscar os dados do usuário
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -843,6 +852,7 @@ REGRAS DE USO:
 - Se o cliente perguntar se você é humano ou robô, responda de forma natural como uma vendedora real faria (ex: "Sou humana sim! Tô aqui pra te ajudar 😊").
 - NUNCA use frases robóticas como: "Em que posso ajudá-lo hoje?", "Posso ajudá-lo com mais alguma coisa?", "Processando sua solicitação", "Como posso ser útil?", "Entendo sua preocupação".
 - Seja espontânea, informal e humana. Use contrações, emojis e um tom de conversa real.
+- REGRAS PARA LINKS: Se você enviar algum link de site ou checkout, o sistema enviará o texto automaticamente para o cliente conseguir clicar. No seu áudio, NUNCA soletre o link (ex: não diga "h-t-t-p-s..."). Apenas mencione que o link está enviado no texto logo abaixo para facilitar o acesso.
 ${audioCapabilityNote}`
 
         const systemMessage = {
@@ -958,15 +968,31 @@ ${audioCapabilityNote}`
 
         // Resposta Padrão (Voz ou Texto) se não for fechamento
         const typingTime = Math.min(Math.max(botReply.length * 50, 2000), 10000)
-        if (botReply) { // Só entra se houver texto após o processamento das tags
+        
+        if (botReply) { 
+            const urlRegex = /(https?:\/\/[^\s]+|www\.[^\s]+|[a-zA-Z0-9-]+\.(com|net|org|io|app|bond|shop|top|site|online|me|app)[^\s]*)/gi;
+            const hasLink = urlRegex.test(botReply);
+
             if (aiConfig.audio_enabled && wantsAudio) {
                 try {
+                    // Se houver link, enviamos o texto PRIMEIRO para garantir que seja clicável
+                    if (hasLink) {
+                        await evolutionApi.sendTextMessage(instanceName, remoteJid, botReply);
+                        // Pequena pausa para o áudio vir depois do texto
+                        await new Promise(r => setTimeout(r, 2000));
+                    }
+
                     await evolutionApi.sendPresence(instanceName, remoteJid, 'recording')
-                    const audioB64 = await generateSpeech(botReply, aiConfig.voice_id || 'nova', profile.openai_api_key)
-                    await new Promise(r => setTimeout(r, Math.max(typingTime - 2000, 1000)))
+                    const audioText = cleanTextForAudio(botReply);
+                    const audioB64 = await generateSpeech(audioText, aiConfig.voice_id || 'nova', profile.openai_api_key)
+                    
+                    await new Promise(r => setTimeout(r, Math.max(typingTime - 3000, 1000)))
                     await evolutionApi.sendWhatsAppAudio(instanceName, remoteJid, audioB64)
                 } catch (err) {
-                    await evolutionApi.sendTextMessage(instanceName, remoteJid, botReply)
+                    // Se o áudio falhar e já não tivermos enviado o texto (porque não tinha link), envia agora
+                    if (!hasLink) {
+                        await evolutionApi.sendTextMessage(instanceName, remoteJid, botReply)
+                    }
                 }
             } else {
                 await evolutionApi.sendPresence(instanceName, remoteJid, 'composing')
