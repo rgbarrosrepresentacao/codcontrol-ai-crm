@@ -429,9 +429,11 @@ async function processWebhookInBackground(body: any) {
 
         // 2. Busca o Perfil e Status de Assinatura
         const { data: profile } = await supabase.from('profiles')
-            .select('openai_api_key, is_admin, kiwify_subscription_status, stripe_subscription_status')
+            .select('openai_api_key, is_admin, stripe_subscription_status, trial_ends_at')
             .eq('id', userId)
             .single()
+        
+        console.log(`[Webhook] 📋 Perfil carregado para userId ${userId}: stripe_status=${profile?.stripe_subscription_status}, trial_ends_at=${profile?.trial_ends_at}, is_admin=${profile?.is_admin}`)
         
         // 3. Extração de Conteúdo (Texto, Transcrição ou Vision)
         let textMessage = messageData.conversation || messageData.extendedTextMessage?.text || messageData.imageMessage?.caption
@@ -736,19 +738,18 @@ async function processWebhookInBackground(body: any) {
         }
 
         const isTrialing = profile?.trial_ends_at && new Date(profile.trial_ends_at) > new Date();
-        const kiwifyActive = profile?.kiwify_subscription_status === 'active' || 
-                           profile?.kiwify_subscription_status === 'paid' || 
-                           profile?.kiwify_subscription_status === 'aprovado' || 
-                           profile?.kiwify_subscription_status === 'approved' ||
-                           profile?.stripe_subscription_status === 'active' || 
-                           profile?.stripe_subscription_status === 'paid' || 
-                           profile?.stripe_subscription_status === 'aprovado' || 
-                           profile?.stripe_subscription_status === 'approved';
+        const stripeStatus = profile?.stripe_subscription_status || '';
+        const isPaid = stripeStatus === 'active' || stripeStatus === 'paid' || 
+                       stripeStatus === 'aprovado' || stripeStatus === 'approved';
 
-        if (profile && !profile.is_admin && !kiwifyActive && !isTrialing) {
-            console.log(`[Webhook] 🚫 IA BLOQUEADA para o usuário ${userId}: Sem assinatura ativa ou trial expirado. Trial Ends: ${profile?.trial_ends_at}. Status Kiwify: ${profile?.kiwify_subscription_status} | Fallback Stripe: ${profile?.stripe_subscription_status}`)
+        console.log(`[Webhook] 🔍 Verificação de acesso userId=${userId}: isPaid=${isPaid}, isTrialing=${isTrialing}, is_admin=${profile?.is_admin}, stripeStatus=${stripeStatus}`)
+
+        if (profile && !profile.is_admin && !isPaid && !isTrialing) {
+            console.log(`[Webhook] 🚫 IA BLOQUEADA para userId=${userId}: Sem assinatura ativa e trial expirado.`)
             return
         }
+
+        console.log(`[Webhook] ✅ Acesso LIBERADO para userId=${userId}. Prosseguindo com IA...`)
 
         let { data: aiConfigs } = await supabase.from('ai_configurations').select('*').eq('user_id', userId).eq('instance_id', instanceId).eq('is_active', true).limit(1)
         let aiConfig = aiConfigs?.[0]
