@@ -735,6 +735,7 @@ async function processWebhookInBackground(body: any) {
              return
         }
 
+        const isTrialing = profile?.trial_ends_at && new Date(profile.trial_ends_at) > new Date();
         const kiwifyActive = profile?.kiwify_subscription_status === 'active' || 
                            profile?.kiwify_subscription_status === 'paid' || 
                            profile?.kiwify_subscription_status === 'aprovado' || 
@@ -744,8 +745,8 @@ async function processWebhookInBackground(body: any) {
                            profile?.stripe_subscription_status === 'aprovado' || 
                            profile?.stripe_subscription_status === 'approved';
 
-        if (profile && !profile.is_admin && !kiwifyActive) {
-            console.log(`[Webhook] 🚫 IA BLOQUEADA para o usuário ${userId}: Sem assinatura ativa. Status Kiwify: ${profile?.kiwify_subscription_status} | Fallback Stripe: ${profile?.stripe_subscription_status}`)
+        if (profile && !profile.is_admin && !kiwifyActive && !isTrialing) {
+            console.log(`[Webhook] 🚫 IA BLOQUEADA para o usuário ${userId}: Sem assinatura ativa ou trial expirado. Trial Ends: ${profile?.trial_ends_at}. Status Kiwify: ${profile?.kiwify_subscription_status} | Fallback Stripe: ${profile?.stripe_subscription_status}`)
             return
         }
 
