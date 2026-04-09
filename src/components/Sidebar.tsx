@@ -38,10 +38,9 @@ interface SidebarProps {
     planName?: string
     trialEndsAt?: string | null
     subscriptionStatus?: string | null
-    kiwifyStatus?: string | null
 }
 
-export function Sidebar({ isAdmin, userName, userEmail, planName, trialEndsAt, subscriptionStatus, kiwifyStatus }: SidebarProps) {
+export function Sidebar({ isAdmin, userName, userEmail, planName, trialEndsAt, subscriptionStatus }: SidebarProps) {
     const pathname = usePathname()
     const router = useRouter()
     const [mobileOpen, setMobileOpen] = useState(false)

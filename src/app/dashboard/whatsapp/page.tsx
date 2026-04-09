@@ -117,21 +117,27 @@ export default function WhatsAppPage() {
     }
 
     const deleteInstance = async (instanceName: string, instanceId: string) => {
-        if (!confirm('Tem certeza que deseja remover esta instância?')) return
+        if (!confirm('Tem certeza que deseja remover esta instância? Todos os dados vinculados a ela serão apagados para liberar espaço no seu plano.')) return
+        
+        const loadingToast = toast.loading('Removendo instância e limpando dados...')
+        
         try {
-            // Tenta remover na Evolution API primeiro
-            await fetch(`/api/whatsapp/delete?instance=${instanceName}`, { method: 'DELETE' })
-        } catch (err) {
-            console.warn('Erro ao deletar na Evolution, mas continuaremos com a remoção local:', err)
-        }
+            // Agora a nossa API interna cuida de TUDO: Evolution e Banco de Dados (Supabase)
+            const res = await fetch(`/api/whatsapp/delete?instance=${instanceName}`, { 
+                method: 'DELETE' 
+            })
+            
+            const data = await res.json()
+            
+            if (!res.ok) {
+                throw new Error(data.error || 'Erro ao remover instância no servidor')
+            }
 
-        try {
-            // Sempre tenta remover localmente no Supabase, independente da Evolution
-            await supabase.from('whatsapp_instances').delete().eq('id', instanceId)
-            toast.success('Instância removida do painel')
-            await fetchInstances()
-        } catch {
-            toast.error('Erro ao remover instância do banco de dados')
+            toast.success('Instância e dados removidos com sucesso!', { id: loadingToast })
+            await fetchInstances() // Atualiza a lista para liberar a criação de nova instância
+        } catch (err: any) {
+            console.error('Erro ao deletar:', err)
+            toast.error(`Falha ao remover: ${err.message}`, { id: loadingToast })
         }
     }
 

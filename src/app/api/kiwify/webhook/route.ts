@@ -129,23 +129,15 @@ export async function POST(req: NextRequest) {
             const { data: planData } = await supabase.from('plans').select('id').eq('slug', planSlug).single()
 
             const updatePayload: any = {
-                kiwify_subscription_status: finalStatus,
-                stripe_subscription_status: finalStatus, // FALLBACK: Usamos a coluna existente para garantir acesso imediato
+                stripe_subscription_status: finalStatus,
                 plan_id: planData?.id || undefined,
             }
             if (trialEndsAt) updatePayload.trial_ends_at = trialEndsAt
 
-            // Tentamos atualizar ambas as colunas. Se kiwify_subscription_status falhar (não existir), 
-            // a stripe_subscription_status ainda será atualizada.
             const { error: updateError } = await supabase.from('profiles').update(updatePayload).eq('id', existingUser.id)
             
             if (updateError) {
-                console.warn('[KIWIFY_WEBHOOK] Primary update failed, trying fallback to only stripe column...', updateError.message)
-                await supabase.from('profiles').update({
-                    stripe_subscription_status: finalStatus,
-                    plan_id: planData?.id || undefined,
-                    trial_ends_at: trialEndsAt || undefined
-                }).eq('id', existingUser.id)
+                console.error('[KIWIFY_WEBHOOK] Update failed:', updateError.message)
             }
         } else if (isActive) {
             console.log(`[KIWIFY_WEBHOOK] Creating NEW user: ${email} for plan: ${planSlug}`)
@@ -171,7 +163,7 @@ export async function POST(req: NextRequest) {
                 id: newUser.user.id,
                 email: email,
                 plan_id: planData?.id,
-                kiwify_subscription_status: 'active',
+                stripe_subscription_status: 'active',
                 name: fullName,
                 trial_ends_at: trialEndsAt || undefined
             })

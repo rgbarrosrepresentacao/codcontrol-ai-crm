@@ -113,7 +113,7 @@ export async function GET(req: NextRequest) {
             // 3. Load credentials & config
             const { data: profile } = await supabase
                 .from('profiles')
-                .select('openai_api_key, is_admin, trial_ends_at, stripe_subscription_status, kiwify_subscription_status, vapi_api_key, vapi_enabled, vapi_stage, vapi_phone_number_id, vapi_assistant_id')
+                .select('openai_api_key, is_admin, trial_ends_at, stripe_subscription_status, vapi_api_key, vapi_enabled, vapi_stage, vapi_phone_number_id, vapi_assistant_id')
                 .eq('id', conversation.user_id)
                 .single()
 
@@ -121,9 +121,10 @@ export async function GET(req: NextRequest) {
 
             // 3b. BLOQUEIO DE SEGURANÇA - Validação unificada (Admin, Stripe, Kiwify ou Trial)
             const isPaid = profile.is_admin || 
-                           profile.kiwify_subscription_status === 'paid' || 
-                           profile.kiwify_subscription_status === 'active' ||
-                           profile.stripe_subscription_status === 'active' || 
+                           profile.stripe_subscription_status === 'paid' || 
+                           profile.stripe_subscription_status === 'active' ||
+                           profile.stripe_subscription_status === 'aprovado' || 
+                           profile.stripe_subscription_status === 'approved' ||
                            profile.stripe_subscription_status === 'trialing'
 
             const hasTrialActive = profile.trial_ends_at && new Date(profile.trial_ends_at) > new Date()

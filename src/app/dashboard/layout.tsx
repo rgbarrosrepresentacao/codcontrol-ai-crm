@@ -25,7 +25,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
                 planName={(profile as any)?.plans?.name || 'Básico'}
                 trialEndsAt={profile?.trial_ends_at}
                 subscriptionStatus={profile?.stripe_subscription_status}
-                kiwifyStatus={profile?.kiwify_subscription_status}
             />
             <main className="flex-1 overflow-y-auto relative">
                 <AnnouncementBanner />
@@ -33,7 +32,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
                     isAdmin={profile?.is_admin}
                     trialEndsAt={profile?.trial_ends_at}
                     subscriptionStatus={profile?.stripe_subscription_status}
-                    kiwifyStatus={profile?.kiwify_subscription_status}
                     isActiveAccount={profile?.is_active}
                 >
                     {children}

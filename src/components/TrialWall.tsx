@@ -7,14 +7,12 @@ export function TrialWall({
     isAdmin,
     trialEndsAt,
     subscriptionStatus,
-    kiwifyStatus,
     isActiveAccount
 }: {
     children: React.ReactNode,
     isAdmin: boolean,
     trialEndsAt: string | null,
     subscriptionStatus?: string | null,
-    kiwifyStatus?: string | null,
     isActiveAccount?: boolean
 }) {
     const pathname = usePathname()
@@ -32,18 +30,14 @@ export function TrialWall({
         isBlocked = true
     } else {
         // Checagem de Assinatura Ativa
-        // Verificamos o status da Kiwify E o status da assinatura (Stripe ou fallback da Kiwify)
-        const kiwifyActive = kiwifyStatus === 'paid' || 
-                           kiwifyStatus === 'active' || 
-                           kiwifyStatus === 'aprovado' || 
-                           kiwifyStatus === 'approved' ||
-                           subscriptionStatus === 'paid' || 
-                           subscriptionStatus === 'active' || 
-                           subscriptionStatus === 'aprovado' || 
-                           subscriptionStatus === 'approved';
+        // Verificamos o status da assinatura (Stripe ou fallback da Kiwify)
+        const isPaid = subscriptionStatus === 'paid' || 
+                       subscriptionStatus === 'active' || 
+                       subscriptionStatus === 'aprovado' || 
+                       subscriptionStatus === 'approved';
         
         // Agora o acesso é binário: ou é Pagante (Kiwify/Ativo), ou está bloqueado
-        if (kiwifyActive) {
+        if (isPaid) {
             isBlocked = false
         } else {
             isBlocked = true

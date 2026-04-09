@@ -95,11 +95,7 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
         if (u.is_admin) return true
         
         // Verificamos o status da Kiwify E o status da assinatura (Stripe ou fallback da Kiwify)
-        return u.kiwify_subscription_status === 'paid' || 
-               u.kiwify_subscription_status === 'active' || 
-               u.kiwify_subscription_status === 'aprovado' || 
-               u.kiwify_subscription_status === 'approved' ||
-               u.stripe_subscription_status === 'paid' || 
+        return u.stripe_subscription_status === 'paid' || 
                u.stripe_subscription_status === 'active' || 
                u.stripe_subscription_status === 'aprovado' || 
                u.stripe_subscription_status === 'approved'
@@ -213,14 +209,10 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
         toggling: string | null, 
         deletingUser: string | null
     }) {
-        const kiwifyActive = user.kiwify_subscription_status === 'paid' || 
-                           user.kiwify_subscription_status === 'active' || 
-                           user.kiwify_subscription_status === 'aprovado' || 
-                           user.kiwify_subscription_status === 'approved' ||
-                           user.stripe_subscription_status === 'paid' || 
+        const kiwifyActive = user.stripe_subscription_status === 'paid' || 
                            user.stripe_subscription_status === 'active' || 
                            user.stripe_subscription_status === 'aprovado' || 
-                           user.stripe_subscription_status === 'approved';
+                           user.stripe_subscription_status === 'approved'
 
         return (
             <tr key={user.id} className={`hover:bg-secondary/20 transition-colors ${isNoPayment(user) ? 'border-l-2 border-l-orange-500/40' : ''}`}>
@@ -248,7 +240,7 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
                             </span>
                         ) : isPaid(user) ? (
                             <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase text-center bg-emerald-500 text-black shadow-sm">
-                                Pagante (Kiwify)
+                                Pagante
                             </span>
                         ) : (
                             <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase text-center border border-orange-500/30 text-orange-400 bg-orange-500/10">
@@ -256,9 +248,9 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
                             </span>
                         )}
                         
-                        {!user.is_admin && user.kiwify_subscription_status && (
+                        {!user.is_admin && user.stripe_subscription_status && (
                             <span className="text-[10px] text-muted-foreground opacity-70 italic truncate">
-                                Status: {user.kiwify_subscription_status}
+                                Status: {user.stripe_subscription_status}
                             </span>
                         )}
                     </div>
