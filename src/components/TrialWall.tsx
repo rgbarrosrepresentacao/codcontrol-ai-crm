@@ -32,17 +32,29 @@ export function TrialWall({
         isBlocked = true
     } else {
         // 1. Checagem de Assinatura Ativa (Kiwify e Stripe)
-        const kiwifyActive = kiwifyStatus === 'paid' || kiwifyStatus === 'active' || kiwifyStatus === 'aprovado'
-        const stripeActive = subscriptionStatus === 'active' || subscriptionStatus === 'trialing'
+        // Adicionados 'aprovado' e 'approved' para compatibilidade total com a Kiwify
+        const kiwifyActive = kiwifyStatus === 'paid' || 
+                           kiwifyStatus === 'active' || 
+                           kiwifyStatus === 'aprovado' || 
+                           kiwifyStatus === 'approved';
+                           
+        const stripeActive = subscriptionStatus === 'active' || 
+                           subscriptionStatus === 'trialing';
         
         // 2. Checagem de Trial Válido
         const trialActive = trialEndsAt ? new Date(trialEndsAt) > new Date() : false
 
-        // Bloqueia se NÃO tiver assinatura ativa E NÃO tiver trial ativo
-        if (!kiwifyActive && !stripeActive && !trialActive) {
-            isBlocked = true
-        } else {
+        // 3. Lógica de Bloqueio Resiliente
+        // Se tiver assinatura ativa OU trial ativo, libera.
+        if (kiwifyActive || stripeActive || trialActive) {
             isBlocked = false
+        } 
+        // Se a conta for explicitamente marcada como ATIVA pelo admin, mas não tivermos dados de sub (contas legadas), liberamos para não travar
+        else if (isActiveAccount === true && !kiwifyStatus && !subscriptionStatus) {
+            isBlocked = false
+        }
+        else {
+            isBlocked = true
         }
     }
 

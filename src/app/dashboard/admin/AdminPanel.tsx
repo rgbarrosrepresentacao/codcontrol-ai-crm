@@ -95,11 +95,15 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
     const isPaid = (u: any) => {
         if (u.is_admin) return true
         
-        const kiwifyActive = u.kiwify_subscription_status === 'paid' || u.kiwify_subscription_status === 'active'
+        const kiwifyActive = u.kiwify_subscription_status === 'paid' || 
+                           u.kiwify_subscription_status === 'active' || 
+                           u.kiwify_subscription_status === 'aprovado' || 
+                           u.kiwify_subscription_status === 'approved'
         const stripeActive = u.stripe_subscription_status === 'active' || u.stripe_subscription_status === 'trialing'
         const trialActive = u.trial_ends_at && new Date(u.trial_ends_at) > new Date()
         
-        return kiwifyActive || stripeActive || trialActive
+        // Mantém ativo se tiver qualquer assinatura OU trial OU se for conta legada ativa sem dados de sub
+        return kiwifyActive || stripeActive || trialActive || (u.is_active && !u.kiwify_subscription_status && !u.stripe_subscription_status)
     }
     const isNoPayment = (u: any) => !isPaid(u) && !u.is_admin
 
@@ -221,6 +225,14 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
         deletingUser: string | null, 
         updatingTrial: string | null 
     }) {
+        const kiwifyActive = user.kiwify_subscription_status === 'paid' || 
+                           user.kiwify_subscription_status === 'active' || 
+                           user.kiwify_subscription_status === 'aprovado' || 
+                           user.kiwify_subscription_status === 'approved';
+                           
+        const stripeActive = user.stripe_subscription_status === 'active' || 
+                           user.stripe_subscription_status === 'trialing';
+
         const hasKiwify = !!user.kiwify_subscription_status;
         const hasStripe = !!user.stripe_subscription_status;
         const trialActive = user.trial_ends_at && new Date(user.trial_ends_at) > new Date();
@@ -247,13 +259,19 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
                 <td className="px-4 py-4">
                     <div className="flex flex-col gap-1">
                         {hasKiwify && (
-                            <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase text-center ${user.kiwify_subscription_status === 'paid' || user.kiwify_subscription_status === 'active' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>
-                                Kiwify: {user.kiwify_subscription_status === 'paid' ? 'PAGO' : user.kiwify_subscription_status === 'active' ? 'ATIVO' : user.kiwify_subscription_status.toUpperCase()}
+                            <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase text-center ${user.kiwify_subscription_status === 'paid' || user.kiwify_subscription_status === 'active' || user.kiwify_subscription_status === 'aprovado' || user.kiwify_subscription_status === 'approved' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>
+                                Kiwify: {user.kiwify_subscription_status === 'paid' ? 'PAGO' : (user.kiwify_subscription_status === 'active' || user.kiwify_subscription_status === 'aprovado' || user.kiwify_subscription_status === 'approved') ? 'ATIVO' : user.kiwify_subscription_status.toUpperCase()}
                             </span>
                         )}
                         {hasStripe && (
                             <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase text-center ${user.stripe_subscription_status === 'active' || user.stripe_subscription_status === 'trialing' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>
                                 Stripe: {user.stripe_subscription_status.toUpperCase()}
+                            </span>
+                        )}
+                        {/* Selo de Acesso Manual quando não houver assinatura ativa mas estiver liberado pelo prazo */}
+                        {(!kiwifyActive && !stripeActive && trialActive) && (
+                            <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase text-center bg-purple-500/20 text-purple-400 border border-purple-500/30">
+                                Acesso Manual/Trial
                             </span>
                         )}
                         {(noSub && trialActive) && (
