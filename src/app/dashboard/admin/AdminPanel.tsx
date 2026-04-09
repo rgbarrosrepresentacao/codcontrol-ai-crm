@@ -91,8 +91,15 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
         }
     }
 
-    // Classificação: pagante = tem stripe_subscription_status 'active' OU kiwify_subscription_status 'active'
-    const isPaid = (u: any) => u.stripe_subscription_status === 'active' || u.kiwify_subscription_status === 'active'
+    // Classificação: pagante = status ativo na Kiwify OU dentro do período de trial/cortesia
+    const isPaid = (u: any) => {
+        if (u.is_admin) return true
+        
+        const kiwifyActive = u.kiwify_subscription_status === 'paid' || u.kiwify_subscription_status === 'active'
+        const trialActive = u.trial_ends_at && new Date(u.trial_ends_at) > new Date()
+        
+        return kiwifyActive || trialActive
+    }
     const isNoPayment = (u: any) => !isPaid(u) && !u.is_admin
 
     const paidCount = localUsers.filter(isPaid).length
@@ -355,7 +362,7 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
                                 <thead>
                                     <tr className="border-b border-border bg-secondary/30 text-xs font-semibold text-muted-foreground uppercase">
                                         <th className="text-left px-4 py-4 tracking-wider">Usuário</th>
-                                        <th className="text-left px-4 py-4 tracking-wider">Plano</th>
+                                        <th className="text-left px-4 py-4 tracking-wider">Assinatura</th>
                                         <th className="text-left px-4 py-4 tracking-wider">Status</th>
                                         <th className="text-left px-4 py-4 tracking-wider">Expiração</th>
                                         <th className="text-left px-4 py-4 tracking-wider text-right">Ações</th>
@@ -381,13 +388,15 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
                                                 </div>
                                             </td>
                                             <td className="px-4 py-4">
-                                                {(!user.is_admin && !isPaid(user) && user.trial_ends_at) ? (
-                                                    <span className="px-2 py-0.5 bg-orange-500/15 border border-orange-500/30 text-orange-400 text-[10px] rounded-md font-bold uppercase">Manual / Demo</span>
-                                                ) : (
-                                                    <span className="px-2 py-0.5 bg-primary/10 border border-primary/30 text-primary text-[10px] rounded-md font-bold uppercase">
-                                                        {user.plans?.name || 'Básico'}
-                                                    </span>
-                                                )}
+                                                <div className="flex flex-col gap-1">
+                                                    {user.kiwify_subscription_status ? (
+                                                        <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase text-center ${user.kiwify_subscription_status === 'paid' || user.kiwify_subscription_status === 'active' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>
+                                                            Kiwify: {user.kiwify_subscription_status === 'paid' ? 'PAGO' : user.kiwify_subscription_status === 'active' ? 'ATIVO' : user.kiwify_subscription_status.toUpperCase()}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-[10px] text-muted-foreground italic truncate">Nenhuma assinatura</span>
+                                                    )}
+                                                </div>
                                             </td>
                                             <td className="px-4 py-4">
                                                 <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold border ${user.is_active ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-red-500/10 border-red-500/30 text-red-500'}`}>

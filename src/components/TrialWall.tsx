@@ -7,12 +7,14 @@ export function TrialWall({
     isAdmin,
     trialEndsAt,
     subscriptionStatus,
+    kiwifyStatus,
     isActiveAccount
 }: {
     children: React.ReactNode,
     isAdmin: boolean,
     trialEndsAt: string | null,
-    subscriptionStatus: string | null,
+    subscriptionStatus?: string | null,
+    kiwifyStatus?: string | null,
     isActiveAccount?: boolean
 }) {
     const pathname = usePathname()
@@ -29,16 +31,21 @@ export function TrialWall({
     if (isActiveAccount === false) {
         isBlocked = true
     } else {
-        // Se houver uma data de expiração, ela é SOBERANA.
-        // Isso resolve o problema de falha de webhook da Kiwify (ex: se não enviar cancelamento).
-        if (trialEndsAt) {
+        // 1. Checagem de Assinatura Ativa (Kiwify) - SOBERANA
+        const kiwifyActive = kiwifyStatus === 'paid' || kiwifyStatus === 'active'
+        
+        if (kiwifyActive) {
+            isBlocked = false
+        } 
+        // 2. Se não tem assinatura, checa se o Trial ainda está válido
+        else if (trialEndsAt) {
             const ends = new Date(trialEndsAt)
             if (new Date() > ends) {
                 isBlocked = true
             }
         } 
-        // Se NÃO tem data de expiração, a gente confia no status da subscription apenas
-        else if (subscriptionStatus !== 'active' && subscriptionStatus !== 'trialing') {
+        // 3. Se não tem nada (nem assinatura nem trial válido), bloqueia
+        else {
             isBlocked = true
         }
     }

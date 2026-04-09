@@ -110,17 +110,27 @@ export async function GET(req: NextRequest) {
 
             if (!lastMsgRecord || !lastMsgRecord.from_me) continue
 
-            // Load credentials & config
-            const { data: profile } = await supabase.from('profiles').select('openai_api_key, is_admin, trial_ends_at, stripe_subscription_status, vapi_api_key, vapi_enabled, vapi_stage, vapi_phone_number_id, vapi_assistant_id').eq('id', conversation.user_id).single()
+            // 3. Load credentials & config
+            const { data: profile } = await supabase
+                .from('profiles')
+                .select('openai_api_key, is_admin, trial_ends_at, stripe_subscription_status, kiwify_subscription_status, vapi_api_key, vapi_enabled, vapi_stage, vapi_phone_number_id, vapi_assistant_id')
+                .eq('id', conversation.user_id)
+                .single()
+
             if (!profile?.openai_api_key) continue
 
-            // 3b. BLOQUEIO DE SEGURANÇA - Ignora se não pagou (exceto trial vigente de antigos)
-            if (profile && !profile.is_admin && profile.stripe_subscription_status !== 'active' && profile.stripe_subscription_status !== 'trialing') {
-                const hasTrialActive = profile.trial_ends_at && new Date(profile.trial_ends_at) > new Date()
-                if (!hasTrialActive) {
-                   console.log(`[Follow-up] 🚫 Resgate bloqueado para o usuário ${conversation.user_id}: Sem assinatura ativa e sem trial vigente.`)
-                   continue
-                }
+            // 3b. BLOQUEIO DE SEGURANÇA - Validação unificada (Admin, Stripe, Kiwify ou Trial)
+            const isPaid = profile.is_admin || 
+                           profile.kiwify_subscription_status === 'paid' || 
+                           profile.kiwify_subscription_status === 'active' ||
+                           profile.stripe_subscription_status === 'active' || 
+                           profile.stripe_subscription_status === 'trialing'
+
+            const hasTrialActive = profile.trial_ends_at && new Date(profile.trial_ends_at) > new Date()
+
+            if (!isPaid && !hasTrialActive) {
+                console.log(`[Follow-up] 🚫 Resgate bloqueado para o usuário ${conversation.user_id}: Sem assinatura ativa and sem trial vigente.`)
+                continue
             }
 
             let { data: aiConfigs } = await supabase.from('ai_configurations').select('*').eq('user_id', conversation.user_id).eq('instance_id', conversation.instance_id).eq('is_active', true).limit(1)
@@ -279,34 +289,43 @@ REGRAS DE USO:
             const { data: inst } = await supabase.from('whatsapp_instances').select('instance_name').eq('id', conversation.instance_id).single()
             if (!inst) continue
 
-            // Load history
-            const { data: history } = await supabase.from('messages').select('role:from_me, content').eq('conversation_id', conversation.id).order('created_at', { ascending: false }).limit(20)
-            const chatMessages = (history || []).reverse().map((m: any) => ({ role: m.role ? 'assistant' : 'user', content: m.content || '' }))
+            // ─── 4. Geração da Resposta com OpenAI ─────────────────────────────────
+            const { data: history } = await supabase
+                .from('messages')
+                .select('role, content, from_me')
+                .eq('conversation_id', conversation.id)
+                .order('created_at', { ascending: true })
+                .limit(10)
 
-            const currentDate = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+            const historyMessages = (history || []).map(m => ({
+                role: m.role || (m.from_me ? 'assistant' : 'user'),
+                content: m.content
+            }))
 
-            // Generate AI reply
-            const humanityRules = `\n\n── REGRAS ABSOLUTAS DE IDENTIDADE (NUNCA VIOLE) ──\n- Você é ${aiConfig.bot_name}, uma pessoa real da equipe de vendas. NUNCA diga que é uma "IA", "inteligência artificial", "bot", "robô" ou "assistente virtual".\n- Se perguntada se é humana ou robô, responda naturalmente como uma vendedora real (ex: "Sou humana sim! Tô aqui pra te ajudar 😊").\n- NUNCA use frases robóticas como: "Em que posso ajudá-lo?", "Como posso ser útil?", "Processando sua solicitação".\n- Seja espontânea, informal e humana. Use contrações, emojis e tom de conversa real.`
-
-            const openAiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+            const response = await fetch('https://api.openai.com/v1/chat/completions', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${profile.openai_api_key}` },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${profile.openai_api_key}`
+                },
                 body: JSON.stringify({
                     model: 'gpt-4o-mini',
                     messages: [
-                        {
-                            role: 'system',
-                            content: `[DATA/HORA: ${currentDate}]\nTom: ${aiConfig.tone}.\n\nINST: ${aiConfig.system_prompt}\n\nEscreva 1 msg curta (2-3 linhas), humana e baseada no histórico. Não seja genérico.\nOBJETIVO: ${followupIntent}${knowledgeContext}${humanityRules}`
-                        },
-                        ...chatMessages
+                        { role: 'system', content: (aiConfig.system_prompt || '') + (knowledgeContext ? `\n\n${knowledgeContext}` : '') },
+                        ...historyMessages,
+                        { role: 'user', content: followupIntent }
                     ],
-                    temperature: 0.85
+                    temperature: 0.7
                 })
             })
 
-            if (!openAiResponse.ok) continue
-            const gptData = await openAiResponse.json()
-            const botReply = gptData.choices[0].message.content?.trim()
+            const gptData = await response.json()
+            if (gptData.error) {
+                console.error(`[Follow-up] ❌ Erro OpenAI para ${conversation.user_id}:`, gptData.error.message)
+                continue
+            }
+
+            const botReply = gptData.choices?.[0]?.message?.content
             if (!botReply) continue
 
             // ─── Processamento de Mídia ──────────────────────────────────────────
