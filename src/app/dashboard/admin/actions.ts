@@ -32,30 +32,7 @@ export async function deleteUserAction(userId: string) {
     revalidatePath('/dashboard/admin')
     return true
 }
-export async function updateUserTrialAction(userId: string, daysToAdd: number) {
-    const adminSupabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
 
-    // Buscar data atual do usuário ou usar data de hoje
-    const { data: user } = await adminSupabase.from('profiles').select('trial_ends_at').eq('id', userId).single()
-
-    let baseDate = new Date()
-    if (user?.trial_ends_at && new Date(user.trial_ends_at) > new Date()) {
-        baseDate = new Date(user.trial_ends_at)
-    }
-
-    baseDate.setDate(baseDate.getDate() + daysToAdd)
-
-    const { error } = await adminSupabase
-        .from('profiles')
-        .update({ trial_ends_at: baseDate.toISOString() })
-        .eq('id', userId)
-
-    if (error) throw new Error(error.message)
-    return baseDate.toISOString()
-}
 
 export async function saveAnnouncementAction(title: string, content: string, type: string) {
     const adminSupabase = createClient(
@@ -218,7 +195,7 @@ export async function sendMarketingEmailAction(
         // 4. Buscar usuários conforme público selecionado
         const { data: allUsers, error } = await adminSupabase
             .from('profiles')
-            .select('id, name, email, kiwify_subscription_status, trial_ends_at, is_admin')
+            .select('id, name, email, kiwify_subscription_status, is_admin')
             .eq('is_active', true)
             .not('email', 'is', null)
 
@@ -228,9 +205,10 @@ export async function sendMarketingEmailAction(
         }
 
         const isPaid = (u: any) => {
-            const kiwifyActive = u.kiwify_subscription_status === 'paid' || u.kiwify_subscription_status === 'active'
-            const trialActive = u.trial_ends_at && new Date(u.trial_ends_at) > new Date()
-            return kiwifyActive || trialActive
+            return u.kiwify_subscription_status === 'paid' || 
+                   u.kiwify_subscription_status === 'active' ||
+                   u.kiwify_subscription_status === 'aprovado' ||
+                   u.kiwify_subscription_status === 'approved'
         }
         const isLead = (u: any) => !isPaid(u) && !u.is_admin
 

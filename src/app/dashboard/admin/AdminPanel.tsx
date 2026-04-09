@@ -10,7 +10,7 @@ import {
 } from 'lucide-react'
 import { formatDate, formatCurrency } from '@/lib/utils'
 import { 
-    toggleUserStatusAction, updateUserTrialAction, saveAnnouncementAction, 
+    toggleUserStatusAction, saveAnnouncementAction, 
     deleteAnnouncementAction, saveMaterialAction, deleteMaterialAction, 
     deleteUserAction, getKiwifyStatsAction, refundKiwifyOrderAction,
     sendMarketingEmailAction
@@ -30,7 +30,6 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
     const [search, setSearch] = useState('')
     const [userFilter, setUserFilter] = useState<'all' | 'paid' | 'no_payment'>('all')
     const [toggling, setToggling] = useState<string | null>(null)
-    const [updatingTrial, setUpdatingTrial] = useState<string | null>(null)
     const [deletingUser, setDeletingUser] = useState<string | null>(null)
     const [localUsers, setLocalUsers] = useState(users)
     
@@ -91,20 +90,18 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
         }
     }
 
-    // Classificação: pagante = status ativo na Kiwify OU dentro do período de trial/cortesia
+    // Classificação rigorosa: apenas quem REALMENTE pagou via Kiwify
     const isPaid = (u: any) => {
         if (u.is_admin) return true
         
-        const kiwifyActive = u.kiwify_subscription_status === 'paid' || 
-                           u.kiwify_subscription_status === 'active' || 
-                           u.kiwify_subscription_status === 'aprovado' || 
-                           u.kiwify_subscription_status === 'approved'
-        const stripeActive = u.stripe_subscription_status === 'active' || u.stripe_subscription_status === 'trialing'
-        const trialActive = u.trial_ends_at && new Date(u.trial_ends_at) > new Date()
-        
-        // Mantém ativo se tiver qualquer assinatura OU trial OU se for conta legada ativa sem dados de sub
-        return kiwifyActive || stripeActive || trialActive || (u.is_active && !u.kiwify_subscription_status && !u.stripe_subscription_status)
+        // Só consideramos pagante quem tem status de pagamento aprovado/ativo na Kiwify
+        return u.kiwify_subscription_status === 'paid' || 
+               u.kiwify_subscription_status === 'active' || 
+               u.kiwify_subscription_status === 'aprovado' || 
+               u.kiwify_subscription_status === 'approved'
     }
+
+    // Não Pagantes: Não pagaram E não são admins
     const isNoPayment = (u: any) => !isPaid(u) && !u.is_admin
 
     const paidCount = localUsers.filter(isPaid).length
@@ -133,17 +130,6 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
         setToggling(null)
     }
 
-    const addTrialDays = async (userId: string, days: number) => {
-        setUpdatingTrial(userId)
-        try {
-            const newDate = await updateUserTrialAction(userId, days)
-            setLocalUsers(prev => prev.map(u => u.id === userId ? { ...u, trial_ends_at: newDate } : u))
-            toast.success(`Mais ${days} dias adicionados!`)
-        } catch {
-            toast.error('Erro ao adicionar dias')
-        }
-        setUpdatingTrial(null)
-    }
 
     const deleteUser = async (userId: string) => {
         if (!confirm('⚠️ ATENÇÃO: Deseja excluir PERMANENTEMENTE este usuário e todos os dados dele? Esta ação não pode ser desfeita.')) return
@@ -222,21 +208,12 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
     }: { 
         user: any, 
         toggling: string | null, 
-        deletingUser: string | null, 
-        updatingTrial: string | null 
+        deletingUser: string | null
     }) {
         const kiwifyActive = user.kiwify_subscription_status === 'paid' || 
                            user.kiwify_subscription_status === 'active' || 
                            user.kiwify_subscription_status === 'aprovado' || 
                            user.kiwify_subscription_status === 'approved';
-                           
-        const stripeActive = user.stripe_subscription_status === 'active' || 
-                           user.stripe_subscription_status === 'trialing';
-
-        const hasKiwify = !!user.kiwify_subscription_status;
-        const hasStripe = !!user.stripe_subscription_status;
-        const trialActive = user.trial_ends_at && new Date(user.trial_ends_at) > new Date();
-        const noSub = !hasKiwify && !hasStripe;
 
         return (
             <tr key={user.id} className={`hover:bg-secondary/20 transition-colors ${isNoPayment(user) ? 'border-l-2 border-l-orange-500/40' : ''}`}>
@@ -258,29 +235,24 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
                 </td>
                 <td className="px-4 py-4">
                     <div className="flex flex-col gap-1">
-                        {hasKiwify && (
-                            <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase text-center ${user.kiwify_subscription_status === 'paid' || user.kiwify_subscription_status === 'active' || user.kiwify_subscription_status === 'aprovado' || user.kiwify_subscription_status === 'approved' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>
-                                Kiwify: {user.kiwify_subscription_status === 'paid' ? 'PAGO' : (user.kiwify_subscription_status === 'active' || user.kiwify_subscription_status === 'aprovado' || user.kiwify_subscription_status === 'approved') ? 'ATIVO' : user.kiwify_subscription_status.toUpperCase()}
+                        {user.is_admin ? (
+                            <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase text-center bg-primary text-black">
+                                Acesso Admin
+                            </span>
+                        ) : isPaid(user) ? (
+                            <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase text-center bg-emerald-500 text-black shadow-sm">
+                                Pagante (Kiwify)
+                            </span>
+                        ) : (
+                            <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase text-center border border-orange-500/30 text-orange-400 bg-orange-500/10">
+                                Não Pagante (Lead)
                             </span>
                         )}
-                        {hasStripe && (
-                            <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase text-center ${user.stripe_subscription_status === 'active' || user.stripe_subscription_status === 'trialing' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>
-                                Stripe: {user.stripe_subscription_status.toUpperCase()}
+                        
+                        {!user.is_admin && user.kiwify_subscription_status && (
+                            <span className="text-[10px] text-muted-foreground opacity-70 italic truncate">
+                                Status: {user.kiwify_subscription_status}
                             </span>
-                        )}
-                        {/* Selo de Acesso Manual quando não houver assinatura ativa mas estiver liberado pelo prazo */}
-                        {(!kiwifyActive && !stripeActive && trialActive) && (
-                            <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase text-center bg-purple-500/20 text-purple-400 border border-purple-500/30">
-                                Acesso Manual/Trial
-                            </span>
-                        )}
-                        {(noSub && trialActive) && (
-                            <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase text-center bg-orange-500/20 text-orange-400 border border-orange-500/30">
-                                Período de Teste
-                            </span>
-                        )}
-                        {(noSub && !trialActive) && (
-                            <span className="text-[10px] text-muted-foreground italic truncate">Nenhuma assinatura</span>
                         )}
                     </div>
                 </td>
@@ -292,45 +264,26 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
                 </td>
                 <td className="px-4 py-4">
                     <div className="text-xs text-foreground font-medium">{formatDate(user.created_at)}</div>
-                    {user.trial_ends_at && (
-                        <div className="flex items-center gap-1 mt-1 text-[10px] text-orange-400 font-bold uppercase">
-                            <Clock className="w-3 h-3" />Expira: {formatDate(user.trial_ends_at)}
-                        </div>
-                    )}
                 </td>
                 <td className="px-4 py-4 text-right">
-                    <div className="flex flex-col gap-2 items-end">
-                        <div className="flex items-center gap-2">
-                            <button
-                                onClick={() => toggleUser(user.id, user.is_active)}
-                                disabled={toggling === user.id}
-                                className={`h-8 px-3 rounded-lg border text-xs font-bold transition-all flex items-center gap-2 ${user.is_active ? 'border-red-500/30 text-red-500 hover:bg-red-500/10' : 'border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10'}`}
-                            >
-                                {toggling === user.id ? <Loader2 className="w-3 h-3 animate-spin" /> : user.is_active ? <Ban className="w-3 h-3" /> : <CheckCircle2 className="w-3 h-3" />}
-                                {user.is_active ? 'Bloquear' : 'Ativar'}
-                            </button>
+                    <div className="flex items-center justify-end gap-2">
+                        <button
+                            onClick={() => toggleUser(user.id, user.is_active)}
+                            disabled={toggling === user.id}
+                            className={`h-8 px-3 rounded-lg border text-xs font-bold transition-all flex items-center gap-2 ${user.is_active ? 'border-red-500/30 text-red-500 hover:bg-red-500/10' : 'border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10'}`}
+                        >
+                            {toggling === user.id ? <Loader2 className="w-3 h-3 animate-spin" /> : user.is_active ? <Ban className="w-3 h-3" /> : <CheckCircle2 className="w-3 h-3" />}
+                            {user.is_active ? 'Bloquear' : 'Ativar'}
+                        </button>
 
-                            <button
-                                onClick={() => deleteUser(user.id)}
-                                disabled={deletingUser === user.id}
-                                className="h-8 w-8 flex items-center justify-center text-muted-foreground hover:text-red-500 border border-border/50 rounded-lg hover:bg-red-500/10 transition-all"
-                            >
-                                {deletingUser === user.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
-                            </button>
-                        </div>
-
-                        <div className="flex items-center gap-1">
-                            {[7, 15, 30].map(days => (
-                                <button
-                                    key={days}
-                                    onClick={() => addTrialDays(user.id, days)}
-                                    disabled={updatingTrial === user.id}
-                                    className="h-6 px-2 text-[10px] font-bold rounded bg-secondary/50 border border-border text-muted-foreground hover:border-orange-500/30 hover:text-orange-400 transition-all"
-                                >
-                                    +{days}d
-                                </button>
-                            ))}
-                        </div>
+                        <button
+                            onClick={() => deleteUser(user.id)}
+                            disabled={deletingUser === user.id}
+                            className="h-8 w-8 rounded-lg border border-border text-muted-foreground hover:bg-red-500/10 hover:text-red-500 transition-all flex items-center justify-center"
+                            title="Excluir Permanentemente"
+                        >
+                            {deletingUser === user.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                        </button>
                     </div>
                 </td>
             </tr>
@@ -382,36 +335,40 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
             {/* TAB: USERS */}
             {activeTab === 'users' && (
                 <div className="space-y-6 animate-slide-up">
-                    {/* Stats Grid */}
-                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                        {statsOverview.map((stat) => (
-                            <div key={stat.label} className="gradient-card border border-border rounded-xl p-5">
-                                <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${stat.color} flex items-center justify-center mb-3`}>
-                                    <stat.icon className={`w-5 h-5 ${stat.textColor}`} />
+                    {/* Simplified Stats Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="gradient-card border border-border rounded-2xl p-6 shadow-xl shadow-emerald-500/5 relative overflow-hidden group">
+                            <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full -mr-16 -mt-16 blur-3xl group-hover:bg-emerald-500/10 transition-colors" />
+                            <div className="flex items-center gap-4 mb-4">
+                                <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20">
+                                    <CheckCircle2 className="w-6 h-6 text-emerald-400" />
                                 </div>
-                                <div className={`text-2xl font-bold ${stat.textColor} mb-0.5`}>{stat.value}</div>
-                                <div className="text-muted-foreground text-xs">{stat.label}</div>
+                                <div className="flex-1">
+                                    <h3 className="text-sm font-bold text-foreground">Pagantes Confirmados</h3>
+                                    <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-widest">Kiwify Aprovados</p>
+                                </div>
+                                <div className="text-4xl font-black text-emerald-400 drop-shadow-sm">{paidCount}</div>
                             </div>
-                        ))}
-                    </div>
+                            <div className="h-1.5 bg-secondary/50 rounded-full overflow-hidden">
+                                <div className="h-full bg-emerald-500 rounded-full transition-all duration-1000" style={{ width: `${(paidCount / (localUsers.length || 1) * 100).toFixed(0)}%` }} />
+                            </div>
+                        </div>
 
-                    <div className="gradient-card border border-border rounded-xl p-6">
-                        <h2 className="font-semibold text-foreground mb-4">📊 Distribuição por Plano</h2>
-                        <div className="grid grid-cols-3 gap-4">
-                            {plans.map((plan: any) => {
-                                const count = localUsers.filter(u => u.plan_id === plan.id).length
-                                const pct = localUsers.length > 0 ? (count / localUsers.length * 100).toFixed(0) : 0
-                                return (
-                                    <div key={plan.id} className="bg-secondary/50 rounded-xl p-4 text-center">
-                                        <div className="text-2xl font-bold text-foreground">{count}</div>
-                                        <div className="text-sm font-medium text-primary">{plan.name}</div>
-                                        <div className="text-xs text-muted-foreground">{pct}%</div>
-                                        <div className="mt-2 h-1.5 bg-border rounded-full overflow-hidden">
-                                            <div className="h-full gradient-primary rounded-full" style={{ width: `${pct}%` }} />
-                                        </div>
-                                    </div>
-                                )
-                            })}
+                        <div className="gradient-card border border-border rounded-2xl p-6 shadow-xl shadow-orange-500/5 relative overflow-hidden group">
+                            <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/5 rounded-full -mr-16 -mt-16 blur-3xl group-hover:bg-orange-500/10 transition-colors" />
+                            <div className="flex items-center gap-4 mb-4">
+                                <div className="w-12 h-12 rounded-2xl bg-orange-500/10 flex items-center justify-center border border-orange-500/20">
+                                    <Users className="w-6 h-6 text-orange-400" />
+                                </div>
+                                <div className="flex-1">
+                                    <h3 className="text-sm font-bold text-foreground">Não Pagantes</h3>
+                                    <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-widest">Leads / Cadastro</p>
+                                </div>
+                                <div className="text-4xl font-black text-orange-400 drop-shadow-sm">{noPaymentCount}</div>
+                            </div>
+                            <div className="h-1.5 bg-secondary/50 rounded-full overflow-hidden">
+                                <div className="h-full bg-orange-500 rounded-full transition-all duration-1000" style={{ width: `${(noPaymentCount / (localUsers.length || 1) * 100).toFixed(0)}%` }} />
+                            </div>
                         </div>
                     </div>
 
@@ -471,20 +428,12 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
                                     }`}
                                 >
                                     <AlertCircle className="w-3 h-3" />
-                                    🎯 Só Cadastro (Não Pagou)
+                                    🎯 Leads (Não Pagantes)
                                     <span className={`px-1.5 py-0.5 rounded text-[10px] font-black ${
                                         userFilter === 'no_payment' ? 'bg-black/20' : 'bg-orange-500/20'
                                     }`}>{noPaymentCount}</span>
                                 </button>
                             </div>
-                            {userFilter === 'no_payment' && noPaymentCount > 0 && (
-                                <div className="flex items-start gap-2 bg-orange-500/8 border border-orange-500/20 rounded-lg p-3">
-                                    <AlertCircle className="w-4 h-4 text-orange-400 shrink-0 mt-0.5" />
-                                    <p className="text-[11px] text-orange-300 leading-relaxed">
-                                        <span className="font-bold">Leads não convertidos:</span> Esses usuários criaram conta mas não realizaram pagamento. Use os botões <span className="font-bold">+7d / +15d / +30d</span> para oferecer um período de avaliação e recuperar essas vendas.
-                                    </p>
-                                </div>
-                            )}
                         </div>
                         <div className="overflow-x-auto">
                             <table className="w-full">
@@ -493,7 +442,7 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
                                         <th className="text-left px-4 py-4 tracking-wider">Usuário</th>
                                         <th className="text-left px-4 py-4 tracking-wider">Assinatura</th>
                                         <th className="text-left px-4 py-4 tracking-wider">Status</th>
-                                        <th className="text-left px-4 py-4 tracking-wider">Expiração</th>
+                                        <th className="text-left px-4 py-4 tracking-wider">Cadastro</th>
                                         <th className="text-left px-4 py-4 tracking-wider text-right">Ações</th>
                                     </tr>
                                 </thead>
@@ -504,7 +453,6 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
                                             user={user} 
                                             toggling={toggling}
                                             deletingUser={deletingUser}
-                                            updatingTrial={updatingTrial}
                                         />
                                     ))}
                                 </tbody>
@@ -520,11 +468,10 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
                 </div>
             )}
 
-            {/* TAB: FINANCE (KIWIFY API) */}
             {activeTab === 'finance' && (
                 <div className="space-y-6 animate-slide-up">
                     {/* Kiwify Balance */}
-                    <div className="grid md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="gradient-card border border-border rounded-xl p-6 relative overflow-hidden group">
                             <div className="absolute -right-4 -top-4 w-24 h-24 bg-primary/5 rounded-full group-hover:bg-primary/10 transition-all blur-xl" />
                             <div className="flex items-center gap-3 mb-4">

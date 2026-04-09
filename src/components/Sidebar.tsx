@@ -84,17 +84,7 @@ export function Sidebar({ isAdmin, userName, userEmail, planName, trialEndsAt, s
                 </div>
                 {planName && (
                     <div className="mt-3 px-3 py-1.5 bg-primary/10 border border-primary/20 rounded-lg">
-                        {(!isAdmin && 
-                          kiwifyStatus !== 'paid' && 
-                          kiwifyStatus !== 'active' && 
-                          trialEndsAt) ? (
-                            <div className="flex flex-col gap-0.5">
-                                <span className="text-xs text-orange-400 font-bold">Modo Teste (7 Dias)</span>
-                                <span className="text-[10px] text-muted-foreground font-medium">Expira em {new Date(trialEndsAt).toLocaleDateString('pt-BR')}</span>
-                            </div>
-                        ) : (
-                            <span className="text-xs text-primary font-medium">Plano {planName}</span>
-                        )}
+                        <span className="text-xs text-primary font-medium">Plano {planName}</span>
                     </div>
                 )}
             </div>

@@ -427,8 +427,11 @@ async function processWebhookInBackground(body: any) {
         const userId = instanceRecord.user_id
         const instanceId = instanceRecord.id
 
-        // 2. Chave OpenAI e Perfil
-        const { data: profile } = await supabase.from('profiles').select('openai_api_key, is_admin, trial_ends_at, stripe_subscription_status').eq('id', userId).single()
+        // 2. Chave OpenAI e Perfil (Endurecido: Foco em Kiwify)
+        const { data: profile } = await supabase.from('profiles')
+            .select('openai_api_key, is_admin, kiwify_subscription_status')
+            .eq('id', userId)
+            .single()
         
         // 3. Extração de Conteúdo (Texto, Transcrição ou Vision)
         let textMessage = messageData.conversation || messageData.extendedTextMessage?.text || messageData.imageMessage?.caption
@@ -733,12 +736,14 @@ async function processWebhookInBackground(body: any) {
         }
 
         const currentAiTagForAI = finalContactCheck?.ai_tag as AiTag | null
-        if (profile && !profile.is_admin && profile.stripe_subscription_status !== 'active' && profile.stripe_subscription_status !== 'trialing') {
-            const hasTrialActive = profile.trial_ends_at && new Date(profile.trial_ends_at) > new Date()
-            if (!hasTrialActive) {
-                console.log(`[Webhook] 🚫 IA BLOQUEADA para o usuário ${userId}: Sem assinatura ativa e sem trial vigente.`)
-                return
-            }
+        const kiwifyActive = profile?.kiwify_subscription_status === 'paid' || 
+                           profile?.kiwify_subscription_status === 'active' || 
+                           profile?.kiwify_subscription_status === 'aprovado' || 
+                           profile?.kiwify_subscription_status === 'approved';
+
+        if (profile && !profile.is_admin && !kiwifyActive) {
+            console.log(`[Webhook] 🚫 IA BLOQUEADA para o usuário ${userId}: Sem assinatura Kiwify confirmada.`)
+            return
         }
 
         let { data: aiConfigs } = await supabase.from('ai_configurations').select('*').eq('user_id', userId).eq('instance_id', instanceId).eq('is_active', true).limit(1)
