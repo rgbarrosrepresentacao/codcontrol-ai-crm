@@ -96,9 +96,10 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
         if (u.is_admin) return true
         
         const kiwifyActive = u.kiwify_subscription_status === 'paid' || u.kiwify_subscription_status === 'active'
+        const stripeActive = u.stripe_subscription_status === 'active' || u.stripe_subscription_status === 'trialing'
         const trialActive = u.trial_ends_at && new Date(u.trial_ends_at) > new Date()
         
-        return kiwifyActive || trialActive
+        return kiwifyActive || stripeActive || trialActive
     }
     const isNoPayment = (u: any) => !isPaid(u) && !u.is_admin
 
@@ -206,6 +207,116 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
             toast.error('Erro ao remover')
         }
         setDeletingMaterial(null)
+    }
+
+    // Sub-componente para organizar a linha do usuário com segurança total (definido aqui para ter acesso ao escopo de AdminPanel)
+    function UserTableRow({ 
+        user, 
+        toggling, 
+        deletingUser, 
+        updatingTrial 
+    }: { 
+        user: any, 
+        toggling: string | null, 
+        deletingUser: string | null, 
+        updatingTrial: string | null 
+    }) {
+        const hasKiwify = !!user.kiwify_subscription_status;
+        const hasStripe = !!user.stripe_subscription_status;
+        const trialActive = user.trial_ends_at && new Date(user.trial_ends_at) > new Date();
+        const noSub = !hasKiwify && !hasStripe;
+
+        return (
+            <tr key={user.id} className={`hover:bg-secondary/20 transition-colors ${isNoPayment(user) ? 'border-l-2 border-l-orange-500/40' : ''}`}>
+                <td className="px-4 py-4">
+                    <div className="flex items-center gap-3">
+                        <div className={`w-9 h-9 rounded-full flex items-center justify-center text-black font-bold text-sm shadow-inner ${isNoPayment(user) ? 'bg-orange-500/70' : 'gradient-primary'}`}>
+                            {(user.name || 'U').slice(0, 2).toUpperCase()}
+                        </div>
+                        <div>
+                            <div className="flex items-center gap-2">
+                                <div className="text-sm font-semibold text-foreground">{user.name || 'Sem nome'}</div>
+                                {isNoPayment(user) && (
+                                    <span className="px-1.5 py-0.5 bg-orange-500/15 border border-orange-500/30 text-orange-400 text-[9px] rounded font-black uppercase tracking-wide">Lead</span>
+                                )}
+                            </div>
+                            <div className="text-[11px] text-muted-foreground font-mono">{user.email}</div>
+                        </div>
+                    </div>
+                </td>
+                <td className="px-4 py-4">
+                    <div className="flex flex-col gap-1">
+                        {hasKiwify && (
+                            <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase text-center ${user.kiwify_subscription_status === 'paid' || user.kiwify_subscription_status === 'active' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>
+                                Kiwify: {user.kiwify_subscription_status === 'paid' ? 'PAGO' : user.kiwify_subscription_status === 'active' ? 'ATIVO' : user.kiwify_subscription_status.toUpperCase()}
+                            </span>
+                        )}
+                        {hasStripe && (
+                            <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase text-center ${user.stripe_subscription_status === 'active' || user.stripe_subscription_status === 'trialing' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>
+                                Stripe: {user.stripe_subscription_status.toUpperCase()}
+                            </span>
+                        )}
+                        {(noSub && trialActive) && (
+                            <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase text-center bg-orange-500/20 text-orange-400 border border-orange-500/30">
+                                Período de Teste
+                            </span>
+                        )}
+                        {(noSub && !trialActive) && (
+                            <span className="text-[10px] text-muted-foreground italic truncate">Nenhuma assinatura</span>
+                        )}
+                    </div>
+                </td>
+                <td className="px-4 py-4">
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold border ${user.is_active ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-red-500/10 border-red-500/30 text-red-500'}`}>
+                        <div className={`w-1.5 h-1.5 rounded-full ${user.is_active ? 'bg-emerald-400 animate-pulse' : 'bg-red-500'}`} />
+                        {user.is_active ? 'ATIVO' : 'BLOQUEADO'}
+                    </span>
+                </td>
+                <td className="px-4 py-4">
+                    <div className="text-xs text-foreground font-medium">{formatDate(user.created_at)}</div>
+                    {user.trial_ends_at && (
+                        <div className="flex items-center gap-1 mt-1 text-[10px] text-orange-400 font-bold uppercase">
+                            <Clock className="w-3 h-3" />Expira: {formatDate(user.trial_ends_at)}
+                        </div>
+                    )}
+                </td>
+                <td className="px-4 py-4 text-right">
+                    <div className="flex flex-col gap-2 items-end">
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => toggleUser(user.id, user.is_active)}
+                                disabled={toggling === user.id}
+                                className={`h-8 px-3 rounded-lg border text-xs font-bold transition-all flex items-center gap-2 ${user.is_active ? 'border-red-500/30 text-red-500 hover:bg-red-500/10' : 'border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10'}`}
+                            >
+                                {toggling === user.id ? <Loader2 className="w-3 h-3 animate-spin" /> : user.is_active ? <Ban className="w-3 h-3" /> : <CheckCircle2 className="w-3 h-3" />}
+                                {user.is_active ? 'Bloquear' : 'Ativar'}
+                            </button>
+
+                            <button
+                                onClick={() => deleteUser(user.id)}
+                                disabled={deletingUser === user.id}
+                                className="h-8 w-8 flex items-center justify-center text-muted-foreground hover:text-red-500 border border-border/50 rounded-lg hover:bg-red-500/10 transition-all"
+                            >
+                                {deletingUser === user.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+                            </button>
+                        </div>
+
+                        <div className="flex items-center gap-1">
+                            {[7, 15, 30].map(days => (
+                                <button
+                                    key={days}
+                                    onClick={() => addTrialDays(user.id, days)}
+                                    disabled={updatingTrial === user.id}
+                                    className="h-6 px-2 text-[10px] font-bold rounded bg-secondary/50 border border-border text-muted-foreground hover:border-orange-500/30 hover:text-orange-400 transition-all"
+                                >
+                                    +{days}d
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                </td>
+            </tr>
+        )
     }
 
     const connectedCount = instances.filter(i => i.status === 'connected').length
@@ -370,84 +481,13 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
                                 </thead>
                                 <tbody className="divide-y divide-border">
                                     {filtered.map((user: any) => (
-                                        <tr key={user.id} className={`hover:bg-secondary/20 transition-colors ${isNoPayment(user) ? 'border-l-2 border-l-orange-500/40' : ''}`}>
-                                            <td className="px-4 py-4">
-                                                <div className="flex items-center gap-3">
-                                                    <div className={`w-9 h-9 rounded-full flex items-center justify-center text-black font-bold text-sm shadow-inner ${isNoPayment(user) ? 'bg-orange-500/70' : 'gradient-primary'}`}>
-                                                        {(user.name || 'U').slice(0, 2).toUpperCase()}
-                                                    </div>
-                                                    <div>
-                                                        <div className="flex items-center gap-2">
-                                                            <div className="text-sm font-semibold text-foreground">{user.name || 'Sem nome'}</div>
-                                                            {isNoPayment(user) && (
-                                                                <span className="px-1.5 py-0.5 bg-orange-500/15 border border-orange-500/30 text-orange-400 text-[9px] rounded font-black uppercase tracking-wide">Não Pagou</span>
-                                                            )}
-                                                        </div>
-                                                        <div className="text-[11px] text-muted-foreground font-mono">{user.email}</div>
-                                                    </div>
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-4">
-                                                <div className="flex flex-col gap-1">
-                                                    {user.kiwify_subscription_status ? (
-                                                        <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase text-center ${user.kiwify_subscription_status === 'paid' || user.kiwify_subscription_status === 'active' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>
-                                                            Kiwify: {user.kiwify_subscription_status === 'paid' ? 'PAGO' : user.kiwify_subscription_status === 'active' ? 'ATIVO' : user.kiwify_subscription_status.toUpperCase()}
-                                                        </span>
-                                                    ) : (
-                                                        <span className="text-[10px] text-muted-foreground italic truncate">Nenhuma assinatura</span>
-                                                    )}
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-4">
-                                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold border ${user.is_active ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-red-500/10 border-red-500/30 text-red-500'}`}>
-                                                    <div className={`w-1.5 h-1.5 rounded-full ${user.is_active ? 'bg-emerald-400 animate-pulse' : 'bg-red-500'}`} />
-                                                    {user.is_active ? 'ATIVO' : 'BLOQUEADO'}
-                                                </span>
-                                            </td>
-                                            <td className="px-4 py-4">
-                                                <div className="text-xs text-foreground font-medium">{formatDate(user.created_at)}</div>
-                                                {user.trial_ends_at && (
-                                                    <div className="flex items-center gap-1 mt-1 text-[10px] text-orange-400 font-bold uppercase">
-                                                        <Clock className="w-3 h-3" />Expira: {formatDate(user.trial_ends_at)}
-                                                    </div>
-                                                )}
-                                            </td>
-                                            <td className="px-4 py-4 text-right">
-                                                <div className="flex flex-col gap-2 items-end">
-                                                    <div className="flex items-center gap-2">
-                                                        <button
-                                                            onClick={() => toggleUser(user.id, user.is_active)}
-                                                            disabled={toggling === user.id}
-                                                            className={`h-8 px-3 rounded-lg border text-xs font-bold transition-all flex items-center gap-2 ${user.is_active ? 'border-red-500/30 text-red-500 hover:bg-red-500/10' : 'border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10'}`}
-                                                        >
-                                                            {toggling === user.id ? <Loader2 className="w-3 h-3 animate-spin" /> : user.is_active ? <Ban className="w-3 h-3" /> : <CheckCircle2 className="w-3 h-3" />}
-                                                            {user.is_active ? 'Bloquear' : 'Ativar'}
-                                                        </button>
-
-                                                        <button
-                                                            onClick={() => deleteUser(user.id)}
-                                                            disabled={deletingUser === user.id}
-                                                            className="h-8 w-8 flex items-center justify-center text-muted-foreground hover:text-red-500 border border-border/50 rounded-lg hover:bg-red-500/10 transition-all"
-                                                        >
-                                                            {deletingUser === user.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
-                                                        </button>
-                                                    </div>
-
-                                                    <div className="flex items-center gap-1">
-                                                        {[7, 15, 30].map(days => (
-                                                            <button
-                                                                key={days}
-                                                                onClick={() => addTrialDays(user.id, days)}
-                                                                disabled={updatingTrial === user.id}
-                                                                className="h-6 px-2 text-[10px] font-bold rounded bg-secondary/50 border border-border text-muted-foreground hover:border-orange-500/30 hover:text-orange-400 transition-all"
-                                                            >
-                                                                +{days}d
-                                                            </button>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                            </td>
-                                        </tr>
+                                        <UserTableRow 
+                                            key={user.id} 
+                                            user={user} 
+                                            toggling={toggling}
+                                            deletingUser={deletingUser}
+                                            updatingTrial={updatingTrial}
+                                        />
                                     ))}
                                 </tbody>
                             </table>

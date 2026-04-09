@@ -31,22 +31,18 @@ export function TrialWall({
     if (isActiveAccount === false) {
         isBlocked = true
     } else {
-        // 1. Checagem de Assinatura Ativa (Kiwify) - SOBERANA
-        const kiwifyActive = kiwifyStatus === 'paid' || kiwifyStatus === 'active'
+        // 1. Checagem de Assinatura Ativa (Kiwify e Stripe)
+        const kiwifyActive = kiwifyStatus === 'paid' || kiwifyStatus === 'active' || kiwifyStatus === 'aprovado'
+        const stripeActive = subscriptionStatus === 'active' || subscriptionStatus === 'trialing'
         
-        if (kiwifyActive) {
-            isBlocked = false
-        } 
-        // 2. Se não tem assinatura, checa se o Trial ainda está válido
-        else if (trialEndsAt) {
-            const ends = new Date(trialEndsAt)
-            if (new Date() > ends) {
-                isBlocked = true
-            }
-        } 
-        // 3. Se não tem nada (nem assinatura nem trial válido), bloqueia
-        else {
+        // 2. Checagem de Trial Válido
+        const trialActive = trialEndsAt ? new Date(trialEndsAt) > new Date() : false
+
+        // Bloqueia se NÃO tiver assinatura ativa E NÃO tiver trial ativo
+        if (!kiwifyActive && !stripeActive && !trialActive) {
             isBlocked = true
+        } else {
+            isBlocked = false
         }
     }
 
