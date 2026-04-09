@@ -136,8 +136,8 @@ export async function POST(req: NextRequest) {
 
             await supabase.from('profiles').update(updatePayload).eq('id', existingUser.id)
 
-            // Atualiza o log com o ID do usuário
-            await supabase.from('webhook_logs').update({ user_id: existingUser.id }).eq('user_email', email).order('created_at', { ascending: false }).limit(1)
+            // Atualiza o log com o ID do usuário (sem order/limit que são inválidos para update)
+            await supabase.from('webhook_logs').update({ user_id: existingUser.id }).eq('user_email', email)
 
         } else if (isActive) {
             console.log(`[KIWIFY_WEBHOOK] Creating NEW user: ${email} for plan: ${planSlug}`)
@@ -159,12 +159,14 @@ export async function POST(req: NextRequest) {
 
             const { data: planData } = await supabase.from('plans').select('id').eq('slug', planSlug).single()
 
-            await supabase.from('profiles').update({
+            await supabase.from('profiles').upsert({
+                id: newUser.user.id,
+                email: email,
                 plan_id: planData?.id,
-                kiwify_subscription_status: 'active', // USANDO COLUNA NOVA
+                kiwify_subscription_status: 'active',
                 name: fullName,
                 trial_ends_at: trialEndsAt || undefined
-            }).eq('id', newUser.user.id)
+            })
 
             console.log(`[KIWIFY_WEBHOOK] ✅ New user provisioned: ${email}`)
         }
