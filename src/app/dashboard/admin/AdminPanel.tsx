@@ -94,11 +94,15 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
     const isPaid = (u: any) => {
         if (u.is_admin) return true
         
-        // Só consideramos pagante quem tem status de pagamento aprovado/ativo na Kiwify
+        // Verificamos o status da Kiwify E o status da assinatura (Stripe ou fallback da Kiwify)
         return u.kiwify_subscription_status === 'paid' || 
                u.kiwify_subscription_status === 'active' || 
                u.kiwify_subscription_status === 'aprovado' || 
-               u.kiwify_subscription_status === 'approved'
+               u.kiwify_subscription_status === 'approved' ||
+               u.stripe_subscription_status === 'paid' || 
+               u.stripe_subscription_status === 'active' || 
+               u.stripe_subscription_status === 'aprovado' || 
+               u.stripe_subscription_status === 'approved'
     }
 
     // Não Pagantes: Não pagaram E não são admins
@@ -212,7 +216,11 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
         const kiwifyActive = user.kiwify_subscription_status === 'paid' || 
                            user.kiwify_subscription_status === 'active' || 
                            user.kiwify_subscription_status === 'aprovado' || 
-                           user.kiwify_subscription_status === 'approved';
+                           user.kiwify_subscription_status === 'approved' ||
+                           user.stripe_subscription_status === 'paid' || 
+                           user.stripe_subscription_status === 'active' || 
+                           user.stripe_subscription_status === 'aprovado' || 
+                           user.stripe_subscription_status === 'approved';
 
         return (
             <tr key={user.id} className={`hover:bg-secondary/20 transition-colors ${isNoPayment(user) ? 'border-l-2 border-l-orange-500/40' : ''}`}>

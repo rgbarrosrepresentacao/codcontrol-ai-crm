@@ -31,13 +31,18 @@ export function TrialWall({
     if (isActiveAccount === false) {
         isBlocked = true
     } else {
-        // Checagem de Assinatura Ativa (APENAS Kiwify)
+        // Checagem de Assinatura Ativa
+        // Verificamos o status da Kiwify E o status da assinatura (Stripe ou fallback da Kiwify)
         const kiwifyActive = kiwifyStatus === 'paid' || 
                            kiwifyStatus === 'active' || 
                            kiwifyStatus === 'aprovado' || 
-                           kiwifyStatus === 'approved';
+                           kiwifyStatus === 'approved' ||
+                           subscriptionStatus === 'paid' || 
+                           subscriptionStatus === 'active' || 
+                           subscriptionStatus === 'aprovado' || 
+                           subscriptionStatus === 'approved';
         
-        // Agora o acesso é binário: ou é Pagante Kiwify, ou está bloqueado
+        // Agora o acesso é binário: ou é Pagante (Kiwify/Ativo), ou está bloqueado
         if (kiwifyActive) {
             isBlocked = false
         } else {

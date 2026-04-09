@@ -420,16 +420,16 @@ async function processWebhookInBackground(body: any) {
         const { data: instanceRecord } = await supabase
             .from('whatsapp_instances')
             .select('id, user_id')
-            .eq('instance_name', instanceName.trim())
+            .eq('instance_name', instanceName)
             .single()
 
         if (!instanceRecord) return
         const userId = instanceRecord.user_id
         const instanceId = instanceRecord.id
 
-        // 2. Chave OpenAI e Perfil (Endurecido: Foco em Kiwify)
+        // 2. Busca o Perfil e Status de Assinatura
         const { data: profile } = await supabase.from('profiles')
-            .select('openai_api_key, is_admin, kiwify_subscription_status')
+            .select('openai_api_key, is_admin, kiwify_subscription_status, stripe_subscription_status')
             .eq('id', userId)
             .single()
         
@@ -728,21 +728,24 @@ async function processWebhookInBackground(body: any) {
 
 
         // 9. Configuração de IA - Bloqueio de segurança (Apenas assinantes ou trial ativo)
-        // Antes de prosseguir com a IA, pegamos o status MAIS RECENTE do contato para evitar responder se um funil acabou de iniciar em background
+        // Antes de prosseguir com a IA, pegamos o status MAES RECENTE do contato para evitar responder se um funil acabou de iniciar em background
         const { data: finalContactCheck } = await supabase.from('contacts').select('funnel_status, is_funnel_active, ai_tag').eq('id', contactId).single()
         if (finalContactCheck?.funnel_status === 'INICIADO' || finalContactCheck?.funnel_status === 'EM_ANDAMENTO') {
              console.log(`[Funnel] Bloqueio final de segurança: Funil reativado, abortando IA.`)
              return
         }
 
-        const currentAiTagForAI = finalContactCheck?.ai_tag as AiTag | null
-        const kiwifyActive = profile?.kiwify_subscription_status === 'paid' || 
-                           profile?.kiwify_subscription_status === 'active' || 
+        const kiwifyActive = profile?.kiwify_subscription_status === 'active' || 
+                           profile?.kiwify_subscription_status === 'paid' || 
                            profile?.kiwify_subscription_status === 'aprovado' || 
-                           profile?.kiwify_subscription_status === 'approved';
+                           profile?.kiwify_subscription_status === 'approved' ||
+                           profile?.stripe_subscription_status === 'active' || 
+                           profile?.stripe_subscription_status === 'paid' || 
+                           profile?.stripe_subscription_status === 'aprovado' || 
+                           profile?.stripe_subscription_status === 'approved';
 
         if (profile && !profile.is_admin && !kiwifyActive) {
-            console.log(`[Webhook] 🚫 IA BLOQUEADA para o usuário ${userId}: Sem assinatura Kiwify confirmada.`)
+            console.log(`[Webhook] 🚫 IA BLOQUEADA para o usuário ${userId}: Sem assinatura ativa. Status Kiwify: ${profile?.kiwify_subscription_status} | Fallback Stripe: ${profile?.stripe_subscription_status}`)
             return
         }
 
