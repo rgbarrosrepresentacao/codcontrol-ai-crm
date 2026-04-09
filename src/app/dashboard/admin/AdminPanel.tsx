@@ -203,8 +203,7 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
     function UserTableRow({ 
         user, 
         toggling, 
-        deletingUser, 
-        updatingTrial 
+        deletingUser
     }: { 
         user: any, 
         toggling: string | null, 
