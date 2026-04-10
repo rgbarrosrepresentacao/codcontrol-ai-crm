@@ -416,6 +416,23 @@ async function processWebhookInBackground(body: any) {
         const phone = remoteJid.replace('@s.whatsapp.net', '').replace('@lid', '')
         const pushName = body.data?.pushName || null
 
+        // ── BLAST OPT-OUT: Detecta pedidos de saída de disparos em massa ──────
+        const rawText = body.data?.message?.conversation || body.data?.message?.extendedTextMessage?.text || ''
+        const OPT_OUT_REGEX = /^(sair|parar|stop|cancelar|nao quero|não quero|descadastrar|remover|bloquear|chega|para|pare)\s*[!.]*$/i
+        if (OPT_OUT_REGEX.test(rawText.trim())) {
+            const normalizedPhone = phone.replace(/\D/g, '')
+            // Marca todos os contatos pendentes deste número como opted_out
+            await supabase
+                .from('blast_contacts')
+                .update({ opted_out: true, opted_out_at: new Date().toISOString() })
+                .eq('phone', normalizedPhone.startsWith('55') ? normalizedPhone : '55' + normalizedPhone)
+                .eq('opted_out', false)
+
+            console.log(`[BLAST OPT-OUT] ⛔ ${phone} pediu para sair. Marcado como opted_out.`)
+            // Não interrompemos o fluxo — deixamos a IA responder normalmente se quiser
+        }
+        // ─────────────────────────────────────────────────────────────────────
+
         // 1. Instância e Usuário
         const { data: instanceRecord } = await supabase
             .from('whatsapp_instances')

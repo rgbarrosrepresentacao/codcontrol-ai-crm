@@ -15,7 +15,9 @@ import {
     deleteUserAction, getKiwifyStatsAction, refundKiwifyOrderAction,
     sendMarketingEmailAction
 } from './actions'
+import BlastPanel from './BlastPanel'
 import { parseEmailList, type EmailActionResult } from '@/lib/emailUtils'
+
 
 interface AdminPanelProps {
     users: any[]
@@ -26,7 +28,8 @@ interface AdminPanelProps {
 }
 
 export default function AdminPanel({ users, instances, plans, initialAnnouncements, initialMaterials }: AdminPanelProps) {
-    const [activeTab, setActiveTab] = useState<'users' | 'finance' | 'academy' | 'communications' | 'marketing'>('users')
+    const [activeTab, setActiveTab] = useState<'users' | 'finance' | 'academy' | 'communications' | 'marketing' | 'blast'>('users')
+
     const [search, setSearch] = useState('')
     const [userFilter, setUserFilter] = useState<'all' | 'paid' | 'no_payment'>('all')
     const [toggling, setToggling] = useState<string | null>(null)
@@ -329,7 +332,11 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
                 <button onClick={() => { setActiveTab('marketing'); setEmailResult(null) }} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${activeTab === 'marketing' ? 'bg-primary text-black' : 'text-muted-foreground hover:bg-secondary/50'}`}>
                     <Mail className="w-4 h-4" /> E-mail Marketing
                 </button>
+                <button onClick={() => setActiveTab('blast')} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${activeTab === 'blast' ? 'bg-primary text-black' : 'text-muted-foreground hover:bg-secondary/50'}`}>
+                    <Send className="w-4 h-4" /> Disparos
+                </button>
             </div>
+
 
             {/* TAB: USERS */}
             {activeTab === 'users' && (
@@ -940,6 +947,14 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
                 </div>
             )}
 
+            {/* TAB: BLAST (Disparos) */}
+            {activeTab === 'blast' && (
+                <div className="animate-slide-up">
+                    <BlastPanel />
+                </div>
+            )}
+
         </div>
+
     )
 }
