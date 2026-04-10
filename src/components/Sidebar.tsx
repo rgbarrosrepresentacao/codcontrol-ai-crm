@@ -29,7 +29,6 @@ const navItems = [
 const adminItems = [
     { href: '/dashboard/admin', label: 'Painel Admin', icon: Shield },
     { href: '/dashboard/admin/ligacao-ia', label: 'Ligação Automática IA', icon: Phone },
-    { href: '/dashboard/blast', label: 'Disparo em Massa', icon: Rocket },
 ]
 
 interface SidebarProps {
@@ -128,7 +127,7 @@ export function Sidebar({ isAdmin, userName, userEmail, planName, trialEndsAt, s
                 {isAdmin && (
                     <>
                         <div className="text-xs text-muted-foreground font-medium uppercase tracking-wider mt-4 mb-2 px-2">Admin</div>
-                        {adminItems.filter(item => item.href !== '/dashboard/blast' && item.href !== '/dashboard/admin/blast').map((item) => {
+                        {adminItems.map((item) => {
                             const active = pathname.startsWith(item.href)
                             return (
                                 <Link
