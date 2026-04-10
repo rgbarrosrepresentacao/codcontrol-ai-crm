@@ -1,6 +1,6 @@
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
-import BlastPanel from '../BlastPanel'
+import BlastPanel from '../admin/BlastPanel'
 
 export default async function BlastAdminPage() {
     const supabase = await createSupabaseServerClient()

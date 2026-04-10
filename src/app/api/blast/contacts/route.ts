@@ -36,14 +36,21 @@ export async function POST(req: NextRequest) {
     if (!contacts || contacts.length === 0) return NextResponse.json({ error: 'Lista de contatos vazia' }, { status: 400 })
 
     // Verifica que a campanha pertence ao admin
-    const { data: campaign } = await adminSupabase
+    const supabase = await createSupabaseServerClient()
+    const { data: campaign, error: campaignError } = await supabase
         .from('blast_campaigns')
-        .select('id, status, instance_ids, message_variants, delay_min, delay_max, media_url, media_type, media_caption, warming_enabled, warming_limit')
+        .select('*')
         .eq('id', campaign_id)
         .eq('user_id', user.id)
         .single()
 
-    if (!campaign) return NextResponse.json({ error: 'Campanha não encontrada' }, { status: 404 })
+    if (campaignError || !campaign) {
+        console.error('Error finding campaign:', campaignError || 'Not found', { campaign_id, user_id: user.id })
+        return NextResponse.json({ 
+            error: 'Campanha não encontrada ou você não tem permissão',
+            details: campaignError?.message 
+        }, { status: 404 })
+    }
     if (campaign.status === 'running') return NextResponse.json({ error: 'Não é possível importar contatos com campanha em execução' }, { status: 400 })
 
     // Normaliza e valida números

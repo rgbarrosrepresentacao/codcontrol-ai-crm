@@ -332,9 +332,7 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
                 <button onClick={() => { setActiveTab('marketing'); setEmailResult(null) }} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${activeTab === 'marketing' ? 'bg-primary text-black' : 'text-muted-foreground hover:bg-secondary/50'}`}>
                     <Mail className="w-4 h-4" /> E-mail Marketing
                 </button>
-                <button onClick={() => setActiveTab('blast')} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${activeTab === 'blast' ? 'bg-primary text-black' : 'text-muted-foreground hover:bg-secondary/50'}`}>
-                    <Send className="w-4 h-4" /> Disparos
-                </button>
+
             </div>
 
 
@@ -948,11 +946,7 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
             )}
 
             {/* TAB: BLAST (Disparos) */}
-            {activeTab === 'blast' && (
-                <div className="animate-slide-up">
-                    <BlastPanel />
-                </div>
-            )}
+
 
         </div>
 

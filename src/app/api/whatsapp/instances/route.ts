@@ -19,17 +19,12 @@ export async function GET(req: NextRequest) {
             .eq('id', user.id)
             .single()
 
-        // Admin vê todas. Usuário normal vê só as suas.
-        let query = adminSupabase
+        // Mostrar apenas as instâncias do usuário atual para organização pessoal
+        const { data: instances, error } = await adminSupabase
             .from('whatsapp_instances')
             .select('id, instance_name, status, phone_number, user_id')
+            .eq('user_id', user.id)
             .order('created_at', { ascending: false })
-
-        if (!profile?.is_admin) {
-            query = query.eq('user_id', user.id)
-        }
-
-        const { data: instances, error } = await query
 
         if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 

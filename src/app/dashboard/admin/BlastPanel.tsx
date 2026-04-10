@@ -339,7 +339,7 @@ function NewCampaignForm({ instances, onCreated }: { instances: WhatsAppInstance
                 body: JSON.stringify({ campaign_id: createdCampaignId, contacts }),
             })
             const data = await res.json()
-            if (!res.ok) throw new Error(data.error)
+            if (!res.ok) throw new Error(data.details || data.error || 'Erro desconhecido')
             setStep(4)
         } catch (e: any) {
             setError(e.message)
@@ -602,9 +602,12 @@ function NewCampaignForm({ instances, onCreated }: { instances: WhatsAppInstance
                                     }}>
                                         {selectedInstances.includes(inst.id) && '✓'}
                                     </div>
-                                    <div>
-                                        <div style={{ color: '#fff', fontSize: 14 }}>{inst.instance_name}</div>
-                                        <div style={{ color: '#22c55e', fontSize: 12 }}>● Conectado</div>
+                                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                            <span style={{ color: '#fff', fontSize: 14, fontWeight: 500 }}>{inst.instance_name}</span>
+                                            <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12 }}>{inst.phone_number ? `(${inst.phone_number})` : ''}</span>
+                                        </div>
+                                        <div style={{ color: '#22c55e', fontSize: 11 }}>● Conectado</div>
                                     </div>
                                 </div>
                             ))}

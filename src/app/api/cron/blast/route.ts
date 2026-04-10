@@ -31,9 +31,9 @@ export async function GET(req: NextRequest) {
                 media_type,
                 media_caption,
                 attempts,
-                blast_campaigns!inner ( id, status, auto_pause_on_fail_rate, sent_count, failed_count, total_contacts, warming_enabled ),
-                blast_contacts!inner ( id, phone, name, opted_out ),
-                whatsapp_instances!inner ( id, instance_name, status )
+                blast_campaigns!inner ( * ),
+                blast_contacts!inner ( * ),
+                whatsapp_instances!inner ( * )
             `)
             .eq('status', 'pending')
             .lte('scheduled_at', now)
