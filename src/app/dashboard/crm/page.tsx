@@ -383,6 +383,22 @@ export default function CRMPage() {
                         >
                           {lead.ai_tag === 'HUMANO' ? <Bot className="w-4 h-4" /> : <User className="w-4 h-4" />}
                         </button>
+                        <button 
+                          onClick={async () => {
+                            if (!confirm(`Tem certeza que deseja excluir o contato "${lead.name}"? Isso apagará todo o histórico permanentemente.`)) return
+                            const { error } = await supabase.from('contacts').delete().eq('id', lead.id)
+                            if (!error) {
+                              toast.success('Contato excluído')
+                              fetchLeads()
+                            } else {
+                              toast.error('Erro ao excluir: ' + error.message)
+                            }
+                          }}
+                          className="p-2 hover:bg-red-500/10 rounded-lg text-gray-400 hover:text-red-500 transition-all" 
+                          title="Excluir Contato"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </div>
                     </td>
                   </tr>
