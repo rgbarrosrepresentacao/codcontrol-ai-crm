@@ -11,7 +11,7 @@ const supabase = createClient(
 )
 
 // Only these tags silence ALL follow-ups permanently
-const HARD_STOP_TAGS = ['PEDIDO_FECHADO', 'HUMANO', 'CANCELADO']
+const HARD_STOP_TAGS = ['PEDIDO_FECHADO', 'FECHADO', 'HUMANO', 'CANCELADO']
 
 export async function GET(req: NextRequest) {
     const authHeader = req.headers.get('authorization')
@@ -69,12 +69,16 @@ export async function GET(req: NextRequest) {
             const stage = contact.followup_stage || 0
             const lastMessageDate = new Date(conversation.last_message_at) // Use original date for stage logic
             const diffInMinutes = (Date.now() - lastMessageDate.getTime()) / (1000 * 60)
-            const isLeadFrio = contact.ai_tag === 'LEAD_FRIO'
+            const isAguardando = contact.ai_tag === 'AGUARDANDO_RESPOSTA'
+            const isPerdido = contact.ai_tag === 'PERDIDO'
+
+            // Se já está perdido, não fazemos follow-up automático mais
+            if (isPerdido) continue
 
             let shouldFollowUp = false
             let followupIntent = ''
 
-            if (isLeadFrio) {
+            if (isAguardando) {
                 if (diffInMinutes >= 1440) {
                     shouldFollowUp = true
                     followupIntent = 'Este cliente é um lead frio. Tente reativá-lo de forma leve e humana, resgatando o interesse anterior. Seja amigável, não insistente. Máx 2 linhas.'
@@ -91,8 +95,8 @@ export async function GET(req: NextRequest) {
                     followupIntent = 'O cliente não responde desde ontem. Última tentativa do ciclo rápido. Avise que vai encerrar o atendimento, mas que ainda há condições especiais.'
                 }
 
-                if (stage >= 3 && !isLeadFrio) {
-                    await supabase.from('contacts').update({ ai_tag: 'LEAD_FRIO' }).eq('id', contact.id)
+                if (stage >= 3) {
+                    await supabase.from('contacts').update({ ai_tag: 'PERDIDO' }).eq('id', contact.id)
                     continue
                 }
             }
@@ -390,10 +394,11 @@ REGRAS DE USO:
                 contact_id: contact.id, from_me: true, content: cleanReply, type: 'text', ai_generated: true, status: 'sent',
             })
 
+            // Enquanto houver tentativas, mantemos em "AGUARDANDO_RESPOSTA"
             const newStage = stage + 1
             await supabase.from('contacts').update({
                 followup_stage: newStage,
-                ai_tag: (!isLeadFrio && newStage >= 3) ? 'LEAD_FRIO' : contact.ai_tag
+                ai_tag: (newStage >= 3) ? 'PERDIDO' : 'AGUARDANDO_RESPOSTA'
             }).eq('id', contact.id)
 
             await supabase.from('conversations').update({ last_message: cleanReply, last_message_at: new Date().toISOString() }).eq('id', conversation.id)
