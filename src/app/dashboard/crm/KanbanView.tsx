@@ -18,8 +18,8 @@ interface Contact {
 }
 
 interface KanbanViewProps {
-    contacts: Contact[]
-    onOpenContact: (contact: Contact) => void
+    leads: any[]
+    onRefresh: () => void
 }
 
 const STAGES = [
@@ -56,18 +56,22 @@ const mapTagToStage = (tag: string | null): string => {
     return tagMap[tag] || 'NOVO'
 }
 
-export default function KanbanView({ contacts, onOpenContact }: KanbanViewProps) {
+import { supabase } from '@/lib/supabase'
+import { toast } from 'sonner'
+import { User } from 'lucide-react'
+
+export default function KanbanView({ leads, onRefresh }: KanbanViewProps) {
     const columns = useMemo(() => {
-        const groups: Record<string, Contact[]> = {}
+        const groups: Record<string, any[]> = {}
         STAGES.forEach(s => groups[s.id] = [])
         
-        contacts.forEach(c => {
-            const stage = mapTagToStage(c.ai_tag)
-            if (groups[stage]) groups[stage].push(c)
+        leads.forEach(l => {
+            const stage = mapTagToStage(l.ai_tag)
+            if (groups[stage]) groups[stage].push(l)
         })
         
         return groups
-    }, [contacts])
+    }, [leads])
 
     const getTemperatureColor = (temp: number = 0) => {
         if (temp > 80) return 'text-orange-500'
@@ -96,6 +100,17 @@ export default function KanbanView({ contacts, onOpenContact }: KanbanViewProps)
         return 'normal' // até 10min (Verde)
     }
 
+    const toggleHumano = async (lead: any) => {
+        const newTag = lead.ai_tag === 'HUMANO' ? 'INTERESSADO' : 'HUMANO'
+        const { error } = await supabase.from('contacts').update({ ai_tag: newTag }).eq('id', lead.id)
+        if (!error) {
+            toast.success(newTag === 'HUMANO' ? 'Atendimento Humano Ativado' : 'IA Assumiu o controle')
+            onRefresh()
+        } else {
+            toast.error('Erro ao atualizar status')
+        }
+    }
+
     return (
         <div className="flex gap-4 overflow-x-auto pb-6 h-[calc(100vh-280px)] min-h-[500px] scrollbar-thin scrollbar-thumb-primary/20">
             {STAGES.map((stage) => (
@@ -113,14 +128,13 @@ export default function KanbanView({ contacts, onOpenContact }: KanbanViewProps)
 
                     {/* Lista de Cards */}
                     <div className="flex flex-col gap-3 overflow-y-auto pr-2">
-                        {columns[stage.id]?.map((contact) => {
-                            const urgency = getUrgencyStatus(contact.last_message_at)
-                            const displayName = contact.name || contact.push_name || contact.phone || 'Contato'
+                        {columns[stage.id]?.map((lead) => {
+                            const urgency = getUrgencyStatus(lead.last_message_at)
+                            const displayName = lead.name || lead.push_name || lead.phone || 'Contato'
                             
                             return (
-                                <button
-                                    key={contact.id}
-                                    onClick={() => onOpenContact(contact)}
+                                <div
+                                    key={lead.id}
                                     className={cn(
                                         "w-full bg-secondary/20 border border-border/50 rounded-xl p-4 text-left transition-all hover:scale-[1.02] hover:border-primary/30 group relative overflow-hidden",
                                         urgency === 'critical' && "border-red-500/30 bg-red-500/5",
@@ -135,21 +149,35 @@ export default function KanbanView({ contacts, onOpenContact }: KanbanViewProps)
                                     )} />
 
                                     <div className="flex justify-between items-start mb-2">
-                                        <span className="font-bold text-sm text-foreground truncate max-w-[180px]">
+                                        <span className="font-bold text-sm text-foreground truncate max-w-[150px]">
                                             {displayName}
                                         </span>
-                                        <div className="flex items-center gap-1 text-[10px] whitespace-nowrap text-muted-foreground">
-                                            <Clock className="w-3 h-3" />
-                                            {getTimeDiff(contact.last_message_at)}
+                                        <div className="flex items-center gap-2">
+                                            <button 
+                                                onClick={() => toggleHumano(lead)}
+                                                className={cn(
+                                                    "p-1.5 rounded-lg transition-all",
+                                                    lead.ai_tag === 'HUMANO' 
+                                                    ? "bg-amber-500/20 text-amber-500" 
+                                                    : "bg-blue-500/10 text-blue-400 opacity-0 group-hover:opacity-100"
+                                                )}
+                                                title={lead.ai_tag === 'HUMANO' ? 'Devolver para IA' : 'Assumir Atendimento'}
+                                            >
+                                                {lead.ai_tag === 'HUMANO' ? <Bot className="w-3 h-3" /> : <User className="w-3 h-3" />}
+                                            </button>
+                                            <div className="flex items-center gap-1 text-[10px] whitespace-nowrap text-muted-foreground">
+                                                <Clock className="w-3 h-3" />
+                                                {getTimeDiff(lead.last_message_at)}
+                                            </div>
                                         </div>
                                     </div>
 
                                     {/* Info de Inteligência */}
                                     <div className="space-y-2">
-                                        {contact.ai_last_action && (
+                                        {lead.ai_last_action && (
                                             <div className="text-[10px] text-primary/80 flex items-center gap-1 bg-primary/5 px-2 py-1 rounded-md border border-primary/10">
                                                 <Bot className="w-3 h-3" />
-                                                <span className="truncate">{contact.ai_last_action}</span>
+                                                <span className="truncate">{lead.ai_last_action}</span>
                                             </div>
                                         )}
 
@@ -158,16 +186,16 @@ export default function KanbanView({ contacts, onOpenContact }: KanbanViewProps)
                                                 {/* Temperatura */}
                                                 <div className={cn(
                                                     "flex items-center gap-1 px-2 py-0.5 rounded-full border text-[9px] font-black uppercase",
-                                                    contact.lead_temperature && contact.lead_temperature > 70 ? "bg-orange-500/10 border-orange-500/30 text-orange-500" : "bg-blue-500/10 border-blue-500/30 text-blue-400"
+                                                    lead.lead_temperature && lead.lead_temperature > 70 ? "bg-orange-500/10 border-orange-500/30 text-orange-500" : "bg-blue-500/10 border-blue-500/30 text-blue-400"
                                                 )}>
                                                     <Flame className="w-3 h-3" />
-                                                    {contact.lead_temperature && contact.lead_temperature > 70 ? 'Quente' : 'Morno'}
+                                                    {lead.lead_temperature && lead.lead_temperature > 70 ? 'Quente' : 'Morno'}
                                                 </div>
 
-                                                {contact.phone && (
+                                                {lead.phone && (
                                                     <span className="text-[10px] text-muted-foreground flex items-center gap-1">
                                                         <Phone className="w-2.5 h-2.5" />
-                                                        {contact.phone.slice(-4)}
+                                                        {lead.phone.slice(-4)}
                                                     </span>
                                                 )}
                                             </div>
@@ -179,13 +207,13 @@ export default function KanbanView({ contacts, onOpenContact }: KanbanViewProps)
                                     {/* Overlay de Resgate no Modo Caça (Esqueleto) */}
                                     {stage.id === 'AGUARDANDO' && (
                                         <div className="mt-3 pt-3 border-t border-border/50 flex justify-end">
-                                            <div className="text-[9px] font-bold text-primary flex items-center gap-1 hover:underline">
+                                            <div className="text-[9px] font-bold text-primary flex items-center gap-1 hover:underline cursor-pointer">
                                                 <AlertCircle className="w-3 h-3" />
                                                 Resgatar agora
                                             </div>
                                         </div>
                                     )}
-                                </button>
+                                </div>
                             )
                         })}
                         {columns[stage.id]?.length === 0 && (
@@ -199,3 +227,4 @@ export default function KanbanView({ contacts, onOpenContact }: KanbanViewProps)
         </div>
     )
 }
+

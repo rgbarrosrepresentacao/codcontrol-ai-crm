@@ -680,7 +680,7 @@ async function processWebhookInBackground(body: any) {
             const { data: pausedNode } = await supabase.from('funnel_steps').select('node_type').eq('id', currentNodeId).maybeSingle()
             if (pausedNode?.node_type === 'condition') {
                 // Detectar intenção do cliente para escolher caminho SIM ou NÃO
-                const isPositive = /\b(sim|quero|pode|ok|vamos|vai|interesse|comprar|quero sim|aceito|combinado|topo|gostei|manda|tenho interesse)\b/i.test(textMessage) || (currentAiTag === 'POSSIVEL_COMPRADOR' || currentAiTag === 'INTERESSADO')
+                const isPositive = /\b(sim|quero|pode|ok|vamos|vai|interesse|comprar|quero sim|aceito|combinado|topo|gostei|manda|tenho interesse)\b/i.test(textMessage) || (currentAiTag === 'INTERESSADO' || currentAiTag === 'QUALIFICADO')
                 const handle = isPositive ? 'yes' : 'no'
                 console.log(`[Funnel] Condição respondida com handle: ${handle}`)
                 const lock = new Date(Date.now() + 300000).toISOString() // 5 min lock
@@ -851,7 +851,7 @@ REGRAS DE USO:
 
         // Prompt e IA
         const logisticsHint = await checkLogistics(userId, textMessage)
-        const { data: history } = await supabase.from('messages').select('from_me, content').eq('conversation_id', conversationId).order('created_at', { ascending: false }).limit(20)
+        const { data: history } = await supabase.from('messages').select('from_me, content, created_at').eq('conversation_id', conversationId).order('created_at', { ascending: false }).limit(20)
         const chatMessages = (history || []).reverse().map(m => ({
             role: (m.from_me ? 'assistant' : 'user') as any,
             content: m.content || ''
@@ -958,7 +958,7 @@ ${audioCapabilityNote}`
         }
 
         // 1. Tentar criar pedido na Logzz se configurado
-        const shouldTryLogzz = newAiTag === 'PEDIDO_FECHADO' || botReply.toLowerCase().includes('pedido') || botReply.toLowerCase().includes('concluido')
+        const shouldTryLogzz = newAiTag === 'FECHADO' || botReply.toLowerCase().includes('pedido') || botReply.toLowerCase().includes('concluido')
 
         if (shouldTryLogzz) {
             try {
@@ -1025,7 +1025,7 @@ ${audioCapabilityNote}`
         }
 
         // Se for fechamento, manda a mensagem de despedida e encerra o webhook aqui
-        if (newAiTag === 'PEDIDO_FECHADO') {
+        if (newAiTag === 'FECHADO') {
             const closeMsg = await generateClosingMessage(chatMessages, aiConfig, profile.openai_api_key)
             await evolutionApi.sendTextMessage(instanceName, remoteJid, closeMsg)
             return

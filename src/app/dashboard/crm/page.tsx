@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import { supabase } from '@/lib/supabase'
 import { 
   Users, 
   Search, 
@@ -32,7 +32,7 @@ import {
   Pause,
   Play
 } from 'lucide-react'
-import { toast } from 'react-hot-toast'
+import { toast } from 'sonner'
 import KanbanView from './KanbanView'
 
 interface Lead {
@@ -59,7 +59,7 @@ export default function CRMPage() {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [profile, setProfile] = useState<any>(null)
   
-  const supabase = createClient()
+
 
   const fetchLeads = useCallback(async () => {
     try {
