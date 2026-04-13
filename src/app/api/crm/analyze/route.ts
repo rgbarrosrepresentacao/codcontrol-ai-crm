@@ -36,6 +36,7 @@ export async function POST(req: Request) {
             model: 'gpt-4o-mini',
             messages: [
                 {
+                    role: 'system',
                     content: `Você é um analista de CRM especialista em vendas. Com base nas mensagens, classifique o lead em uma destas tags:
                     - NOVO_LEAD: Primeiro contato, ainda não houve interação real.
                     - EM_ATENDIMENTO: Conversa em andamento, IA ou Humano respondendo dúvidas.
