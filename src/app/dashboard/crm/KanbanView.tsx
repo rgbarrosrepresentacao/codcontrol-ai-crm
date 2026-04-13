@@ -2,7 +2,7 @@
 import { useMemo } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { Bot, UserCheck, Phone, ChevronRight, Clock, Flame, CreditCard, MessageCircle, AlertCircle } from 'lucide-react'
+import { Bot, UserCheck, Phone, ChevronRight, Clock, Flame, CreditCard, MessageCircle, AlertCircle, Trash2, User } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useRouter } from 'next/navigation'
 
@@ -102,6 +102,19 @@ export default function KanbanView({ leads, onRefresh }: KanbanViewProps) {
         return 'normal' // até 10min (Verde)
     }
 
+    const deleteLead = async (lead: any) => {
+        const displayName = lead.name || lead.push_name || lead.phone || 'Contato'
+        if (!confirm(`Tem certeza que deseja excluir "${displayName}"? Isso apagará todo o histórico permanentemente.`)) return
+        
+        const { error } = await supabase.from('contacts').delete().eq('id', lead.id)
+        if (!error) {
+            toast.success('Contato removido com sucesso')
+            onRefresh()
+        } else {
+            toast.error('Erro ao remover contato')
+        }
+    }
+
     const toggleHumano = async (lead: any) => {
         const newTag = lead.ai_tag === 'HUMANO' ? 'INTERESSADO' : 'HUMANO'
         const { error } = await supabase.from('contacts').update({ ai_tag: newTag }).eq('id', lead.id)
@@ -156,6 +169,16 @@ export default function KanbanView({ leads, onRefresh }: KanbanViewProps) {
                                             {displayName}
                                         </span>
                                         <div className="flex items-center gap-2">
+                                            <button 
+                                                onClick={(e) => {
+                                                    e.stopPropagation()
+                                                    deleteLead(lead)
+                                                }}
+                                                className="p-1.5 rounded-lg bg-red-500/10 text-red-500 opacity-0 group-hover:opacity-100 hover:bg-red-500/20 transition-all"
+                                                title="Excluir Contato"
+                                            >
+                                                <Trash2 className="w-3 h-3" />
+                                            </button>
                                             <button 
                                                 onClick={(e) => {
                                                     e.stopPropagation()

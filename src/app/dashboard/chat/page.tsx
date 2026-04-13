@@ -4,8 +4,9 @@ import { supabase } from '@/lib/supabase'
 import {
     Search, Send, Bot, UserCheck, Phone,
     MessageCircle, Loader2, ChevronLeft, Mic, Image, MoreVertical,
-    Megaphone
+    Megaphone, Trash2
 } from 'lucide-react'
+import { toast } from 'sonner'
 
 // Types
 
@@ -262,6 +263,26 @@ function ChatContent() {
         }
     }
 
+    const deleteContact = async () => {
+        if (!selected) return
+        const name = displayName(selected.contact)
+        if (!confirm(`Tem certeza que deseja excluir o contato "${name}"? Isso apagará todo o histórico permanentemente.`)) return
+        
+        try {
+            const { error } = await supabase.from('contacts').delete().eq('id', selected.contact.id)
+            if (!error) {
+                toast.success('Contato excluído com sucesso')
+                setSelected(null)
+                loadConversations()
+            } else {
+                toast.error('Erro ao excluir contato: ' + error.message)
+            }
+        } catch (err) {
+            console.error(err)
+            toast.error('Erro ao excluir contato')
+        }
+    }
+
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault()
@@ -394,6 +415,13 @@ function ChatContent() {
                                     <Megaphone className="w-3 h-3" /> {selected.contact.campaigns.name}
                                 </span>
                             )}
+                            <button 
+                                onClick={deleteContact}
+                                className="p-2 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
+                                title="Excluir Contato"
+                            >
+                                <Trash2 className="w-4 h-4" />
+                            </button>
                             <button className="p-2 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg transition-colors">
                                 <MoreVertical className="w-4 h-4" />
                             </button>
