@@ -59,7 +59,7 @@ const mapTagToStage = (tag: string | null): string => {
 
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
-import { User } from 'lucide-react'
+
 
 export default function KanbanView({ leads, onRefresh }: KanbanViewProps) {
     const router = useRouter()
