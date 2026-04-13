@@ -71,7 +71,7 @@ export async function GET(req: NextRequest) {
             const diffInMinutes = (Date.now() - lastMessageDate.getTime()) / (1000 * 60)
             const isAguardando = contact.ai_tag === 'AGUARDANDO_RESPOSTA'
             const isPerdido = contact.ai_tag === 'PERDIDO'
-            const isLeadFrio = diffInMinutes >= 1440 // Mais de 24h sem resposta
+            const isLeadFrio = diffInMinutes >= 1440 // Lead que não responde há mais de 24h
 
             // Se já está perdido, não fazemos follow-up automático mais
             if (isPerdido) continue
@@ -80,7 +80,7 @@ export async function GET(req: NextRequest) {
             let followupIntent = ''
 
             if (isAguardando) {
-                if (diffInMinutes >= 1440) {
+                if (isLeadFrio) {
                     shouldFollowUp = true
                     followupIntent = 'Este cliente é um lead frio. Tente reativá-lo de forma leve e humana, resgatando o interesse anterior. Seja amigável, não insistente. Máx 2 linhas.'
                 }
@@ -165,7 +165,8 @@ export async function GET(req: NextRequest) {
             // ── ADMIN LAB: Vapi.ai - Ligação Automática ─────────────────────────────────
             // Ativa apenas se: admin + chave Vapi + vapi_enabled + stage configurado
             const vapiTargetStage = profile.vapi_stage ?? 1
-            if (profile.is_admin && profile.vapi_api_key && profile.vapi_enabled && stage === vapiTargetStage && !isLeadFrio) {
+            const isVapiAllowed = profile.is_admin && profile.vapi_api_key && profile.vapi_enabled
+            if (isVapiAllowed && stage === vapiTargetStage && !isLeadFrio) {
                 console.log(`[CRON_FOLLOWUP] 📞 [ADMIN LAB] Iniciando ligação Vapi para contato ${contact.id}`)
                 try {
                     const rawNumber = contact.whatsapp_id.replace('@s.whatsapp.net', '').replace(/\D/g, '')
