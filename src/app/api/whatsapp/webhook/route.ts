@@ -65,8 +65,8 @@ const supabase = createClient(
     process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
-// Etiquetas disponíveis para classificação de contatos
-const AI_TAGS = ['PEDIDO_FECHADO', 'POSSIVEL_COMPRADOR', 'INTERESSADO', 'LEAD_FRIO', 'CANCELADO'] as const
+// Etiquetas Premium para o Funil de 8 Etapas
+const AI_TAGS = ['NOVO_LEAD', 'EM_ATENDIMENTO', 'QUALIFICADO', 'INTERESSADO', 'PROPOSTA_ENVIADA', 'AGUARDANDO_RESPOSTA', 'FECHADO', 'PERDIDO'] as const
 type AiTag = typeof AI_TAGS[number]
 
 // Função para checar logística (CEP ou Cidade)
@@ -177,17 +177,18 @@ async function classifyContact(
                 messages: [
                     {
                         role: 'system',
-                        content: `Você é um classificador de leads de vendas. Analise a conversa e classifique o cliente em UMA das categorias abaixo. Responda APENAS com a etiqueta, nada mais.
+                        content: `Você é um classificador de leads de vendas. Analise a conversa e classifique o cliente FECHADO - O cliente enviou ABSOLUTAMENTE TODOS os dados para o envio: 1) Nome Completo, 2) CPF, 3) CEP e 4) Endereço. Se falta QUALQUER dado, NÃO marque como FECHADO.
+PROPOSTA_ENVIADA - Você (IA) acabou de enviar um link de pagamento, valores de kits ou uma oferta final para fechamento. 
+INTERESSADO - O cliente demonstrou intenção CLARA de compra. Perguntou: "Como eu pago?", "Tem desconto?", "Aceita cartão?". Ele quer comprar, mas ainda não recebeu a oferta final ou link.
+QUALIFICADO - O cliente entendeu como funciona, tirou as principais dúvidas e mostrou que tem o "problema" que o produto resolve. Perguntou sobre benefícios, garantias ou detalhes técnicos profundos.
+EM_ATENDIMENTO - Conversa normal fluindo. Você está explicando o básico, tirando dúvidas genéricas ou apenas se apresentando.
+NOVO_LEAD - É a primeira interação do cliente, ele acabou de chegar e ainda não houve uma troca profunda.
+AGUARDANDO_RESPOSTA - O cliente disse que "vai ver depois", "fala com a esposa", ou parou de responder após você fazer uma pergunta crucial.
+PERDIDO - O cliente recusou o produto explicitamente, disse que está caro ou pediu para não receber mais mensagens.
 
-PEDIDO_FECHADO - O cliente enviou ABSOLUTAMENTE TODOS os dados para o envio: 1) Nome Completo, 2) CPF (11 dígitos), 3) CEP e 4) Endereço Completo (Rua, Número, Bairro e Cidade). Se falta QUALQUER um desses itens, NÃO classifique como PEDIDO_FECHADO. Mantenha como INTERESSADO se ele estiver apenas tirando dúvidas ou POSSIVEL_COMPRADOR se ele estiver quase lá mas ainda não mandou os dados.
-POSSIVEL_COMPRADOR - Cliente demonstrou forte interesse mas parou antes de mandar os dados, ou quer comprar depois.
-INTERESSADO - Cliente apenas perguntou preço, frete, ou passou apenas o CEP para consulta. Ele ainda está na fase de negociação.
-LEAD_FRIO - Cliente parou de responder ou não tem interesse real.
-CANCELADO - Cliente desistiu explicitamente ou pediu para parar de receber mensagens (ex: "não quero", "pare de mandar", "não tenho interesse", "favor remover"). Isso silenciará as automações.
+IMPORTANTE: Seja criterioso. Não pule etapas. Se o cliente perguntou "quanto custa?", ele é INTERESSADO. Se ele perguntou "como funciona?", ele é QUALIFICADO.
 
-CRÍTICO: Nunca classifique como PEDIDO_FECHADO se o cliente mandou apenas o CEP. Ele PRECISA dos 4 itens acima (Nome, CPF, CEP, Endereço).
-
-Responda APENAS com uma dessas palavras: PEDIDO_FECHADO, POSSIVEL_COMPRADOR, INTERESSADO, LEAD_FRIO ou CANCELADO`
+Responda APENAS com uma dessas palavras: NOVO_LEAD, EM_ATENDIMENTO, QUALIFICADO, INTERESSADO, PROPOSTA_ENVIADA, AGUARDANDO_RESPOSTA, FECHADO, PERDIDO`
                     },
                     {
                         role: 'user',
@@ -856,6 +857,20 @@ REGRAS DE USO:
             content: m.content || ''
         }))
 
+        // ─── LÓGICA DE TEMPERATURA E INTERAÇÃO (PREMIUM) ──────────────────
+        let lead_temperature = 1 // 1: Frio, 2: Morno, 3: Quente
+        let interaction_count = 0
+        const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000)
+        
+        // Conta interações do cliente nos últimos 10 minutos
+        const recentUserMsgs = history?.filter(m => !m.from_me && new Date(m.created_at || '') > tenMinutesAgo) || []
+        interaction_count = recentUserMsgs.length
+
+        // Se o cliente respondeu mais de 3 vezes em 10 min, é Lead Quente
+        if (interaction_count >= 3) lead_temperature = 3
+        else if (interaction_count >= 1) lead_temperature = 2
+        // ──────────────────────────────────────────────────────────────────
+
         const currentDate = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
         // Funnel context for IA — lets the AI know the current funnel state
         const curFunnelStatus = (contact as any).funnel_status || 'INATIVO'
@@ -918,9 +933,29 @@ ${audioCapabilityNote}`
             }
         }
 
-        // Classificação
+        // Classificação e Atualização de Inteligência (PREMIUM)
         const newAiTag = await classifyContact([...chatMessages, { role: 'assistant', content: botReply }], profile.openai_api_key)
-        if (newAiTag) await supabase.from('contacts').update({ ai_tag: newAiTag }).eq('id', contactId)
+        
+        // Sintetiza a última ação da IA (versão curta para o Kanban)
+        const ai_last_action = botReply.length > 50 ? botReply.slice(0, 47) + '...' : botReply
+
+        if (newAiTag) {
+            const updateData: any = { 
+                ai_tag: newAiTag,
+                last_message_at: new Date().toISOString(),
+                lead_temperature: lead_temperature,
+                ai_last_action: ai_last_action,
+                interaction_count: interaction_count
+            }
+
+            // Se mudou de etapa, atualiza o timestamp do funil
+            if (newAiTag !== contact.ai_tag) {
+                updateData.last_stage_change_at = new Date().toISOString()
+            }
+
+            // Agora seguro para atualizar: colunas já existem no Supabase
+            await supabase.from('contacts').update(updateData).eq('id', contactId)
+        }
 
         // 1. Tentar criar pedido na Logzz se configurado
         const shouldTryLogzz = newAiTag === 'PEDIDO_FECHADO' || botReply.toLowerCase().includes('pedido') || botReply.toLowerCase().includes('concluido')

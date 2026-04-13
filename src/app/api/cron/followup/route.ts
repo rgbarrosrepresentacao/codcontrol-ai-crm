@@ -71,6 +71,7 @@ export async function GET(req: NextRequest) {
             const diffInMinutes = (Date.now() - lastMessageDate.getTime()) / (1000 * 60)
             const isAguardando = contact.ai_tag === 'AGUARDANDO_RESPOSTA'
             const isPerdido = contact.ai_tag === 'PERDIDO'
+            const isLeadFrio = diffInMinutes >= 1440 // Mais de 24h sem resposta
 
             // Se já está perdido, não fazemos follow-up automático mais
             if (isPerdido) continue
@@ -279,7 +280,7 @@ export async function GET(req: NextRequest) {
                 knowledgeContext = `
 
 ── MÍDIAS DISPONÍVEIS (USE COM SABEDORIA) ──
-Você tem acesso às seguintes mídias para enviar ao cliente se julgar necessário para o resgate:
+Você have acesso às seguintes mídias para enviar ao cliente se julgar necessário para o resgate:
 ${list}
 
 REGRAS DE USO:
