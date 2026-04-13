@@ -1,8 +1,8 @@
 'use client'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { Bot, UserCheck, Phone, ChevronRight, Clock, Flame, CreditCard, MessageCircle, AlertCircle, Trash2, User } from 'lucide-react'
+import { Bot, UserCheck, Phone, ChevronRight, Clock, Flame, CreditCard, MessageCircle, AlertCircle, Trash2, User, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useRouter } from 'next/navigation'
 
@@ -57,12 +57,26 @@ const mapTagToStage = (tag: string | null): string => {
     return tagMap[tag] || 'NOVO'
 }
 
+const STAGE_TO_TAG: Record<string, string> = {
+    'NOVO': 'NOVO_LEAD',
+    'ATENDIMENTO': 'EM_ATENDIMENTO',
+    'QUALIFICADO': 'QUALIFICADO',
+    'INTERESSADO': 'INTERESSADO',
+    'PROPOSTA': 'PROPOSTA_ENVIADA',
+    'AGUARDANDO': 'AGUARDANDO_RESPOSTA',
+    'HUMANO': 'HUMANO',
+    'FECHADO': 'FECHADO',
+    'PERDIDO': 'PERDIDO'
+}
+
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
 
 
 export default function KanbanView({ leads, onRefresh }: KanbanViewProps) {
     const router = useRouter()
+    const [selectedLead, setSelectedLead] = useState<any>(null)
+    const [isMoving, setIsMoving] = useState(false)
     const columns = useMemo(() => {
         const groups: Record<string, any[]> = {}
         STAGES.forEach(s => groups[s.id] = [])
@@ -126,6 +140,26 @@ export default function KanbanView({ leads, onRefresh }: KanbanViewProps) {
         }
     }
 
+    const moveLead = async (stageId: string) => {
+        if (!selectedLead) return
+        setIsMoving(true)
+        
+        const newTag = STAGE_TO_TAG[stageId]
+        const { error } = await supabase.from('contacts').update({ 
+            ai_tag: newTag,
+            last_stage_change_at: new Date().toISOString()
+        }).eq('id', selectedLead.id)
+
+        if (!error) {
+            toast.success(`Lead movido para ${STAGES.find(s => s.id === stageId)?.label}`)
+            setSelectedLead(null)
+            onRefresh()
+        } else {
+            toast.error('Erro ao mover lead')
+        }
+        setIsMoving(false)
+    }
+
     return (
         <div className="flex gap-4 overflow-x-auto pb-6 h-[calc(100vh-280px)] min-h-[500px] scrollbar-thin scrollbar-thumb-primary/20">
             {STAGES.map((stage) => (
@@ -150,7 +184,7 @@ export default function KanbanView({ leads, onRefresh }: KanbanViewProps) {
                             return (
                                 <div
                                     key={lead.id}
-                                    onClick={() => router.push(`/dashboard/chat?contactId=${lead.id}`)}
+                                    onClick={() => setSelectedLead(lead)}
                                     className={cn(
                                         "w-full bg-secondary/20 border border-border/50 rounded-xl p-4 text-left transition-all hover:scale-[1.02] hover:border-primary/30 group relative overflow-hidden cursor-pointer",
                                         urgency === 'critical' && "border-red-500/30 bg-red-500/5",
@@ -178,6 +212,16 @@ export default function KanbanView({ leads, onRefresh }: KanbanViewProps) {
                                                 title="Excluir Contato"
                                             >
                                                 <Trash2 className="w-3 h-3" />
+                                            </button>
+                                            <button 
+                                                onClick={(e) => {
+                                                    e.stopPropagation()
+                                                    router.push(`/dashboard/chat?contactId=${lead.id}`)
+                                                }}
+                                                className="p-1.5 rounded-lg bg-primary/10 text-primary opacity-0 group-hover:opacity-100 hover:bg-primary/20 transition-all font-bold"
+                                                title="Ir para o Chat"
+                                            >
+                                                <MessageCircle className="w-3 h-3" />
                                             </button>
                                             <button 
                                                 onClick={(e) => {
@@ -236,7 +280,13 @@ export default function KanbanView({ leads, onRefresh }: KanbanViewProps) {
                                     {/* Overlay de Resgate no Modo Caça (Esqueleto) */}
                                     {stage.id === 'AGUARDANDO' && (
                                         <div className="mt-3 pt-3 border-t border-border/50 flex justify-end">
-                                            <div className="text-[9px] font-bold text-primary flex items-center gap-1 hover:underline cursor-pointer">
+                                            <div 
+                                                onClick={(e) => {
+                                                    e.stopPropagation()
+                                                    setSelectedLead(lead)
+                                                }}
+                                                className="text-[9px] font-bold text-primary flex items-center gap-1 hover:underline cursor-pointer"
+                                            >
                                                 <AlertCircle className="w-3 h-3" />
                                                 Resgatar agora
                                             </div>
@@ -253,6 +303,66 @@ export default function KanbanView({ leads, onRefresh }: KanbanViewProps) {
                     </div>
                 </div>
             ))}
+
+            {/* Modal de Movimentação */}
+            {selectedLead && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
+                    <div className="w-full max-w-sm bg-secondary border border-border rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+                        <div className="p-4 border-b border-border flex items-center justify-between bg-muted/50">
+                            <div>
+                                <h3 className="font-bold text-sm">Mover Contato</h3>
+                                <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold">
+                                    {selectedLead.name || selectedLead.push_name || selectedLead.phone}
+                                </p>
+                            </div>
+                            <button 
+                                onClick={() => setSelectedLead(null)} 
+                                className="p-1.5 rounded-lg hover:bg-background/80 text-muted-foreground transition-colors"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+
+                        <div className="p-3 flex flex-col gap-1.5 max-h-[400px] overflow-y-auto scrollbar-thin scrollbar-thumb-primary/20">
+                            <p className="text-[10px] text-muted-foreground px-2 mb-1 uppercase font-bold">Selecione a nova etapa:</p>
+                            {STAGES.map((s) => (
+                                <button
+                                    key={s.id}
+                                    disabled={isMoving}
+                                    onClick={() => moveLead(s.id)}
+                                    className={cn(
+                                        "flex items-center justify-between p-3 rounded-xl border text-sm transition-all hover:scale-[1.01] hover:shadow-md",
+                                        mapTagToStage(selectedLead.ai_tag) === s.id 
+                                        ? "border-primary bg-primary/10 text-primary ring-1 ring-primary/20" 
+                                        : "border-border bg-background hover:border-primary/50 text-foreground"
+                                    )}
+                                >
+                                    <span className="font-medium">{s.label}</span>
+                                    {mapTagToStage(selectedLead.ai_tag) === s.id && (
+                                        <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                                    )}
+                                </button>
+                            ))}
+                        </div>
+
+                        <div className="p-3 bg-muted/30 border-t border-border flex gap-2">
+                           <button 
+                                onClick={() => setSelectedLead(null)} 
+                                className="flex-1 py-2 text-xs font-bold rounded-xl border border-border bg-background hover:bg-secondary transition-all"
+                            >
+                                Cancelar
+                            </button>
+                            <button 
+                                onClick={() => router.push(`/dashboard/chat?contactId=${selectedLead.id}`)} 
+                                className="flex-1 py-2 text-xs font-bold rounded-xl bg-primary text-primary-foreground hover:opacity-90 transition-all flex items-center justify-center gap-2"
+                            >
+                                <MessageCircle className="w-3 h-3" />
+                                Abrir Chat
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     )
 }
