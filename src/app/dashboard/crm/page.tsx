@@ -35,6 +35,8 @@ import {
 import { toast } from 'sonner'
 import KanbanView from './KanbanView'
 
+import { useRouter } from 'next/navigation'
+
 interface Lead {
   id: string
   name: string
@@ -58,6 +60,7 @@ export default function CRMPage() {
   const [filterTag, setFilterTag] = useState('all')
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [profile, setProfile] = useState<any>(null)
+  const router = useRouter()
   
 
 
@@ -355,7 +358,11 @@ export default function CRMPage() {
                     </td>
                     <td className="p-4">
                       <div className="flex items-center gap-2">
-                        <button className="p-2 hover:bg-gray-700/50 rounded-lg text-gray-400 hover:text-white transition-all" title="Ver Conversa">
+                        <button 
+                          onClick={() => router.push(`/dashboard/chat?contactId=${lead.id}`)}
+                          className="p-2 hover:bg-gray-700/50 rounded-lg text-gray-400 hover:text-white transition-all" 
+                          title="Ver Conversa"
+                        >
                           <MessageSquare className="w-4 h-4" />
                         </button>
                         <button 

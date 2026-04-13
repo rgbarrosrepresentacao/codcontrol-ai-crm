@@ -4,6 +4,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { Bot, UserCheck, Phone, ChevronRight, Clock, Flame, CreditCard, MessageCircle, AlertCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useRouter } from 'next/navigation'
 
 interface Contact {
     id: string
@@ -61,6 +62,7 @@ import { toast } from 'sonner'
 import { User } from 'lucide-react'
 
 export default function KanbanView({ leads, onRefresh }: KanbanViewProps) {
+    const router = useRouter()
     const columns = useMemo(() => {
         const groups: Record<string, any[]> = {}
         STAGES.forEach(s => groups[s.id] = [])
@@ -135,8 +137,9 @@ export default function KanbanView({ leads, onRefresh }: KanbanViewProps) {
                             return (
                                 <div
                                     key={lead.id}
+                                    onClick={() => router.push(`/dashboard/chat?contactId=${lead.id}`)}
                                     className={cn(
-                                        "w-full bg-secondary/20 border border-border/50 rounded-xl p-4 text-left transition-all hover:scale-[1.02] hover:border-primary/30 group relative overflow-hidden",
+                                        "w-full bg-secondary/20 border border-border/50 rounded-xl p-4 text-left transition-all hover:scale-[1.02] hover:border-primary/30 group relative overflow-hidden cursor-pointer",
                                         urgency === 'critical' && "border-red-500/30 bg-red-500/5",
                                         urgency === 'warning' && "border-yellow-500/30 bg-yellow-500/5",
                                         urgency === 'normal' && "border-emerald-500/30 bg-emerald-500/5"
@@ -154,7 +157,10 @@ export default function KanbanView({ leads, onRefresh }: KanbanViewProps) {
                                         </span>
                                         <div className="flex items-center gap-2">
                                             <button 
-                                                onClick={() => toggleHumano(lead)}
+                                                onClick={(e) => {
+                                                    e.stopPropagation()
+                                                    toggleHumano(lead)
+                                                }}
                                                 className={cn(
                                                     "p-1.5 rounded-lg transition-all",
                                                     lead.ai_tag === 'HUMANO' 

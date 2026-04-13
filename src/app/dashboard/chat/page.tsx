@@ -75,9 +75,14 @@ function timeLabel(iso: string | null) {
     return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
 }
 
-// Main Component
+import { useSearchParams } from 'next/navigation'
+import { Suspense } from 'react'
 
-export default function ChatPage() {
+// Wrap inner component to use searchParams
+function ChatContent() {
+    const searchParams = useSearchParams()
+    const contactIdParam = searchParams.get('contactId')
+    
     const [userId, setUserId] = useState<string | null>(null)
     const [conversations, setConversations] = useState<Conversation[]>([])
     const [selected, setSelected] = useState<Conversation | null>(null)
@@ -108,8 +113,21 @@ export default function ChatPage() {
             .eq('user_id', userId)
             .order('last_message_at', { ascending: false })
             .limit(100)
-        if (data) setConversations(data as unknown as Conversation[])
-    }, [userId])
+        
+        if (data) {
+            const convs = data as unknown as Conversation[]
+            setConversations(convs)
+            
+            // Auto-select if parameter is present
+            if (contactIdParam && !selected) {
+                const found = convs.find(c => c.contact_id === contactIdParam || c.contact.id === contactIdParam)
+                if (found) {
+                    setSelected(found)
+                    setMobileShowChat(true)
+                }
+            }
+        }
+    }, [userId, contactIdParam, selected])
 
     useEffect(() => { loadConversations() }, [loadConversations])
 
@@ -484,6 +502,18 @@ export default function ChatPage() {
                 )}
             </div>
         </div>
+    )
+}
+
+export default function ChatPage() {
+    return (
+        <Suspense fallback={
+            <div className="flex items-center justify-center h-screen bg-background">
+                <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            </div>
+        }>
+            <ChatContent />
+        </Suspense>
     )
 }
 
