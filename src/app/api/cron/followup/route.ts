@@ -11,7 +11,7 @@ const supabase = createClient(
 )
 
 // Only these tags silence ALL follow-ups permanently
-const HARD_STOP_TAGS = ['PEDIDO_FECHADO', 'FECHADO', 'HUMANO', 'CANCELADO']
+const HARD_STOP_TAGS = ['PEDIDO_FECHADO', 'FECHADO', 'PERDIDO', 'HUMANO', 'CANCELADO']
 
 export async function GET(req: NextRequest) {
     const authHeader = req.headers.get('authorization')

@@ -129,8 +129,9 @@ async function checkLogistics(userId: string, input: string): Promise<string | n
     }
 }
 
-// Tags que pausam a IA e transferem para atendimento humano
-const HANDOFF_TAGS = ['PEDIDO_FECHADO', 'HUMANO']
+// Tags que pausam a IA e transferem para atendimento humano (ou encerram o ciclo)
+const HANDOFF_TAGS = ['PEDIDO_FECHADO', 'FECHADO', 'PERDIDO', 'HUMANO']
+
 
 export async function POST(req: NextRequest) {
     try {
@@ -177,27 +178,27 @@ async function classifyContact(
                 messages: [
                     {
                         role: 'system',
-                        content: `Você é um classificador de leads de vendas. Analise a conversa e classifique o cliente FECHADO - O cliente enviou ABSOLUTAMENTE TODOS os dados para o envio: 1) Nome Completo, 2) CPF, 3) CEP e 4) Endereço. Se falta QUALQUER dado, NÃO marque como FECHADO.
+                        content: `Você é um classificador de leads de vendas. Analise a conversa e classifique o cliente:
+FECHADO - O cliente confirmou a compra e enviou ABSOLUTAMENTE TODOS os dados para o envio: 1) Nome Completo, 2) CPF, 3) CEP e 4) Endereço. Se falta QUALQUER dado, por menor que seja, NÃO marque como FECHADO ainda.
 PROPOSTA_ENVIADA - Você (IA) acabou de enviar um link de pagamento, valores de kits ou uma oferta final para fechamento. 
 INTERESSADO - O cliente demonstrou intenção CLARA de compra. Perguntou: "Como eu pago?", "Tem desconto?", "Aceita cartão?". Ele quer comprar, mas ainda não recebeu a oferta final ou link.
-QUALIFICADO - O cliente entendeu como funciona, tirou as principais dúvidas e mostrou que tem o "problema" que o produto resolve. Perguntou sobre benefícios, garantias ou detalhes técnicos profundos.
-EM_ATENDIMENTO - Conversa normal fluindo. Você está explicando o básico, tirando dúvidas genéricas ou apenas se apresentando.
-NOVO_LEAD - É a primeira interação do cliente, ele acabou de chegar e ainda não houve uma troca profunda.
-AGUARDANDO_RESPOSTA - O cliente disse que "vai ver depois", "fala com a esposa", ou parou de responder após você fazer uma pergunta crucial.
-PERDIDO - O cliente recusou o produto explicitamente, disse que está caro ou pediu para não receber mais mensagens.
-
-IMPORTANTE: Seja criterioso. Não pule etapas. Se o cliente perguntou "quanto custa?", ele é INTERESSADO. Se ele perguntou "como funciona?", ele é QUALIFICADO.
+QUALIFICADO - O cliente entendeu como funciona, tirou as principais dúvidas e mostrou que tem o "problema" que o produto resolve. Perguntou sobre detalhes técnicos profundos.
+EM_ATENDIMENTO - Conversa normal fluindo. Você está explicando o básico ou tirando dúvidas.
+NOVO_LEAD - É a primeira interação do cliente.
+AGUARDANDO_RESPOSTA - O cliente parou de responder após você fazer uma pergunta crucial ou disse que "vai ver depois".
+PERDIDO - O cliente recusou o produto explicitamente ("não quero", "tá caro", "não tenho interesse"), pediu para não receber mais mensagens ou se tornou agressivo/rude.
 
 Responda APENAS com uma dessas palavras: NOVO_LEAD, EM_ATENDIMENTO, QUALIFICADO, INTERESSADO, PROPOSTA_ENVIADA, AGUARDANDO_RESPOSTA, FECHADO, PERDIDO`
                     },
                     {
                         role: 'user',
-                        content: `Classifique esta conversa:\n\n${conversationText}`
+                        content: `Classifique esta conversa considerando que a IA será BLOQUEADA permanentemente se você escolher FECHADO ou PERDIDO:\n\n${conversationText}`
                     }
                 ],
                 temperature: 0.1,
                 max_tokens: 20
             })
+
         })
 
         if (!response.ok) return null
@@ -871,7 +872,35 @@ REGRAS DE USO:
         else if (interaction_count >= 1) lead_temperature = 2
         // ──────────────────────────────────────────────────────────────────
 
-        const currentDate = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+        // ─── CONTEXTO TEMPORAL COMPLETO (Brasília) ─────────────────────────
+        // Gera informações de data/hora ricas para que a IA nunca alucine datas
+        const nowBrasilia = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }))
+        const diasSemana = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado']
+        const meses = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro']
+        const diaSemanaAtual = diasSemana[nowBrasilia.getDay()]
+        const diaNumero = nowBrasilia.getDate()
+        const mesNome = meses[nowBrasilia.getMonth()]
+        const anoAtual = nowBrasilia.getFullYear()
+        const horaFormatada = nowBrasilia.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', hour12: false })
+        
+        // Calcula os próximos 7 dias para que a IA saiba calcular datas relativas
+        const proximosDias: string[] = []
+        for (let i = 1; i <= 7; i++) {
+            const futuro = new Date(nowBrasilia)
+            futuro.setDate(nowBrasilia.getDate() + i)
+            const nomeDia = diasSemana[futuro.getDay()]
+            const diaF = futuro.getDate()
+            const mesF = meses[futuro.getMonth()]
+            proximosDias.push(`${nomeDia} = dia ${diaF} de ${mesF}`)
+        }
+
+        const currentDate = `HOJE É ${diaSemanaAtual.toUpperCase()}, ${diaNumero} de ${mesNome} de ${anoAtual} | Hora atual: ${horaFormatada} (Horário de Brasília)
+
+CALENDÁRIO DOS PRÓXIMOS 7 DIAS (use para calcular datas relativas como "amanhã", "próxima quarta", etc.):
+${proximosDias.join('\n')}
+
+⚠️ REGRA CRÍTICA DE DATAS: Quando o cliente pedir para agendar em um dia específico (ex: "próxima quarta"), calcule com base no CALENDÁRIO acima. NUNCA invente datas ou use meses errados. Se hoje é ${diaSemanaAtual}, use o calendário para encontrar o dia exato.`
+        // ────────────────────────────────────────────────────────────────────
         // Funnel context for IA — lets the AI know the current funnel state
         const curFunnelStatus = (contact as any).funnel_status || 'INATIVO'
         const curNodeId = (contact as any).funnel_current_node_id as string | null
@@ -902,7 +931,14 @@ ${audioCapabilityNote}`
 
         const systemMessage = {
             role: 'system' as const,
-            content: `[DATA E HORA: ${currentDate}]\n\n${aiConfig.system_prompt}\n\nTom: ${aiConfig.tone}.${logisticsHint || ''}${funnelContext}${knowledgeContext}${humanityRules}`
+            content: `══════════════════════════════════════
+📅 CONTEXTO DE TEMPO (OBRIGATÓRIO — LEIA ANTES DE RESPONDER):
+${currentDate}
+══════════════════════════════════════
+
+${aiConfig.system_prompt}
+
+Tom: ${aiConfig.tone}.${logisticsHint || ''}${funnelContext}${knowledgeContext}${humanityRules}`
         }
 
         const gptRes = await fetch('https://api.openai.com/v1/chat/completions', {

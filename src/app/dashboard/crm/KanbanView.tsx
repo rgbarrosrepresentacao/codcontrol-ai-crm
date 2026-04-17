@@ -140,25 +140,41 @@ export default function KanbanView({ leads, onRefresh }: KanbanViewProps) {
         }
     }
 
-    const moveLead = async (stageId: string) => {
-        if (!selectedLead) return
-        setIsMoving(true)
-        
+    const moveLeadToStage = async (lead: any, stageId: string) => {
         const newTag = STAGE_TO_TAG[stageId]
+        if (lead.ai_tag === newTag) return
+
         const { error } = await supabase.from('contacts').update({ 
             ai_tag: newTag,
             last_stage_change_at: new Date().toISOString()
-        }).eq('id', selectedLead.id)
+        }).eq('id', lead.id)
 
         if (!error) {
             toast.success(`Lead movido para ${STAGES.find(s => s.id === stageId)?.label}`)
-            setSelectedLead(null)
             onRefresh()
         } else {
             toast.error('Erro ao mover lead')
         }
-        setIsMoving(false)
     }
+
+    const onDragStart = (e: React.DragEvent, leadId: string) => {
+        e.dataTransfer.setData('leadId', leadId)
+        // Efeito visual de arrastar
+        const dragImage = document.getElementById(`card-${leadId}`)
+        if (dragImage) {
+            e.dataTransfer.setDragImage(dragImage, 10, 10)
+        }
+    }
+
+    const onDrop = (e: React.DragEvent, stageId: string) => {
+        e.preventDefault()
+        const leadId = e.dataTransfer.getData('leadId')
+        const lead = leads.find(l => l.id === leadId)
+        if (lead) {
+            moveLeadToStage(lead, stageId)
+        }
+    }
+
 
     return (
         <div className="flex gap-4 overflow-x-auto pb-6 h-[calc(100vh-280px)] min-h-[500px] scrollbar-thin scrollbar-thumb-primary/20">
@@ -176,7 +192,12 @@ export default function KanbanView({ leads, onRefresh }: KanbanViewProps) {
                     </div>
 
                     {/* Lista de Cards */}
-                    <div className="flex flex-col gap-3 overflow-y-auto pr-2">
+                    <div 
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => onDrop(e, stage.id)}
+                        className="flex flex-col gap-3 overflow-y-auto pr-2 min-h-[150px] rounded-xl transition-colors duration-200"
+                    >
+
                         {columns[stage.id]?.map((lead) => {
                             const urgency = getUrgencyStatus(lead.last_message_at)
                             const displayName = lead.name || lead.push_name || lead.phone || 'Contato'
@@ -184,14 +205,17 @@ export default function KanbanView({ leads, onRefresh }: KanbanViewProps) {
                             return (
                                 <div
                                     key={lead.id}
-                                    onClick={() => setSelectedLead(lead)}
+                                    id={`card-${lead.id}`}
+                                    draggable
+                                    onDragStart={(e) => onDragStart(e, lead.id)}
                                     className={cn(
-                                        "w-full bg-secondary/20 border border-border/50 rounded-xl p-4 text-left transition-all hover:scale-[1.02] hover:border-primary/30 group relative overflow-hidden cursor-pointer",
+                                        "w-full bg-secondary/20 border border-border/50 rounded-xl p-4 text-left transition-all hover:scale-[1.02] hover:border-primary/30 group relative overflow-hidden cursor-grab active:cursor-grabbing",
                                         urgency === 'critical' && "border-red-500/30 bg-red-500/5",
                                         urgency === 'warning' && "border-yellow-500/30 bg-yellow-500/5",
                                         urgency === 'normal' && "border-emerald-500/30 bg-emerald-500/5"
                                     )}
                                 >
+
                                     {/* Indicador Lateral de Urgência */}
                                     <div className={cn(
                                         "absolute left-0 top-0 bottom-0 w-1",
@@ -238,10 +262,21 @@ export default function KanbanView({ leads, onRefresh }: KanbanViewProps) {
                                             >
                                                 {lead.ai_tag === 'HUMANO' ? <Bot className="w-3 h-3" /> : <User className="w-3 h-3" />}
                                             </button>
+                                            <button 
+                                                onClick={(e) => {
+                                                    e.stopPropagation()
+                                                    setSelectedLead(lead)
+                                                }}
+                                                className="p-1.5 rounded-lg bg-secondary text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-secondary/50 transition-all"
+                                                title="Mover Manualmente"
+                                            >
+                                                <ChevronRight className="w-3 h-3" />
+                                            </button>
                                             <div className="flex items-center gap-1 text-[10px] whitespace-nowrap text-muted-foreground">
                                                 <Clock className="w-3 h-3" />
                                                 {getTimeDiff(lead.last_message_at)}
                                             </div>
+
                                         </div>
                                     </div>
 
@@ -277,19 +312,19 @@ export default function KanbanView({ leads, onRefresh }: KanbanViewProps) {
                                         </div>
                                     </div>
                                     
-                                    {/* Overlay de Resgate no Modo Caça (Esqueleto) */}
+                                    {/* Overlay de Resgate no Modo Caça */}
                                     {stage.id === 'AGUARDANDO' && (
                                         <div className="mt-3 pt-3 border-t border-border/50 flex justify-end">
-                                            <div 
+                                            <button 
                                                 onClick={(e) => {
                                                     e.stopPropagation()
-                                                    setSelectedLead(lead)
+                                                    router.push(`/dashboard/chat?contactId=${lead.id}`)
                                                 }}
                                                 className="text-[9px] font-bold text-primary flex items-center gap-1 hover:underline cursor-pointer"
                                             >
                                                 <AlertCircle className="w-3 h-3" />
                                                 Resgatar agora
-                                            </div>
+                                            </button>
                                         </div>
                                     )}
                                 </div>
@@ -326,22 +361,22 @@ export default function KanbanView({ leads, onRefresh }: KanbanViewProps) {
                         <div className="p-3 flex flex-col gap-1.5 max-h-[400px] overflow-y-auto scrollbar-thin scrollbar-thumb-primary/20">
                             <p className="text-[10px] text-muted-foreground px-2 mb-1 uppercase font-bold">Selecione a nova etapa:</p>
                             {STAGES.map((s) => (
-                                <button
-                                    key={s.id}
-                                    disabled={isMoving}
-                                    onClick={() => moveLead(s.id)}
-                                    className={cn(
-                                        "flex items-center justify-between p-3 rounded-xl border text-sm transition-all hover:scale-[1.01] hover:shadow-md",
-                                        mapTagToStage(selectedLead.ai_tag) === s.id 
-                                        ? "border-primary bg-primary/10 text-primary ring-1 ring-primary/20" 
-                                        : "border-border bg-background hover:border-primary/50 text-foreground"
-                                    )}
-                                >
-                                    <span className="font-medium">{s.label}</span>
-                                    {mapTagToStage(selectedLead.ai_tag) === s.id && (
-                                        <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-                                    )}
-                                </button>
+                                    <button
+                                        key={s.id}
+                                        onClick={() => moveLeadToStage(selectedLead, s.id)}
+                                        className={cn(
+                                            "flex items-center justify-between p-3 rounded-xl border text-sm transition-all hover:scale-[1.01] hover:shadow-md",
+                                            mapTagToStage(selectedLead.ai_tag) === s.id 
+                                            ? "border-primary bg-primary/10 text-primary ring-1 ring-primary/20" 
+                                            : "border-border bg-background hover:border-primary/50 text-foreground"
+                                        )}
+                                    >
+                                        <span className="font-medium">{s.label}</span>
+                                        {mapTagToStage(selectedLead.ai_tag) === s.id && (
+                                            <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                                        )}
+                                    </button>
+
                             ))}
                         </div>
 
