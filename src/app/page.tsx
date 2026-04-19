@@ -353,7 +353,7 @@ export default function HomePage() {
 
            {/* More Plans */}
            <div className="grid lg:grid-cols-3 gap-8 items-stretch pt-24 px-4">
-              <div className="glass-card p-12 rounded-[44px] flex flex-col border-white/5 opacity-50 hover:opacity-100 transition-all duration-500">
+              <div className="glass-card p-12 rounded-[44px] flex flex-col border-white/5 hover:border-primary/20 transition-all duration-500">
                  <h4 className="text-xl font-black mb-8">Intermediário</h4>
                  <div className="mb-12">
                     <div className="flex items-baseline gap-1">
@@ -363,7 +363,9 @@ export default function HomePage() {
                  </div>
                  <ul className="space-y-4 mb-12 flex-1 text-left list-none">
                     <li className="flex items-center gap-3 text-sm font-semibold text-muted-foreground"><CheckCircle2 className="w-4 h-4 text-primary" /> 1 Canal WhatsApp</li>
+                    <li className="flex items-center gap-3 text-sm font-semibold text-primary"><CheckCircle2 className="w-4 h-4 text-primary" /> IA Premium (GPT-4o)</li>
                     <li className="flex items-center gap-3 text-sm font-semibold text-muted-foreground"><CheckCircle2 className="w-4 h-4 text-primary" /> IA c/ Memória Contextual</li>
+                    <li className="flex items-center gap-3 text-sm font-semibold text-muted-foreground"><CheckCircle2 className="w-4 h-4 text-primary" /> Multi-Campanhas</li>
                     <li className="flex items-center gap-3 text-sm font-semibold text-muted-foreground"><CheckCircle2 className="w-4 h-4 text-primary" /> CRM Kanban Completo</li>
                  </ul>
                  <Link href="/register?plan=basico" className="w-full border-2 border-white/10 text-white font-black py-5 rounded-2xl hover:bg-white/5 transition-all text-center">COMEÇAR TESTE</Link>
@@ -388,7 +390,7 @@ export default function HomePage() {
                  <Link href="/register?plan=pro" className="w-full gradient-primary text-black font-black py-6 rounded-3xl text-2xl hover:scale-105 transition-all glow-primary shadow-2xl text-center leading-none">QUERO ESCALAR AGORA</Link>
               </div>
 
-              <div className="glass-card p-12 rounded-[44px] flex flex-col border-white/5 opacity-50 hover:opacity-100 transition-all duration-500">
+              <div className="glass-card p-12 rounded-[44px] flex flex-col border-white/5 hover:border-primary/20 transition-all duration-500">
                  <h4 className="text-xl font-black mb-8">Elite / Agência</h4>
                  <div className="mb-12">
                     <div className="flex items-baseline gap-1">
