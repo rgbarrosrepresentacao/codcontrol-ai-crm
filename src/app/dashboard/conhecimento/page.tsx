@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
 import {
     BookOpen, Plus, Trash2, Loader2, Upload, Image as ImageIcon,
-    Video, FileText, Info, X, CheckCircle2
+    Video, FileText, Info, X, CheckCircle2, Megaphone, Smartphone
 } from 'lucide-react'
 
 interface KnowledgeItem {
@@ -15,7 +15,16 @@ interface KnowledgeItem {
     media_type: 'image' | 'video' | 'document'
     created_at: string
     campaign_id?: string | null
+    instance_id?: string | null
     campaigns?: { name: string } | null
+    whatsapp_instances?: { display_name: string, instance_name: string } | null
+}
+
+interface Instance {
+    id: string
+    display_name: string | null
+    instance_name: string
+    status: string
 }
 
 const MEDIA_TYPE_CONFIG = {
@@ -37,31 +46,72 @@ export default function ConhecimentoPage() {
         media_url: '',
         media_type: 'image' as 'image' | 'video' | 'document',
         campaign_id: null as string | null,
+        instance_id: null as string | null,
     })
-    const [campaigns, setCampaigns] = useState<{id: string, name: string}[]>([])
+    const [campaigns, setCampaigns] = useState<{id: string, name: string, instance_id: string}[]>([])
+    const [instances, setInstances] = useState<Instance[]>([])
+    const [isPro, setIsPro] = useState(false)
 
     useEffect(() => { 
-        loadItems() 
-        loadCampaigns()
+        loadInitialData() 
     }, [])
 
-    async function loadCampaigns() {
-        const { data } = await supabase.from('campaigns').select('id, name').eq('is_active', true)
-        if (data) setCampaigns(data)
-    }
-
-    async function loadItems() {
+    async function loadInitialData() {
+        setLoading(true)
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) return
 
+        // Load profile/plan
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('*, plans(name)')
+            .eq('id', user.id)
+            .single()
+        
+        const isUserPro = 
+            profile?.is_admin === true || 
+            profile?.plans?.name?.toLowerCase().includes('pro') || 
+            profile?.plans?.name?.toLowerCase().includes('profissional') ||
+            profile?.plans?.name?.toLowerCase().includes('agência') ||
+            profile?.plans?.name?.toLowerCase().includes('agency');
+        
+        console.log('Knowledge Base Debug:', { 
+            profileId: profile?.id, 
+            planName: profile?.plans?.name, 
+            isAdmin: profile?.is_admin,
+            isPro: isUserPro 
+        });
+
+        setIsPro(isUserPro)
+
+        // Load instances
+        const { data: insts } = await supabase
+            .from('whatsapp_instances')
+            .select('*')
+            .eq('user_id', user.id)
+        
+        if (insts) setInstances(insts)
+
+        await Promise.all([
+            loadItems(user.id),
+            loadCampaigns()
+        ])
+        setLoading(false)
+    }
+
+    async function loadCampaigns() {
+        const { data } = await supabase.from('campaigns').select('id, name, instance_id').eq('is_active', true)
+        if (data) setCampaigns(data)
+    }
+
+    async function loadItems(userId: string) {
         const { data } = await supabase
             .from('ai_knowledge')
-            .select('*, campaigns(name)')
-            .eq('user_id', user.id)
+            .select('*, campaigns(name), whatsapp_instances(display_name, instance_name)')
+            .eq('user_id', userId)
             .order('created_at', { ascending: false })
             
         if (data) setItems(data)
-        setLoading(false)
     }
 
     async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -115,7 +165,7 @@ export default function ConhecimentoPage() {
 
             if (error) throw error
             setItems(prev => [data, ...prev])
-            setForm({ name: '', description: '', media_url: '', media_type: 'image', campaign_id: null })
+            setForm({ name: '', description: '', media_url: '', media_type: 'image', campaign_id: null, instance_id: null })
             setShowForm(false)
             toast.success('Mídia adicionada ao conhecimento da IA! 🧠')
         } catch (err: any) {
@@ -143,7 +193,7 @@ export default function ConhecimentoPage() {
     }
 
     function resetForm() {
-        setForm({ name: '', description: '', media_url: '', media_type: 'image', campaign_id: null })
+        setForm({ name: '', description: '', media_url: '', media_type: 'image', campaign_id: null, instance_id: null })
         setShowForm(false)
     }
 
@@ -247,6 +297,36 @@ export default function ConhecimentoPage() {
                                 />
                             </div>
 
+                            {/* Seleção de Instância (PRO) */}
+                            {isPro && (
+                                <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+                                    <label className="block text-sm font-medium text-foreground mb-1.5 flex items-center gap-1.5">
+                                        <Smartphone className="w-4 h-4 text-primary" />
+                                        Vincular a qual WhatsApp? <span className="text-red-400">*</span>
+                                    </label>
+                                    <select
+                                        value={form.instance_id || ''}
+                                        onChange={e => {
+                                            const instId = e.target.value || null
+                                            setForm(prev => ({ 
+                                                ...prev, 
+                                                instance_id: instId,
+                                                campaign_id: null // Reset campaign if instance changes
+                                            }))
+                                        }}
+                                        className="w-full bg-input border border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all text-sm"
+                                    >
+                                        <option value="">Selecione um WhatsApp...</option>
+                                        {instances.map(i => (
+                                            <option key={i.id} value={i.id}>{i.display_name || i.instance_name} ({i.status})</option>
+                                        ))}
+                                    </select>
+                                    <p className="text-[10px] text-muted-foreground mt-1">
+                                        Como você está no Plano Profissional, precisa dizer qual número deve usar esta mídia.
+                                    </p>
+                                </div>
+                            )}
+
                             {/* Seleção de Campanha/Produto */}
                             <div>
                                 <label className="block text-sm font-medium text-foreground mb-1.5">
@@ -258,9 +338,12 @@ export default function ConhecimentoPage() {
                                     className="w-full bg-input border border-border rounded-lg px-4 py-2.5 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all text-sm"
                                 >
                                     <option value="">Não (Conteúdo Geral)</option>
-                                    {campaigns.map(c => (
-                                        <option key={c.id} value={c.id}>{c.name}</option>
-                                    ))}
+                                    {campaigns
+                                        .filter(c => !form.instance_id || c.instance_id === form.instance_id)
+                                        .map(c => (
+                                            <option key={c.id} value={c.id}>{c.name}</option>
+                                        ))
+                                    }
                                 </select>
                                 <p className="text-[10px] text-muted-foreground mt-1">
                                     Se vinculado, a IA só enviará esta mídia para clientes interessados neste produto.
@@ -350,9 +433,19 @@ export default function ConhecimentoPage() {
                                         </div>
                                         <div>
                                             <h3 className="font-bold text-foreground text-sm line-clamp-1">{item.name}</h3>
-                                            <span className={`text-[10px] uppercase font-bold tracking-wider ${cfg.color}`}>
-                                                {cfg.label}
-                                            </span>
+                                            <div className="flex items-center gap-1.5 mt-0.5">
+                                                <span className={`text-[10px] uppercase font-bold tracking-wider ${cfg.color}`}>
+                                                    {cfg.label}
+                                                </span>
+                                                {item.whatsapp_instances && (
+                                                    <>
+                                                        <span className="text-[10px] text-muted-foreground">•</span>
+                                                        <span className="text-[10px] text-emerald-400 font-bold bg-emerald-500/10 px-1.5 rounded">
+                                                            {item.whatsapp_instances.display_name || item.whatsapp_instances.instance_name}
+                                                        </span>
+                                                    </>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
                                     <button
@@ -378,6 +471,16 @@ export default function ConhecimentoPage() {
                                 >
                                     🔗 Ver arquivo
                                 </a>
+
+                                {/* Footer info */}
+                                {item.campaigns && (
+                                    <div className="pt-2 border-t border-border/50 flex items-center gap-2">
+                                        <Megaphone className="w-3 h-3 text-primary" />
+                                        <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-tight">
+                                            Produto: <span className="text-foreground">{item.campaigns.name}</span>
+                                        </span>
+                                    </div>
+                                )}
                             </div>
                         )
                     })}

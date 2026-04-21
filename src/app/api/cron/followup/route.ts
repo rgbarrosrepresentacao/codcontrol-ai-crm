@@ -242,11 +242,12 @@ export async function GET(req: NextRequest) {
             }
             // ── FIM DO BLOCO ADMIN LAB ────────────────────────────────────────────
 
-            // ─── Knowledge Base: busca mídias cadastradas e filtra por campanha ──────
+            // ─── Knowledge Base: busca mídias cadastradas e filtra por instância/campanha ──────
             let knowledgeQuery = supabase
                 .from('ai_knowledge')
                 .select('id, name, description, media_url, media_type, campaign_id')
                 .eq('user_id', conversation.user_id)
+                .or(`instance_id.eq.${conversation.instance_id},instance_id.is.null`)
 
             // Se houver campanha ativa no contato, busca itens daquela campanha OU itens gerais (campaign_id is null)
             if (contact.active_campaign_id) {

@@ -791,11 +791,12 @@ async function processWebhookInBackground(body: any) {
             }
         }
 
-        // ─── Knowledge Base: busca mídias cadastradas e filtra por campanha ──────
+        // ─── Knowledge Base: busca mídias cadastradas e filtra por instância/campanha ──────
         let knowledgeQuery = supabase
             .from('ai_knowledge')
             .select('id, name, description, media_url, media_type, campaign_id')
             .eq('user_id', userId)
+            .or(`instance_id.eq.${instanceId},instance_id.is.null`)
 
         // Se houver campanha ativa, busca itens daquela campanha OU itens gerais (campaign_id is null)
         if (activeCampaignId) {
