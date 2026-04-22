@@ -50,6 +50,44 @@ async function extractOrderData(messages: any[], openaiKey: string): Promise<any
     }
 }
 
+// Envia alerta de venda fechada para o WhatsApp pessoal do dono da loja
+async function sendSaleNotification(
+    instanceName: string,
+    orderData: any,
+    phone: string,
+    notifPhone: string
+): Promise<void> {
+    try {
+        // Formata o número de destino para o padrão do Evolution API
+        const digits = notifPhone.replace(/\D/g, '')
+        const destination = digits.startsWith('55') ? `${digits}@s.whatsapp.net` : `55${digits}@s.whatsapp.net`
+
+        // Monta a mensagem de alerta formatada
+        const deliveryDate = orderData?.delivery_date ? `\n📅 *ENTREGA PARA:* ${orderData.delivery_date}` : ''
+        const lines = [
+            `🔔 *PEDIDO CONFIRMADO NO CHAT!*`,
+            ``,
+            deliveryDate,
+            `👤 *CLIENTE:* ${orderData?.name || 'Não informado'}`,
+            `📱 *TELEFONE:* ${phone}`,
+            `📦 *PEDIDO:* ${orderData?.quantity || 1}x ${orderData?.product_name || 'Não identificado'}`,
+            orderData?.address ? `📍 *ENDEREÇO:* ${orderData.address}${orderData?.number ? ', ' + orderData.number : ''}` : '',
+            orderData?.district ? `🏘️ *BAIRRO:* ${orderData.district}` : '',
+            orderData?.city ? `🏙️ *CIDADE:* ${orderData.city}${orderData?.state ? ' - ' + orderData.state : ''}` : '',
+            orderData?.zipcode ? `📮 *CEP:* ${orderData.zipcode}` : '',
+            orderData?.cpf ? `🪪 *CPF:* ${orderData.cpf}` : '',
+        ].filter(Boolean)
+
+        const message = lines.join('\n')
+        console.log(`[SaleNotification] 📤 Tentando enviar para ${destination}...`)
+        await evolutionApi.sendTextMessage(instanceName, destination, message)
+        console.log(`[SaleNotification] ✅ Alerta enviado com sucesso para ${notifPhone}`)
+    } catch (err: any) {
+        // Nunca deixar um erro de notificação quebrar o fluxo principal
+        console.error('[SaleNotification] ❌ Erro ao enviar alerta:', err.message)
+    }
+}
+
 // Função para limpar o texto que vai para o áudio, evitando que a IA leia links estranhos
 function cleanTextForAudio(text: string): string {
     // Regex para capturar URLs (http, https, www e domínios comuns como .com, .top, .bond, etc)
@@ -1061,10 +1099,50 @@ Tom: ${aiConfig.tone}.${logisticsHint || ''}${funnelContext}${knowledgeContext}$
             }
         }
 
-        // Se for fechamento, manda a mensagem de despedida e encerra o webhook aqui
+        // Se for fechamento, manda a mensagem de despedida E o alerta para o dono da loja
         if (newAiTag === 'FECHADO') {
-            const closeMsg = await generateClosingMessage(chatMessages, aiConfig, profile.openai_api_key)
-            await evolutionApi.sendTextMessage(instanceName, remoteJid, closeMsg)
+            console.log(`[Webhook] 🎯 Venda detectada como FECHADO para o contato ${phone}`)
+            
+            // 1. Mensagem de encerramento para o cliente
+            try {
+                const closeMsg = await generateClosingMessage(chatMessages, aiConfig, profile.openai_api_key)
+                await evolutionApi.sendTextMessage(instanceName, remoteJid, closeMsg)
+                console.log(`[Webhook] ✅ Mensagem de despedida enviada ao cliente`)
+            } catch (err) {
+                console.error('[Webhook] ❌ Erro ao enviar despedida:', err)
+            }
+
+            // 2. Alerta de venda para o dono da loja (se configurado e ativo)
+            try {
+                console.log(`[SaleNotification] 🔍 Buscando configurações de alerta para o userId: ${userId}`)
+                
+                // Busca o perfil com service role para garantir acesso
+                const { data: ownerProfile, error: profileErr } = await supabase
+                    .from('profiles')
+                    .select('notification_whatsapp, sale_notifications_enabled, full_name')
+                    .eq('id', userId)
+                    .maybeSingle()
+
+                if (ownerProfile?.sale_notifications_enabled && ownerProfile?.notification_whatsapp) {
+                    const finalOrderData = await extractOrderData(
+                        [...chatMessages, { role: 'assistant', content: botReply }],
+                        profile.openai_api_key
+                    )
+
+                    // Dispara o envio
+                    await sendSaleNotification(
+                        instanceName,
+                        finalOrderData,
+                        phone,
+                        ownerProfile.notification_whatsapp
+                    )
+                } else {
+                    console.log('[SaleNotification] ℹ️ Notificações desativadas ou número não cadastrado no perfil.')
+                }
+            } catch (notifErr: any) {
+                console.error('[SaleNotification] ❌ Erro no fluxo de notificação:', notifErr.message)
+            }
+
             return
         }
 
