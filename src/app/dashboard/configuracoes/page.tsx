@@ -148,32 +148,8 @@ export default function ConfiguracoesPage() {
                 </button>
             </div>
 
-            {/* Password */}
-            <div className="gradient-card border border-border rounded-xl p-6 space-y-4">
-                <h2 className="font-semibold text-foreground flex items-center gap-2"><Shield className="w-4 h-4 text-primary" />Segurança</h2>
-                <div>
-                    <label className="block text-sm font-medium text-foreground mb-1.5">Nova senha</label>
-                    <div className="relative">
-                        <input
-                            type={showPassword ? 'text' : 'password'}
-                            value={newPassword}
-                            onChange={(e) => setNewPassword(e.target.value)}
-                            placeholder="••••••••"
-                            className="w-full bg-input border border-border rounded-lg px-4 py-2.5 pr-10 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all text-sm"
-                        />
-                        <button onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-                            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                        </button>
-                    </div>
-                </div>
-                <button onClick={changePassword} disabled={changingPassword || !newPassword} className="border border-border text-foreground font-medium px-4 py-2.5 rounded-lg hover:bg-secondary transition-colors flex items-center gap-2 text-sm disabled:opacity-60">
-                    {changingPassword ? <Loader2 className="w-4 h-4 animate-spin" /> : <Shield className="w-4 h-4" />}
-                    Alterar senha
-                </button>
-            </div>
-
-            {/* ─── ALERTAS DE VENDAS ─────────────────────────────────────── */}
-            <div className="gradient-card border border-border rounded-xl p-6 space-y-5">
+            {/* Sale Notifications */}
+            <div className="gradient-card border border-border rounded-xl p-6 space-y-4 shadow-xl shadow-primary/5">
                 <div className="flex items-start justify-between">
                     <div>
                         <h2 className="font-semibold text-foreground flex items-center gap-2">
@@ -188,7 +164,7 @@ export default function ConfiguracoesPage() {
                     <button
                         onClick={() => setNotifEnabled(v => !v)}
                         className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${notifEnabled
-                            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 shadow-lg shadow-emerald-500/10'
                             : 'bg-secondary border-border text-muted-foreground'
                         }`}
                     >
@@ -220,7 +196,10 @@ export default function ConfiguracoesPage() {
 
                 {/* Preview da mensagem */}
                 <div className="bg-[#1a2a1a] border border-emerald-900/40 rounded-xl p-4 space-y-1">
-                    <p className="text-xs text-emerald-400 font-semibold mb-2">📱 Preview do alerta que você vai receber:</p>
+                    <p className="text-xs text-emerald-400 font-semibold mb-2 flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                        Preview do alerta que você vai receber:
+                    </p>
                     <div className="bg-[#0f1f0f] rounded-lg p-3 text-xs text-emerald-300 font-mono leading-relaxed whitespace-pre-wrap">{`🔔 *PEDIDO CONFIRMADO NO CHAT!*
 
 📅 *ENTREGA PARA:* 25/04 (Sábado)
@@ -240,7 +219,7 @@ export default function ConfiguracoesPage() {
                     onClick={saveNotifications}
                     disabled={savingNotif}
                     className={`w-full font-semibold px-4 py-2.5 rounded-lg transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-60 ${notifSaved
-                        ? 'bg-emerald-600 text-white'
+                        ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/20'
                         : 'gradient-primary text-black hover:opacity-90'
                     }`}
                 >
@@ -253,7 +232,30 @@ export default function ConfiguracoesPage() {
                 </button>
             </div>
 
-            {/* Integrations Info - só admin */}
+            {/* Password */}
+            <div className="gradient-card border border-border rounded-xl p-6 space-y-4">
+                <h2 className="font-semibold text-foreground flex items-center gap-2"><Shield className="w-4 h-4 text-primary" />Segurança</h2>
+                <div>
+                    <label className="block text-sm font-medium text-foreground mb-1.5">Nova senha</label>
+                    <div className="relative">
+                        <input
+                            type={showPassword ? 'text' : 'password'}
+                            value={newPassword}
+                            onChange={(e) => setNewPassword(e.target.value)}
+                            placeholder="••••••••"
+                            className="w-full bg-input border border-border rounded-lg px-4 py-2.5 pr-10 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all text-sm"
+                        />
+                        <button onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                    </div>
+                </div>
+                <button onClick={changePassword} disabled={changingPassword || !newPassword} className="border border-border text-foreground font-medium px-4 py-2.5 rounded-lg hover:bg-secondary transition-colors flex items-center gap-2 text-sm disabled:opacity-60">
+                    {changingPassword ? <Loader2 className="w-4 h-4 animate-spin" /> : <Shield className="w-4 h-4" />}
+                    Alterar senha
+                </button>
+            </div>
+
             {isAdmin && (
                 <div className="gradient-card border border-border rounded-xl p-6 space-y-3">
                     <h2 className="font-semibold text-foreground flex items-center gap-2"><Bell className="w-4 h-4 text-primary" />Integrações</h2>
