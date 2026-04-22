@@ -43,9 +43,14 @@ async function extractOrderData(messages: any[], openaiKey: string): Promise<any
             })
         })
         const data = await response.json()
-        return JSON.parse(data.choices[0].message.content)
-    } catch (err) {
-        console.error('Erro ao extrair dados do pedido:', err)
+        const content = data.choices?.[0]?.message?.content
+        if (!content) throw new Error('Resposta vazia da OpenAI')
+        
+        // Remove markdown se houver
+        const cleanContent = content.replace(/```json/g, '').replace(/```/g, '').trim()
+        return JSON.parse(cleanContent)
+    } catch (err: any) {
+        console.error('[extractOrderData] ❌ Erro ao extrair dados:', err.message)
         return null
     }
 }
@@ -59,8 +64,13 @@ async function sendSaleNotification(
 ): Promise<void> {
     try {
         // Formata o número de destino para o padrão do Evolution API
-        const digits = notifPhone.replace(/\D/g, '')
-        const destination = digits.startsWith('55') ? `${digits}@s.whatsapp.net` : `55${digits}@s.whatsapp.net`
+        // Regra robusta: se tiver 10 ou 11 dígitos, adiciona 55 (Brasil)
+        let digits = notifPhone.replace(/\D/g, '')
+        if (digits.length === 10 || digits.length === 11) {
+            digits = '55' + digits
+        }
+        const destination = `${digits}@s.whatsapp.net`
+        console.log(`[SaleNotification] 🔍 Phone raw: ${notifPhone} | Digits: ${digits} | Destination: ${destination}`)
 
         // Monta a mensagem de alerta formatada
         const deliveryDate = orderData?.delivery_date ? `\n📅 *ENTREGA PARA:* ${orderData.delivery_date}` : ''
@@ -1127,18 +1137,23 @@ Tom: ${aiConfig.tone}.${logisticsHint || ''}${funnelContext}${knowledgeContext}$
                 // Busca o perfil com service role para garantir acesso
                 const { data: ownerProfile, error: profileErr } = await supabase
                     .from('profiles')
-                    .select('notification_whatsapp, sale_notifications_enabled, full_name')
+                    .select('notification_whatsapp, sale_notifications_enabled, name')
                     .eq('id', userId)
                     .maybeSingle()
 
+                if (profileErr) {
+                    console.error('[SaleNotification] ❌ Erro ao buscar perfil do dono:', profileErr.message)
+                }
+
                 if (ownerProfile?.sale_notifications_enabled && ownerProfile?.notification_whatsapp) {
-                    console.log(`[SaleNotification] 📱 Iniciando extração e envio para: ${ownerProfile.notification_whatsapp}`)
+                    console.log(`[SaleNotification] 📱 Configurações encontradas! Nome: ${ownerProfile.name} | Destino: ${ownerProfile.notification_whatsapp}`)
                     const finalOrderData = await extractOrderData(
                         [...chatMessages, { role: 'assistant', content: botReply }],
                         profile.openai_api_key
                     )
 
                     // Dispara o envio
+                    console.log(`[SaleNotification] 🚀 Chamando sendSaleNotification...`)
                     await sendSaleNotification(
                         instanceName,
                         finalOrderData,
