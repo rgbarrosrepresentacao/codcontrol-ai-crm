@@ -1009,7 +1009,15 @@ Tom: ${aiConfig.tone}.${logisticsHint || ''}${funnelContext}${knowledgeContext}$
         }
 
         // Classificação e Atualização de Inteligência (PREMIUM)
-        const newAiTag = await classifyContact([...chatMessages, { role: 'assistant', content: botReply }], profile.openai_api_key)
+        let newAiTag = await classifyContact([...chatMessages, { role: 'assistant', content: botReply }], profile.openai_api_key)
+        const messageText = (data.data.message?.conversation || data.data.message?.extendedTextMessage?.text || '').toUpperCase();
+        
+        // Reforço: Se a palavra FECHADO estiver na mensagem, força a tag para garantir o alerta
+        if (messageText.includes('FECHADO') && newAiTag !== 'FECHADO') {
+            console.log(`[Webhook] ⚠️ Reforço manual: Palavra FECHADO detectada. Forçando tag para notificação.`);
+            newAiTag = 'FECHADO';
+        }
+        console.log(`[Webhook] 🤖 Tag final para esta interação: ${newAiTag}`);
         
         // Sintetiza a última ação da IA (versão curta para o Kanban)
         const ai_last_action = botReply.length > 50 ? botReply.slice(0, 47) + '...' : botReply
@@ -1124,6 +1132,7 @@ Tom: ${aiConfig.tone}.${logisticsHint || ''}${funnelContext}${knowledgeContext}$
                     .maybeSingle()
 
                 if (ownerProfile?.sale_notifications_enabled && ownerProfile?.notification_whatsapp) {
+                    console.log(`[SaleNotification] 📱 Iniciando extração e envio para: ${ownerProfile.notification_whatsapp}`)
                     const finalOrderData = await extractOrderData(
                         [...chatMessages, { role: 'assistant', content: botReply }],
                         profile.openai_api_key

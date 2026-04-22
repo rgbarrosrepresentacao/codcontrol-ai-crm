@@ -1,7 +1,7 @@
 // Simulador de Webhook de Venda Fechada
 // Execute: node scripts/simular_venda.mjs
 
-const WEBHOOK_URL = 'http://localhost:3000/api/whatsapp/webhook'
+const WEBHOOK_URL = 'https://codcontrolpro.bond/api/whatsapp/webhook'
 
 const payload = {
     "event": "messages.upsert",
@@ -14,7 +14,7 @@ const payload = {
         },
         "pushName": "Cliente de Teste",
         "message": {
-            "conversation": "Sim, pode fechar o pedido!"
+            "conversation": "FECHADO! Pode gerar o pedido para o Rafael Barros. O endereço é Rua das Palmeiras, 450, Bairro Centro, Cidade São Paulo - SP, CEP 01310-100. O produto é 1x Progressiva Liso Máximo."
         },
         "messageTimestamp": Math.floor(Date.now() / 1000)
     }
