@@ -1020,7 +1020,7 @@ Tom: ${aiConfig.tone}.${logisticsHint || ''}${funnelContext}${knowledgeContext}$
 
         // Classificação e Atualização de Inteligência (PREMIUM)
         let newAiTag = await classifyContact([...chatMessages, { role: 'assistant', content: botReply }], profile.openai_api_key)
-        const messageText = (webhookData.data.message?.conversation || webhookData.data.message?.extendedTextMessage?.text || '').toUpperCase();
+        const messageText = (body.data.message?.conversation || body.data.message?.extendedTextMessage?.text || '').toUpperCase();
         
         // Reforço: Se a palavra FECHADO estiver na mensagem, força a tag para garantir o alerta
         if (messageText.includes('FECHADO') && newAiTag !== 'FECHADO') {
