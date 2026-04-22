@@ -1132,39 +1132,37 @@ Tom: ${aiConfig.tone}.${logisticsHint || ''}${funnelContext}${knowledgeContext}$
 
             // 2. Alerta de venda para o dono da loja (se configurado e ativo)
             try {
-                console.log(`[SaleNotification] 🔍 Buscando configurações de alerta para o userId: ${userId}`)
-                
-                // Busca o perfil com service role para garantir acesso
-                const { data: ownerProfile, error: profileErr } = await supabase
+                console.log(`[SaleNotification] 🎯 Gatilho FECHADO detectado. Iniciando alerta...`)
+                const { data: ownerProfile, error: profileError } = await supabase
                     .from('profiles')
-                    .select('notification_whatsapp, sale_notifications_enabled, name')
+                    .select('*')
                     .eq('id', userId)
-                    .maybeSingle()
+                    .single()
 
-                if (profileErr) {
-                    console.error('[SaleNotification] ❌ Erro ao buscar perfil do dono:', profileErr.message)
-                }
-
-                if (ownerProfile?.sale_notifications_enabled && ownerProfile?.notification_whatsapp) {
-                    console.log(`[SaleNotification] 📱 Configurações encontradas! Nome: ${ownerProfile.name} | Destino: ${ownerProfile.notification_whatsapp}`)
+                if (profileError) {
+                    console.error('[SaleNotification] ❌ Erro ao buscar perfil do dono:', profileError)
+                } else if (ownerProfile?.sale_notifications_enabled && ownerProfile?.notification_whatsapp) {
+                    console.log(`[SaleNotification] 🔔 Notificações ativas para ${ownerProfile.notification_whatsapp}. Extraindo dados...`)
+                    
                     const finalOrderData = await extractOrderData(
                         [...chatMessages, { role: 'assistant', content: botReply }],
                         profile.openai_api_key
                     )
+                    
+                    console.log('[SaleNotification] 📦 Dados extraídos:', JSON.stringify(finalOrderData))
 
-                    // Dispara o envio
-                    console.log(`[SaleNotification] 🚀 Chamando sendSaleNotification...`)
+                    console.log('[SaleNotification] 🚀 Enviando mensagem de alerta...')
                     await sendSaleNotification(
                         instanceName,
                         finalOrderData,
-                        phone,
                         ownerProfile.notification_whatsapp
                     )
+                    console.log('[SaleNotification] ✅ Alerta enviado com sucesso!')
                 } else {
-                    console.log('[SaleNotification] ℹ️ Notificações desativadas ou número não cadastrado no perfil.')
+                    console.log('[SaleNotification] ℹ️ Notificações desativadas ou número não configurado para este usuário.')
                 }
-            } catch (notifErr: any) {
-                console.error('[SaleNotification] ❌ Erro no fluxo de notificação:', notifErr.message)
+            } catch (notifErr) {
+                console.error('[SaleNotification] ❌ Erro crítico no fluxo de notificação:', notifErr)
             }
 
             return
