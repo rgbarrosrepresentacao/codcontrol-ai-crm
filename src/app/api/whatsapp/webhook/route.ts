@@ -1155,6 +1155,7 @@ Tom: ${aiConfig.tone}.${logisticsHint || ''}${funnelContext}${knowledgeContext}$
                     await sendSaleNotification(
                         instanceName,
                         finalOrderData,
+                        phone,
                         ownerProfile.notification_whatsapp
                     )
                     console.log('[SaleNotification] ✅ Alerta enviado com sucesso!')

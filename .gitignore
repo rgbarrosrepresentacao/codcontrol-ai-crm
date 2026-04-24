@@ -39,3 +39,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# scratch and tools
+/scratch
+audit_kiwify_status.js
+check_schema.js
+full_audit.js
+tmp_audit_users.js
+tmp_fix_users.js
