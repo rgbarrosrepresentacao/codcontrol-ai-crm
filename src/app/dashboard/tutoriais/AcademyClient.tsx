@@ -16,52 +16,52 @@ const courses = [
         title: 'Dominando o CodControl',
         lessons: [
             {
-                id: 'rMaphAg8v-U',
-                title: 'Aula 1 — Boas vindas ao CodControl',
-                duration: '02:30',
-                description: 'Seja bem-vindo à revolução do atendimento com IA. Conheça a visão geral da plataforma.'
+                id: 'Hds8BGvwe8s',
+                title: 'Aula 1 – Dashboard Performance | Apresentação do Sistema',
+                duration: '05:20',
+                description: 'Uma visão geral completa do dashboard e como monitorar a performance do seu sistema.'
             },
             {
-                id: 'OzvQkT4MUzU',
-                title: 'Aula 2 — Explicando o sistema',
-                duration: '05:15',
-                description: 'Um tour completo por todas as funcionalidades do dashboard e ferramentas.'
-            },
-            {
-                id: 'c8E6dn-r_2I',
-                title: 'Aula 3 — Conectando seu WhatsApp',
-                duration: '04:20',
+                id: 'hxjOMTTxWEE',
+                title: 'Aula 2 – Como Conectar WhatsApp no CRM Passo a Passo',
+                duration: '04:15',
                 description: 'Aprenda o passo a passo seguro para conectar sua instância do WhatsApp via QR Code.'
             },
             {
-                id: 'Q9w6V78sicM',
-                title: 'Aula 4 — Como funciona a IA do atendimento',
-                duration: '08:45',
-                description: 'Entenda como treinar sua IA para responder seus clientes como se fosse você.'
+                id: 'ERQwE4KRW6U',
+                title: 'Aula 3 – Configurar a IA + Conectar API do GPT',
+                duration: '08:30',
+                description: 'Automatize seu atendimento no WhatsApp configurando a IA e conectando a API do GPT.'
             },
             {
-                id: 'gzs6y2WfrdQ',
-                title: 'Aula 5 — Organizando clientes com etiquetas',
+                id: 'R0CWtRnskGE',
+                title: 'Aula 4 – Como Vender Vários Produtos com 1 WhatsApp',
+                duration: '06:45',
+                description: 'Estratégias para gerenciar e vender múltiplos produtos usando apenas uma instância de WhatsApp.'
+            },
+            {
+                id: '3Jmf8yJ3E0Y',
+                title: 'Aula 5 – CRM Organizado + Chat ao Vivo',
+                duration: '07:20',
+                description: 'Como atender seus clientes de forma organizada sem perder nenhuma oportunidade de venda.'
+            },
+            {
+                id: 'vMosfzlZDZM',
+                title: 'Aula 6 – Funis de Venda no CRM',
+                duration: '09:15',
+                description: 'Aprenda a criar e gerenciar funis de venda automáticos diretamente no seu CRM.'
+            },
+            {
+                id: 'Z7V1tnwPwDk',
+                title: 'Aula 7 – Como Treinar a IA do CRM (Base de Conhecimento)',
+                duration: '11:40',
+                description: 'Alimente sua IA com informações específicas para que ela atenda seus clientes com precisão.'
+            },
+            {
+                id: 'lqA8FdfTPcs',
+                title: 'Aula 8 – Encerramento do Treinamento',
                 duration: '03:50',
-                description: 'Mantenha seu CRM limpo e organizado usando o sistema inteligente de etiquetas.'
-            },
-            {
-                id: 'Dujfe58SSq4',
-                title: 'Aula 6 — Como controlar conversas',
-                duration: '06:10',
-                description: 'Aprenda a intervir quando necessário e gerenciar o chat ao vivo.'
-            },
-            {
-                id: 'cWCt-tpGPLc',
-                title: 'Aula 7 — Funil de Vendas: Estratégia para Vender',
-                duration: '12:30',
-                description: 'Estratégias avançadas para triplicar suas vendas usando funis automáticos.'
-            },
-            {
-                id: 'M622ZsQhxgg',
-                title: 'Aula 8 — Suporte e Próximos Passos',
-                duration: '03:00',
-                description: 'Onde encontrar ajuda e como escalar sua operação com o CodControl.'
+                description: 'Considerações finais e os próximos passos para escalar seu negócio com o CodControl.'
             },
             {
                 id: 'R8CRcUliIHU',
