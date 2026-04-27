@@ -85,7 +85,7 @@ export function TrialWall({
             name: 'Básico',
             price: 'R$ 97/mês',
             description: '1 WhatsApp · IA completa · CRM · Suporte',
-            link: `https://pay.kiwify.com.br/T2S4A1W${afSuffix}`,
+            link: `https://pay.kiwify.com.br/3TM6aEC${afSuffix}`,
             icon: Zap,
         },
         {
