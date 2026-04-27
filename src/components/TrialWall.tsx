@@ -1,53 +1,40 @@
 'use client'
 import { usePathname, useRouter } from 'next/navigation'
-import { AlertTriangle, ArrowRight } from 'lucide-react'
+import { AlertTriangle, ArrowRight, Clock, Zap, Building2, Sparkles } from 'lucide-react'
+
+interface Plan {
+    name: string
+    price: string
+    description: string
+    link: string
+    icon: any
+    highlighted?: boolean
+}
 
 export function TrialWall({
     children,
     isAdmin,
     trialEndsAt,
     subscriptionStatus,
-    isActiveAccount
+    isActiveAccount,
+    affiliateId
 }: {
     children: React.ReactNode,
     isAdmin: boolean,
     trialEndsAt: string | null,
     subscriptionStatus?: string | null,
-    isActiveAccount?: boolean
+    isActiveAccount?: boolean,
+    affiliateId?: string | null
 }) {
     const pathname = usePathname()
     const router = useRouter()
-    let isBlocked = false
     const isPlanPage = pathname === '/dashboard/planos'
-    
+
     // Admin tem passe livre
-    if (isAdmin) {
-        return <>{children}</>
-    }
+    if (isAdmin) return <>{children}</>
 
-    // Se a conta estiver bloqueada manualmente pelo Admin (botão vermelho), bloqueia TUDO
+    // Conta bloqueada manualmente pelo Admin
     if (isActiveAccount === false) {
-        isBlocked = true
-    } else {
-        // Checagem de Assinatura Ativa
-        // Verificamos o status da assinatura (Stripe ou fallback da Kiwify)
-        const isPaid = subscriptionStatus === 'paid' || 
-                       subscriptionStatus === 'active' || 
-                       subscriptionStatus === 'aprovado' || 
-                       subscriptionStatus === 'approved';
-        
-        // Agora o acesso é binário: ou é Pagante (Kiwify/Ativo), ou está bloqueado
-        if (isPaid) {
-            isBlocked = false
-        } else {
-            isBlocked = true
-        }
-    }
-
-    // Página de planos sempre liberada para pagamento, a menos que seja um BAN manual
-    if (isPlanPage && isActiveAccount !== false) return <>{children}</>
-
-    if (isBlocked) {
         return (
             <div className="absolute inset-x-0 top-0 bottom-0 z-50 flex items-center justify-center bg-background/95 backdrop-blur shadow-2xl overflow-hidden p-6">
                 <div className="bg-secondary/40 border border-border p-8 rounded-2xl max-w-lg text-center gradient-card shadow-2xl relative">
@@ -57,31 +44,120 @@ export function TrialWall({
                             <AlertTriangle className="w-8 h-8 text-red-400" />
                         </div>
                     </div>
-                    <h2 className="text-2xl font-bold text-foreground mb-3">
-                        {isActiveAccount === false ? 'Acesso Interrompido' : 'Sua conta precisa de ativação!'}
-                    </h2>
+                    <h2 className="text-2xl font-bold text-foreground mb-3">Acesso Interrompido</h2>
                     <p className="text-muted-foreground mb-6">
-                        {isActiveAccount === false 
-                            ? 'O seu acesso foi temporariamente bloqueado pela administração da plataforma. Entre em contato com o suporte se precisar de ajuda.'
-                            : 'Para liberar o seu painel de CRM e colocar suas vendedoras de IA no ar, é necessário ativar a sua assinatura.'
-                        }
-                        <br /><br />
-                        {isActiveAccount !== false && 'Assim que o pagamento for confirmado pela Kiwify, seu acesso será liberado instantaneamente.'}
+                        O seu acesso foi temporariamente bloqueado pela administração da plataforma. Entre em contato com o suporte se precisar de ajuda.
                     </p>
-                    {isActiveAccount !== false && (
-                        <button
-                            onClick={() => {
-                                router.push('/dashboard/planos')
-                            }}
-                            className="w-full gradient-primary text-black font-bold py-3.5 rounded-xl hover:opacity-90 transition-all flex justify-center items-center gap-2"
-                        >
-                            Ver planos e ativar sistema <ArrowRight className="w-5 h-5" />
-                        </button>
-                    )}
                 </div>
             </div>
         )
     }
 
-    return <>{children}</>
+    // ─── LÓGICA DE ACESSO ─────────────────────────────────────────────────────
+    const status = subscriptionStatus || ''
+
+    // Usuários pagantes (Kiwify ou Stripe)
+    const isPaid = ['paid', 'active', 'aprovado', 'approved'].includes(status)
+    if (isPaid) return <>{children}</>
+
+    // Usuários em período de trial
+    if (status === 'trialing' && trialEndsAt) {
+        const expiresAt = new Date(trialEndsAt)
+        const now = new Date()
+
+        // Grace period de 48h após expiração
+        const graceEnd = new Date(expiresAt.getTime() + 48 * 60 * 60 * 1000)
+
+        if (now <= graceEnd) {
+            // Ainda dentro do trial (ou carência)
+            return <>{children}</>
+        }
+        // Trial expirado — cai no TrialWall
+    }
+
+    // Página de planos sempre liberada (exceto ban)
+    if (isPlanPage) return <>{children}</>
+
+    // ─── MONTAR LINKS COM AFILIADO ────────────────────────────────────────────
+    const afSuffix = affiliateId ? `?afid=${affiliateId}` : ''
+    const plans: Plan[] = [
+        {
+            name: 'Básico',
+            price: 'R$ 97/mês',
+            description: '1 WhatsApp · IA completa · CRM · Suporte',
+            link: `https://pay.kiwify.com.br/3TM6aEC${afSuffix}`,
+            icon: Zap,
+        },
+        {
+            name: 'Pro',
+            price: 'R$ 297/mês',
+            description: '3 WhatsApps · Tudo do Básico + Relatórios avançados',
+            link: `https://pay.kiwify.com.br/ZuTZPsY${afSuffix}`,
+            icon: Sparkles,
+            highlighted: true,
+        },
+        {
+            name: 'Agência',
+            price: 'R$ 1.000/ano',
+            description: '10 WhatsApps · Multi-tenant · White label · API',
+            link: `https://pay.kiwify.com.br/oq7PYnd${afSuffix}`,
+            icon: Building2,
+        },
+    ]
+
+    // ─── TELA DE TRIAL EXPIRADO ───────────────────────────────────────────────
+    return (
+        <div className="absolute inset-x-0 top-0 bottom-0 z-50 flex items-center justify-center bg-background/95 backdrop-blur shadow-2xl overflow-hidden p-6 overflow-y-auto">
+            <div className="w-full max-w-2xl text-center py-8">
+                <div className="flex justify-center mb-6">
+                    <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center border border-primary/20">
+                        <Clock className="w-8 h-8 text-primary" />
+                    </div>
+                </div>
+
+                <h2 className="text-3xl font-bold text-foreground mb-3">
+                    Seu período de teste encerrou
+                </h2>
+                <p className="text-muted-foreground mb-8 max-w-md mx-auto">
+                    Esperamos que tenha gostado do <strong>CodControl AI CRM</strong>! Escolha um plano abaixo para continuar vendendo com sua IA e não perder nenhum cliente.
+                </p>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    {plans.map((plan) => {
+                        const Icon = plan.icon
+                        return (
+                            <div
+                                key={plan.name}
+                                className={`relative gradient-card border rounded-2xl p-6 text-left transition-all hover:scale-105 ${plan.highlighted ? 'border-primary shadow-lg shadow-primary/20' : 'border-border'}`}
+                            >
+                                {plan.highlighted && (
+                                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary text-black text-xs font-bold px-3 py-1 rounded-full">
+                                        MAIS POPULAR
+                                    </div>
+                                )}
+                                <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center mb-4">
+                                    <Icon className="w-5 h-5 text-primary" />
+                                </div>
+                                <h3 className="text-lg font-bold text-foreground mb-1">{plan.name}</h3>
+                                <p className="text-2xl font-bold text-primary mb-2">{plan.price}</p>
+                                <p className="text-xs text-muted-foreground mb-4">{plan.description}</p>
+                                <a
+                                    href={plan.link}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-lg font-semibold text-sm transition-all ${plan.highlighted ? 'gradient-primary text-black hover:opacity-90' : 'bg-secondary text-foreground hover:bg-secondary/80 border border-border'}`}
+                                >
+                                    Assinar agora <ArrowRight className="w-4 h-4" />
+                                </a>
+                            </div>
+                        )
+                    })}
+                </div>
+
+                <p className="text-xs text-muted-foreground">
+                    Assim que o pagamento for confirmado, seu acesso será liberado automaticamente. ⚡
+                </p>
+            </div>
+        </div>
+    )
 }

@@ -67,17 +67,18 @@ export async function POST(req: NextRequest) {
             body.order?.amount || body.payment?.amount || 0
         const amountInReais = amount > 100 ? amount / 100 : amount
 
-        if (amountInReais >= 400) {
-            planSlug = 'pro'
-        }
-
         const planName = (
             subscription?.plan?.name || body.Subscription?.plan?.name ||
             body.product_name || body.ProductName || ''
         ).toLowerCase()
 
-        if (planName.includes('professional') || planName.includes('pro') || planName.includes('497')) {
+        // Detecção pelo nome do plano (novo modelo)
+        if (planName.includes('agência') || planName.includes('agencia') || planName.includes('agency') || amountInReais >= 800) {
+            planSlug = 'agencia'
+        } else if (planName.includes('pro') || planName.includes('professional') || amountInReais >= 200) {
             planSlug = 'pro'
+        } else {
+            planSlug = 'basico'
         }
 
         // ─── LÓGICA DE STATUS ──────────────────────────────────────────────────

@@ -33,6 +33,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
                     trialEndsAt={profile?.trial_ends_at}
                     subscriptionStatus={profile?.stripe_subscription_status}
                     isActiveAccount={profile?.is_active}
+                    affiliateId={(profile as any)?.affiliate_id}
                 >
                     {children}
                 </TrialWall>
