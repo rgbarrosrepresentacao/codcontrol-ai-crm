@@ -45,13 +45,13 @@ export default function HomePage() {
               <div className="w-px h-6 bg-border/40 mx-2" />
               <Link href="/login" className="text-sm font-semibold text-foreground hover:text-primary transition-colors">Entrar</Link>
               <Link href="/register?plan=basico" className="gradient-primary text-black font-black px-6 py-2.5 rounded-xl text-sm hover:scale-105 active:scale-95 transition-all glow-primary leading-none">
-                COMEÇAR POR R$10
+                TESTAR 7 DIAS GRÁTIS
               </Link>
             </div>
 
             <div className="md:hidden">
                 <Link href="/register?plan=basico" className="gradient-primary text-black font-black px-4 py-2 rounded-xl text-xs hover:scale-105 transition-all glow-primary leading-none">
-                    TESTAR AGORA
+                    TESTAR GRÁTIS
                 </Link>
             </div>
           </div>
@@ -77,7 +77,7 @@ export default function HomePage() {
 
           <div className="flex flex-col sm:flex-row gap-6 justify-center items-center animate-slide-up px-4">
             <Link href="/register?plan=basico" className="w-full sm:w-auto gradient-primary text-black font-black px-12 py-5 rounded-2xl text-xl hover:scale-105 active:scale-95 transition-all glow-primary flex items-center justify-center gap-3">
-              TESTAR POR R$10 AGORA
+              TESTAR 7 DIAS GRÁTIS AGORA
               <ArrowRight className="w-6 h-6" />
             </Link>
             <div className="flex items-center gap-2 text-muted-foreground">
@@ -329,7 +329,7 @@ export default function HomePage() {
               <div className="relative glass p-8 md:p-16 rounded-[44px] flex flex-col lg:flex-row items-center justify-between gap-12 border-white/20">
                  <div className="text-left space-y-4">
                     <div className="inline-block bg-primary text-black text-[10px] font-black px-4 py-1.5 rounded-full shadow-lg uppercase tracking-[0.2em] mb-4">Oferta de Experimentação</div>
-                    <h3 className="text-4xl md:text-6xl font-black italic tracking-tighter">30 DIAS POR R$10</h3>
+                    <h3 className="text-4xl md:text-6xl font-black italic tracking-tighter">7 DIAS GRÁTIS</h3>
                     <p className="text-muted-foreground text-lg opacity-70">Acesse tudo: IA, CRM, Métricas e Dashboards. Verifique o resultado você mesmo.</p>
                     <div className="pt-4 flex items-center gap-6 opacity-40">
                        <div className="flex items-center gap-2 text-xs font-black uppercase tracking-widest"><Lock className="w-4 h-4" /> Pagamento Seguro</div>
@@ -338,14 +338,13 @@ export default function HomePage() {
                  </div>
                  <div className="flex flex-col items-center lg:items-end gap-6 w-full lg:w-auto">
                     <div className="flex flex-col items-center lg:items-end">
-                       <span className="text-muted-foreground line-through text-xl opacity-40 mb-1">R$ 97,00</span>
-                       <div className="flex items-baseline gap-2">
+                        <div className="flex items-baseline gap-2">
                           <span className="text-2xl font-black opacity-50">R$</span>
-                          <span className="text-9xl font-black text-primary tracking-tighter leading-none">10</span>
+                          <span className="text-9xl font-black text-primary tracking-tighter leading-none">0</span>
                        </div>
                     </div>
                     <Link href="/register?plan=basico" className="w-full lg:w-auto gradient-primary text-black font-black px-16 py-7 rounded-3xl text-2xl hover:scale-110 active:scale-95 transition-all glow-primary shadow-[0_20px_40px_rgba(20,184,166,0.3)] text-center leading-none">
-                       COMEÇAR AGORA
+                       TESTAR GRÁTIS AGORA
                     </Link>
                  </div>
               </div>
@@ -377,7 +376,7 @@ export default function HomePage() {
                  <div className="mb-12">
                     <div className="flex items-baseline gap-2">
                        <span className="text-sm font-black opacity-40">R$</span>
-                       <span className="text-7xl font-black text-primary tracking-tighter leading-none">497</span>
+                       <span className="text-7xl font-black text-primary tracking-tighter leading-none">297</span>
                        <span className="text-sm font-black uppercase tracking-widest opacity-60 ml-1">/mês</span>
                     </div>
                  </div>
@@ -394,7 +393,7 @@ export default function HomePage() {
                  <h4 className="text-xl font-black mb-8">Elite / Agência</h4>
                  <div className="mb-12">
                     <div className="flex items-baseline gap-1">
-                      <span className="text-5xl font-black">R$ 997</span>
+                      <span className="text-5xl font-black">R$ 1.000</span>
                       <span className="text-muted-foreground font-black text-xs uppercase opacity-60">/mês</span>
                     </div>
                  </div>
@@ -420,7 +419,7 @@ export default function HomePage() {
                       QUERO MEU VENDEDOR AGORA!
                       <ArrowRight className="w-12 h-12" />
                   </Link>
-                  <p className="font-black text-xl opacity-60 italic tracking-tighter">Oferta Única: Comece hoje por R$10 e mude o rumo da sua empresa.</p>
+                  <p className="font-black text-xl opacity-60 italic tracking-tighter">Oferta Única: Comece seu teste de 7 dias grátis e mude o rumo da sua empresa.</p>
               </div>
           </div>
       </section>
