@@ -73,7 +73,7 @@ export default async function PlanosPage() {
                                 <div className="flex items-baseline gap-1">
                                     <span className="text-muted-foreground text-sm">R$</span>
                                     <span className="text-4xl font-bold text-foreground">{plan.price}</span>
-                                    <span className="text-muted-foreground text-sm">/mês</span>
+                                    <span className="text-muted-foreground text-sm">{plan.slug === 'agencia' ? '/ano' : '/mês'}</span>
                                 </div>
                             </div>
 

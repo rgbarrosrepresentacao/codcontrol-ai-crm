@@ -98,7 +98,7 @@ export function TrialWall({
         },
         {
             name: 'Agência',
-            price: 'R$ 1.000/mês',
+            price: 'R$ 1.000/ano',
             description: '10 WhatsApps · Multi-tenant · White label · API',
             link: `https://pay.kiwify.com.br/U5M2Q1L${afSuffix}`,
             icon: Building2,
