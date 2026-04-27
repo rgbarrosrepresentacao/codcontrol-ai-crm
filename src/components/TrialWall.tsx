@@ -92,7 +92,7 @@ export function TrialWall({
             name: 'Pro',
             price: 'R$ 297/mês',
             description: '3 WhatsApps · Tudo do Básico + Relatórios avançados',
-            link: `https://pay.kiwify.com.br/K8U3L9P${afSuffix}`,
+            link: `https://pay.kiwify.com.br/ZuTZPsY${afSuffix}`,
             icon: Sparkles,
             highlighted: true,
         },
@@ -100,7 +100,7 @@ export function TrialWall({
             name: 'Agência',
             price: 'R$ 1.000/ano',
             description: '10 WhatsApps · Multi-tenant · White label · API',
-            link: `https://pay.kiwify.com.br/U5M2Q1L${afSuffix}`,
+            link: `https://pay.kiwify.com.br/oq7PYnd${afSuffix}`,
             icon: Building2,
         },
     ]
