@@ -14,37 +14,55 @@ export async function POST(req: NextRequest) {
         const body = JSON.parse(rawBody)
         console.log('[KIWIFY_WEBHOOK] Full Body received:', JSON.stringify(body, null, 2))
 
-        // ─── LOGGING (Security & Audit) ────────────────────────────────────────
-        // Tentamos salvar o log mesmo se o resto falhar
+        // ─── EXTRAÇÃO DE DADOS BÁSICOS ────────────────────────────────────────
         const email_raw = 
             body.Customer?.email || body.customer?.email ||
             body.email || body.Subscription?.customer?.email || ''
         const email = email_raw.toLowerCase().trim()
         const eventType = (body.webhook_event_type || body.status || 'unknown').toLowerCase()
 
+        // ─── VALIDAÇÃO DE ASSINATURA (MODO MONITOR) ───────────────────────────
+        // MODO MONITOR: valida e loga, mas NÃO bloqueia ainda.
+        // Após confirmar que todos os webhooks legítimos da Kiwify
+        // têm valid_signature=true nos logs, ativamos o bloqueio (return 401).
+        const signature = req.nextUrl.searchParams.get('signature')
+        let validSignature = false
+
+        if (process.env.KIWIFY_WEBHOOK_SECRET) {
+            if (!signature) {
+                console.error('[KIWIFY_WEBHOOK] ❌ Request sem assinatura recebida — monitorando.')
+                // MODO MONITOR: não bloqueia, apenas registra
+            } else {
+                const expectedSignature = crypto
+                    .createHmac('sha1', process.env.KIWIFY_WEBHOOK_SECRET)
+                    .update(rawBody)
+                    .digest('hex')
+                validSignature = signature === expectedSignature
+
+                if (!validSignature) {
+                    console.error('[KIWIFY_WEBHOOK] ❌ Assinatura INVÁLIDA recebida — monitorando.')
+                    // MODO MONITOR: não bloqueia, apenas registra
+                } else {
+                    console.log('[KIWIFY_WEBHOOK] ✅ Assinatura verificada e válida.')
+                }
+            }
+        }
+        // ─────────────────────────────────────────────────────────────────────
+
+        // ─── LOGGING (Security & Audit) ──────────────────────────────────────
+        // Salvar log com resultado da validação de assinatura
         try {
             await supabase.from('webhook_logs').insert({
                 provider: 'kiwify',
                 payload: body,
                 user_email: email,
                 event_type: eventType,
-                status: body.order_status || body.OrderStatus || body.status || 'unknown'
+                status: body.order_status || body.OrderStatus || body.status || 'unknown',
+                valid_signature: validSignature
             })
         } catch (logErr) {
             console.error('[KIWIFY_WEBHOOK] Failed to save log:', logErr)
-            // Não falhamos a requisição se apenas o log falhar, mas avisamos
-        }
-
-        // Validação de assinatura (opcional)
-        const signature = req.nextUrl.searchParams.get('signature')
-        if (process.env.KIWIFY_WEBHOOK_SECRET && signature) {
-            const expectedSignature = crypto
-                .createHmac('sha1', process.env.KIWIFY_WEBHOOK_SECRET)
-                .update(rawBody)
-                .digest('hex')
-            if (signature !== expectedSignature) {
-                console.warn('[KIWIFY_WEBHOOK] Signature mismatch. Continuing for debug...')
-            }
+            // Não falhamos a requisição se apenas o log falhar
         }
 
         // ─── NORMALIZAÇÃO DO PAYLOAD ───────────────────────────────────────────

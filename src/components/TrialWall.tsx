@@ -56,23 +56,37 @@ export function TrialWall({
     // ─── LÓGICA DE ACESSO ─────────────────────────────────────────────────────
     const status = subscriptionStatus || ''
 
-    // Usuários pagantes (Kiwify ou Stripe)
-    const isPaid = ['paid', 'active', 'aprovado', 'approved'].includes(status)
-    if (isPaid) return <>{children}</>
+    // Usuários pagantes (Kiwify ou Stripe): active, paid, aprovado, approved
+    const isPaidStatus = ['paid', 'active', 'aprovado', 'approved'].includes(status)
 
-    // Usuários em período de trial
-    if (status === 'trialing' && trialEndsAt) {
+    if (isPaidStatus) {
+        // Usuário legado SEM data de vencimento → acesso total sempre (compatibilidade)
+        if (!trialEndsAt) return <>{children}</>
+
+        // Usuário pagante COM data de vencimento → verifica prazo + 48h de carência
+        // Lógica: prazo pago (~30 dias) + 48h carência para cobranças com atraso
         const expiresAt = new Date(trialEndsAt)
-        const now = new Date()
-
-        // Grace period de 48h após expiração
-        const graceEnd = new Date(expiresAt.getTime() + 48 * 60 * 60 * 1000)
+        const graceEnd  = new Date(expiresAt.getTime() + 48 * 60 * 60 * 1000) // +48h
+        const now       = new Date()
 
         if (now <= graceEnd) {
-            // Ainda dentro do trial (ou carência)
+            // Dentro do prazo ou dentro da carência de 48h → libera
             return <>{children}</>
         }
-        // Trial expirado — cai no TrialWall
+        // Fora do prazo E fora da carência → cai no TrialWall abaixo
+    }
+
+    // Usuários em período de trial (lógica sem mudança — já estava correta)
+    if (status === 'trialing' && trialEndsAt) {
+        const expiresAt = new Date(trialEndsAt)
+        const graceEnd  = new Date(expiresAt.getTime() + 48 * 60 * 60 * 1000) // +48h
+        const now       = new Date()
+
+        if (now <= graceEnd) {
+            // Ainda dentro do trial (ou carência de 48h)
+            return <>{children}</>
+        }
+        // Trial expirado e fora da carência — cai no TrialWall
     }
 
     // Página de planos sempre liberada (exceto ban)
