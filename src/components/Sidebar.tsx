@@ -63,7 +63,6 @@ export function Sidebar({ isAdmin, userName, userEmail, planName, trialEndsAt, s
                     <div>
                         <div className="flex items-center gap-1.5">
                             <div className="font-bold text-sm text-foreground leading-tight">CodControl</div>
-                            <span className="text-[10px] bg-primary/20 text-primary font-black px-1 rounded-md border border-primary/30 uppercase tracking-tighter">BETA</span>
                         </div>
                         <div className="text-xs text-primary leading-tight font-medium">AI CRM</div>
                     </div>
