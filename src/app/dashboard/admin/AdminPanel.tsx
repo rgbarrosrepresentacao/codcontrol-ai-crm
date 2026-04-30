@@ -104,11 +104,19 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
                u.stripe_subscription_status === 'approved'
     }
 
+    // NOVA LÓGICA: Verifica se o pagante está com o acesso cortado pelo vencimento + 48h
+    const isBlockedByExpiration = (u: any) => {
+        if (u.is_admin || !isPaid(u) || !u.trial_ends_at) return false
+        const graceEnd = new Date(new Date(u.trial_ends_at).getTime() + 48 * 60 * 60 * 1000)
+        return new Date() > graceEnd
+    }
+
     // Não Pagantes: Não pagaram E não são admins
     const isNoPayment = (u: any) => !isPaid(u) && !u.is_admin
 
     const paidCount = localUsers.filter(isPaid).length
     const noPaymentCount = localUsers.filter(isNoPayment).length
+    const blockedByExpCount = localUsers.filter(isBlockedByExpiration).length
 
     const filtered = localUsers
         .filter(u => {
@@ -230,6 +238,11 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
                                 {isNoPayment(user) && (
                                     <span className="px-1.5 py-0.5 bg-orange-500/15 border border-orange-500/30 text-orange-400 text-[9px] rounded font-black uppercase tracking-wide">Lead</span>
                                 )}
+                                {isBlockedByExpiration(user) && (
+                                    <span className="px-1.5 py-0.5 bg-red-500/15 border border-red-500/30 text-red-500 text-[9px] rounded font-black uppercase tracking-wide flex items-center gap-1 animate-pulse">
+                                        <Ban className="w-2 h-2" /> Expivado +48h
+                                    </span>
+                                )}
                             </div>
                             <div className="text-[11px] text-muted-foreground font-mono">{user.email}</div>
                         </div>
@@ -252,8 +265,13 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
                         )}
                         
                         {!user.is_admin && user.stripe_subscription_status && (
-                            <span className="text-[10px] text-muted-foreground opacity-70 italic truncate">
-                                Status: {user.stripe_subscription_status}
+                            <span className={`text-[10px] font-medium opacity-70 italic truncate ${isBlockedByExpiration(user) ? 'text-red-500 font-bold' : 'text-muted-foreground'}`}>
+                                Status: {user.stripe_subscription_status} {isBlockedByExpiration(user) && ' (Vencido)'}
+                            </span>
+                        )}
+                        {user.trial_ends_at && (
+                            <span className="text-[9px] text-muted-foreground/60">
+                                Vencimento: {formatDate(user.trial_ends_at)}
                             </span>
                         )}
                     </div>
@@ -358,20 +376,20 @@ export default function AdminPanel({ users, instances, plans, initialAnnouncemen
                             </div>
                         </div>
 
-                        <div className="gradient-card border border-border rounded-2xl p-6 shadow-xl shadow-orange-500/5 relative overflow-hidden group">
-                            <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/5 rounded-full -mr-16 -mt-16 blur-3xl group-hover:bg-orange-500/10 transition-colors" />
+                        <div className="gradient-card border border-border rounded-2xl p-6 shadow-xl shadow-red-500/5 relative overflow-hidden group">
+                            <div className="absolute top-0 right-0 w-32 h-32 bg-red-500/5 rounded-full -mr-16 -mt-16 blur-3xl group-hover:bg-red-500/10 transition-colors" />
                             <div className="flex items-center gap-4 mb-4">
-                                <div className="w-12 h-12 rounded-2xl bg-orange-500/10 flex items-center justify-center border border-orange-500/20">
-                                    <Users className="w-6 h-6 text-orange-400" />
+                                <div className="w-12 h-12 rounded-2xl bg-red-500/10 flex items-center justify-center border border-red-500/20">
+                                    <Ban className="w-6 h-6 text-red-400" />
                                 </div>
                                 <div className="flex-1">
-                                    <h3 className="text-sm font-bold text-foreground">Não Pagantes</h3>
-                                    <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-widest">Leads / Cadastro</p>
+                                    <h3 className="text-sm font-bold text-foreground">Bloqueados (Vencidos)</h3>
+                                    <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-widest">Acesso Cortado (+48h)</p>
                                 </div>
-                                <div className="text-4xl font-black text-orange-400 drop-shadow-sm">{noPaymentCount}</div>
+                                <div className="text-4xl font-black text-red-400 drop-shadow-sm">{blockedByExpCount}</div>
                             </div>
                             <div className="h-1.5 bg-secondary/50 rounded-full overflow-hidden">
-                                <div className="h-full bg-orange-500 rounded-full transition-all duration-1000" style={{ width: `${(noPaymentCount / (localUsers.length || 1) * 100).toFixed(0)}%` }} />
+                                <div className="h-full bg-red-500 rounded-full transition-all duration-1000" style={{ width: `${(blockedByExpCount / (paidCount || 1) * 100).toFixed(0)}%` }} />
                             </div>
                         </div>
                     </div>
