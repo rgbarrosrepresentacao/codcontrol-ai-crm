@@ -6,20 +6,29 @@ export function CheckoutButton({
     priceId,
     kiwifyUrl,
     isPopular,
-    label
+    label,
+    affiliateId
 }: {
     priceId: string | null;
     kiwifyUrl?: string | null;
     isPopular: boolean;
     label: string;
+    affiliateId?: string | null;
 }) {
     const [loading, setLoading] = useState(false)
 
     const handleCheckout = async () => {
-        // Redireciona direto para o checkout da Kiwify
         if (kiwifyUrl) {
             setLoading(true)
-            window.location.href = kiwifyUrl
+            
+            // Injeta o affiliate_id se existir
+            let finalUrl = kiwifyUrl
+            if (affiliateId) {
+                const separator = finalUrl.includes('?') ? '&' : '?'
+                finalUrl = `${finalUrl}${separator}afid=${affiliateId}`
+            }
+
+            window.location.href = finalUrl
             return
         }
 

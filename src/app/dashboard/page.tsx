@@ -22,82 +22,58 @@ export default async function DashboardPage() {
     const today = startOfDay(new Date())
     const yesterday = startOfDay(subDays(new Date(), 1))
 
-    const [
-        profileRes,
-        instancesRes,
-        conversationsRes,
-        todayConversations,
-        yesterdayConversations,
-        todayMessagesRec,
-        yesterdayMessagesRec,
-        todayMessagesSent,
-        yesterdayMessagesSent,
-        todayContacts,
-        yesterdayContacts,
-        todayClosedConvs,
-        hourlyMessagesToday,
-        hourlyConversationsToday
-    ] = await Promise.all([
-        supabase.from('profiles').select('*, plans(name, max_whatsapp, max_messages)').eq('id', user.id).single(),
-        supabase.from('whatsapp_instances').select('*').eq('user_id', user.id),
-        supabase.from('conversations').select('*', { count: 'exact' }).eq('user_id', user.id).eq('status', 'open'),
-        supabase.from('conversations').select('id', { count: 'exact' }).eq('user_id', user.id).gte('created_at', today.toISOString()),
-        supabase.from('conversations').select('id', { count: 'exact' }).eq('user_id', user.id).gte('created_at', yesterday.toISOString()).lt('created_at', today.toISOString()),
-        supabase.from('messages').select('id', { count: 'exact' }).eq('user_id', user.id).eq('from_me', false).gte('created_at', today.toISOString()),
-        supabase.from('messages').select('id', { count: 'exact' }).eq('user_id', user.id).eq('from_me', false).gte('created_at', yesterday.toISOString()).lt('created_at', today.toISOString()),
-        supabase.from('messages').select('id', { count: 'exact' }).eq('user_id', user.id).eq('from_me', true).gte('created_at', today.toISOString()),
-        supabase.from('messages').select('id', { count: 'exact' }).eq('user_id', user.id).eq('from_me', true).gte('created_at', yesterday.toISOString()).lt('created_at', today.toISOString()),
-        supabase.from('contacts').select('id', { count: 'exact' }).eq('user_id', user.id).gte('created_at', today.toISOString()),
-        supabase.from('contacts').select('id', { count: 'exact' }).eq('user_id', user.id).gte('created_at', yesterday.toISOString()).lt('created_at', today.toISOString()),
-        supabase.from('conversations').select('id', { count: 'exact' }).eq('user_id', user.id).eq('status', 'closed').gte('updated_at', today.toISOString()),
-        supabase.from('messages').select('created_at').eq('user_id', user.id).gte('created_at', today.toISOString()),
-        supabase.from('conversations').select('created_at').eq('user_id', user.id).gte('created_at', today.toISOString()),
-    ])
+    // ─── CHAMADA DE ALTA PERFORMANCE (CONSOLIDADA) ──────────────────────────
+    const { data: dash, error: dashError } = await supabase.rpc('get_dashboard_stats', { 
+        p_user_id: user.id 
+    })
+
+    if (dashError) {
+        console.error('[DASHBOARD] RPC Error:', dashError)
+        // Fallback ou tratamento de erro se necessário
+    }
 
     // ─── Derived values ─────────────────────────────────────────────────────
-    const profile = profileRes.data as any
+    const profile = dash?.profile || {}
+    const stats = dash?.stats || {}
+    const instances = dash?.instances || []
+    
     const isAdmin = profile?.is_admin === true
-    const instances = instancesRes.data || []
-    const openConversations = conversationsRes.count || 0
+    const openConversations = stats.open_conversations || 0
 
     const calcGrowth = (cur: number, prev: number) => {
         if (!prev) return cur > 0 ? 100 : 0
         return Math.round(((cur - prev) / prev) * 100)
     }
 
-    const tConvs = todayConversations.count || 0
-    const convGrowth = calcGrowth(tConvs, yesterdayConversations.count || 0)
-    const tMsgRec = todayMessagesRec.count || 0
-    const yMsgRec = yesterdayMessagesRec.count || 0
+    const tConvs = stats.today_conversations || 0
+    const convGrowth = calcGrowth(tConvs, stats.yesterday_conversations || 0)
+    const tMsgRec = stats.today_messages_rec || 0
+    const yMsgRec = stats.yesterday_messages_rec || 0
     const msgRecGrowth = calcGrowth(tMsgRec, yMsgRec)
-    const tMsgSent = todayMessagesSent.count || 0
-    const yMsgSent = yesterdayMessagesSent.count || 0
+    const tMsgSent = stats.today_messages_sent || 0
+    const yMsgSent = stats.yesterday_messages_sent || 0
     const msgSentGrowth = calcGrowth(tMsgSent, yMsgSent)
-    const tContacts = todayContacts.count || 0
-    const contactGrowth = calcGrowth(tContacts, yesterdayContacts.count || 0)
-    const tClosed = todayClosedConvs.count || 0
+    const tContacts = stats.today_contacts || 0
+    const contactGrowth = calcGrowth(tContacts, stats.yesterday_contacts || 0)
+    const tClosed = stats.today_closed_convs || 0
 
-    // ─── Chart data ──────────────────────────────────────────────────────────
-    const processHourly = (data: any[]) => {
-        const hours = Array.from({ length: 24 }, (_, i) => ({ hour: `${i}:00`, count: 0 }))
-        data?.forEach((item: any) => { hours[new Date(item.created_at).getHours()].count++ })
-        return hours
-    }
-    const messageVolumeData = processHourly(hourlyMessagesToday.data || [])
-    const conversationVolumeData = processHourly(hourlyConversationsToday.data || [])
+    // ─── Chart data (Vem pronto do Banco) ───────────────────────────────────
+    const messageVolumeData = dash?.hourly_messages || []
+    const conversationVolumeData = dash?.hourly_conversations || []
+    
     const compData = [
         { name: 'Hoje', received: tMsgRec, sent: tMsgSent },
         { name: 'Ontem', received: yMsgRec, sent: yMsgSent },
     ]
 
     // Peak time
-    const maxHour = messageVolumeData.reduce((p, c) => p.count > c.count ? p : c)
+    const maxHour = messageVolumeData.reduce((p: any, c: any) => (p.count || 0) > (c.count || 0) ? p : c, { hour: '00:00', count: 0 })
     const peakTime = maxHour.count > 0 ? maxHour.hour : 'S/ dados'
 
     // ─── Plan / status ───────────────────────────────────────────────────────
-    const planName = profile?.plans?.name || 'Básico'
-    const trialEndsAt = profile?.trial_ends_at
-    const subscriptionStatus = profile?.stripe_subscription_status
+    const planName = profile.plan_name || 'Básico'
+    const trialEndsAt = profile.trial_ends_at
+    const subscriptionStatus = profile.stripe_subscription_status
     const mockART = '1m 45s'
 
     // ─── Performance score ───────────────────────────────────────────────────

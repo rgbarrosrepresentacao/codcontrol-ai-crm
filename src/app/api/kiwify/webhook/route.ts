@@ -96,6 +96,25 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ received: true, info: 'No email found' })
         }
 
+        // ─── IDEMPOTÊNCIA (TRAVA DE DUPLICIDADE) ─────────────────────────────
+        const orderId = body.order_id || body.OrderID || ''
+        if (orderId) {
+            const { data: existingLog } = await supabase
+                .from('webhook_logs')
+                .select('id')
+                .eq('provider', 'kiwify')
+                .eq('status', order_status)
+                .filter('payload->>order_id', 'eq', orderId)
+                .limit(1)
+                .maybeSingle()
+
+            if (existingLog) {
+                console.log(`[KIWIFY_WEBHOOK] ⏩ Evento já processado anteriormente (ID: ${orderId}, Status: ${order_status}). Ignorando re-processamento.`)
+                return NextResponse.json({ received: true, info: 'Already processed' })
+            }
+        }
+        // ─────────────────────────────────────────────────────────────────────
+
         // ─── DETECÇÃO DO PLANO ─────────────────────────────────────────────────
         let planSlug = 'basico'
         const amount = 

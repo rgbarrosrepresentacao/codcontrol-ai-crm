@@ -93,20 +93,25 @@ export function TrialWall({
     if (isPlanPage) return <>{children}</>
 
     // ─── MONTAR LINKS COM AFILIADO ────────────────────────────────────────────
-    const afSuffix = affiliateId ? `?afid=${affiliateId}` : ''
+    const appendAffiliate = (url: string) => {
+        if (!affiliateId) return url
+        const separator = url.includes('?') ? '&' : '?'
+        return `${url}${separator}afid=${affiliateId}`
+    }
+
     const plans: Plan[] = [
         {
             name: 'Básico',
             price: 'R$ 97/mês',
             description: '1 WhatsApp · IA completa · CRM · Suporte',
-            link: `https://pay.kiwify.com.br/3TM6aEC${afSuffix}`,
+            link: appendAffiliate('https://pay.kiwify.com.br/3TM6aEC'),
             icon: Zap,
         },
         {
             name: 'Pro',
             price: 'R$ 297/mês',
             description: '3 WhatsApps · Tudo do Básico + Relatórios avançados',
-            link: `https://pay.kiwify.com.br/ZuTZPsY${afSuffix}`,
+            link: appendAffiliate('https://pay.kiwify.com.br/ZuTZPsY'),
             icon: Sparkles,
             highlighted: true,
         },
@@ -114,7 +119,7 @@ export function TrialWall({
             name: 'Agência',
             price: 'R$ 1.000/ano',
             description: '10 WhatsApps · Multi-tenant · White label · API',
-            link: `https://pay.kiwify.com.br/oq7PYnd${afSuffix}`,
+            link: appendAffiliate('https://pay.kiwify.com.br/oq7PYnd'),
             icon: Building2,
         },
     ]

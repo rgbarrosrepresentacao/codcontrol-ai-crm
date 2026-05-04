@@ -104,6 +104,7 @@ export default async function PlanosPage() {
                                         priceId={plan.stripe_price_id}
                                         kiwifyUrl={plan.kiwify_checkout_url}
                                         isPopular={isPopular}
+                                        affiliateId={profile?.affiliate_id}
                                         label={(!isActive && isCurrent) ? 'Assinar Agora' : plan.slug === 'agencia' ? 'Entrar em contato' : plan.price > (plans.find((p: any) => p.slug === currentPlanSlug)?.price || 0) ? 'Fazer upgrade' : 'Fazer downgrade'}
                                     />
                                 </div>

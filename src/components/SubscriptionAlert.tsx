@@ -17,7 +17,11 @@ function getRenewalLink(planName: string, affiliateId?: string | null): string {
     } else if (lower.includes('pro')) {
         link = RENEWAL_LINKS.pro
     }
-    return affiliateId ? `${link}?afid=${affiliateId}` : link
+
+    if (!affiliateId) return link
+
+    const separator = link.includes('?') ? '&' : '?'
+    return `${link}${separator}afid=${affiliateId}`
 }
 
 interface SubscriptionAlertProps {
