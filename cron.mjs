@@ -8,7 +8,10 @@ cron.schedule('*/5 * * * *', async () => {
     try {
         const port = process.env.PORT || 3000;
         const res = await fetch(`http://127.0.0.1:${port}/api/cron/followup`, {
-            headers: { 'Content-Type': 'application/json' }
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${process.env.CRON_SECRET}`
+            }
         });
         const data = await res.text();
         console.log(`[CRON-FOLLOWUP] Response (${res.status}):`, data);
@@ -25,7 +28,10 @@ cron.schedule('*/2 * * * *', async () => {
     try {
         const port = process.env.PORT || 3000;
         const res = await fetch(`http://127.0.0.1:${port}/api/cron/blast`, {
-            headers: { 'Content-Type': 'application/json' }
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${process.env.CRON_SECRET}`
+            }
         });
         const data = await res.text();
         console.log(`[CRON-BLAST] Response (${res.status}):`, data);

@@ -14,9 +14,13 @@ const supabase = createClient(
 const HARD_STOP_TAGS = ['PEDIDO_FECHADO', 'FECHADO', 'PERDIDO', 'HUMANO', 'CANCELADO']
 
 export async function GET(req: NextRequest) {
-    const authHeader = req.headers.get('authorization')
-    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-        // Silently skip
+    const authHeader = req.headers.get('authorization');
+    const cronSecret = process.env.CRON_SECRET;
+
+    // Se o secret estiver configurado, exige a batida de chave
+    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+        console.error('[Follow-up] 🚫 Acesso não autorizado negado.');
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     console.log('[CRON_FOLLOWUP] Starting follow-up routine...')

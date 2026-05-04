@@ -10,6 +10,15 @@ export const revalidate = 0
 const MAX_PER_RUN = 8
 
 export async function GET(req: NextRequest) {
+    const authHeader = req.headers.get('authorization');
+    const cronSecret = process.env.CRON_SECRET;
+
+    // Se o secret estiver configurado, exige a batida de chave
+    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+        console.error('[BLAST_CRON] 🚫 Acesso não autorizado negado.');
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     console.log('[BLAST_CRON] 🚀 Iniciando processamento da fila de disparo...')
 
     try {
