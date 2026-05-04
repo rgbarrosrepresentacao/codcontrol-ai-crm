@@ -795,31 +795,43 @@ async function processWebhookInBackground(body: any) {
             return
         }
 
-
-        // 9. Configuração de IA - Bloqueio de segurança (Apenas assinantes ou trial ativo)
-        // Antes de prosseguir com a IA, pegamos o status MAES RECENTE do contato para evitar responder se um funil acabou de iniciar em background
+        // 9. Configuração de IA - Bloqueio de segurança (Apenas assinantes ou trial ativo com 48h de carência)
+        // Antes de prosseguir com a IA, pegamos o status MAIS RECENTE do contato para evitar responder se um funil acabou de iniciar em background
         const { data: finalContactCheck } = await supabase.from('contacts').select('funnel_status, is_funnel_active, ai_tag').eq('id', contactId).single()
         if (finalContactCheck?.funnel_status === 'INICIADO' || finalContactCheck?.funnel_status === 'EM_ANDAMENTO') {
              console.log(`[Funnel] Bloqueio final de segurança: Funil reativado, abortando IA.`)
              return
         }
 
-        const isTrialing = profile?.trial_ends_at && new Date(profile.trial_ends_at) > new Date();
-        const stripeStatus = profile?.stripe_subscription_status || '';
+        const gracePeriodMs = 48 * 60 * 60 * 1000;
+        const subStatus = profile?.stripe_subscription_status || '';
+        const isPaidStatus = ['paid', 'active', 'aprovado', 'approved'].includes(subStatus.toLowerCase());
+        const trialEndsAt = profile?.trial_ends_at;
         
-        // REGRA DE ACESSO: Stripe ativa OU trial válido OU admin
-        // Note: O webhook da Kiwify espelha o status na coluna stripe_subscription_status
-        const activeStatuses = ['active', 'paid', 'aprovado', 'approved']
-        const isPaid = activeStatuses.includes(stripeStatus.toLowerCase());
+        let hasAccess = profile?.is_admin || false;
 
-        console.log(`[Webhook] 🔍 Verificação de acesso userId=${userId}: stripeStatus=${stripeStatus}, isPaid=${isPaid}, isTrialing=${isTrialing}, is_admin=${profile?.is_admin}`)
+        if (!hasAccess && profile) {
+            if (isPaidStatus) {
+                if (!trialEndsAt) {
+                    hasAccess = true;
+                } else {
+                    const graceEnd = new Date(new Date(trialEndsAt).getTime() + gracePeriodMs);
+                    hasAccess = new Date() <= graceEnd;
+                }
+            } else if (subStatus === 'trialing' && trialEndsAt) {
+                const graceEnd = new Date(new Date(trialEndsAt).getTime() + gracePeriodMs);
+                hasAccess = new Date() <= graceEnd;
+            }
+        }
 
-        if (profile && !profile.is_admin && !isPaid && !isTrialing) {
-            console.log(`[Webhook] 🚫 IA BLOQUEADA para userId=${userId}: Sem assinatura ativa e trial expirado.`)
+        console.log(`[Webhook] 🔍 Verificação de acesso userId=${userId}: status=${subStatus}, trialEndsAt=${trialEndsAt}, hasAccess=${hasAccess}, is_admin=${profile?.is_admin}`)
+
+        if (!hasAccess) {
+            console.log(`[Webhook] 🚫 IA BLOQUEADA para userId=${userId}: Plano expirado (vencimento + 48h).`)
             return
         }
 
-        console.log(`[Webhook] ✅ Acesso LIBERADO para userId=${userId} (paid=${isPaid}, trial=${isTrialing}, admin=${profile?.is_admin}). Prosseguindo com IA...`)
+        console.log(`[Webhook] ✅ Acesso LIBERADO para userId=${userId}. Prosseguindo com IA...`)
 
         let { data: aiConfigs } = await supabase.from('ai_configurations').select('*').eq('user_id', userId).eq('instance_id', instanceId).eq('is_active', true).limit(1)
         let aiConfig = aiConfigs?.[0]

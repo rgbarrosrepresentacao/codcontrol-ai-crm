@@ -124,18 +124,30 @@ export async function GET(req: NextRequest) {
 
             if (!profile?.openai_api_key) continue
 
-            // 3b. BLOQUEIO DE SEGURANÇA - Validação unificada (Admin, Stripe, Kiwify ou Trial)
-            const isPaid = profile.is_admin || 
-                           profile.stripe_subscription_status === 'paid' || 
-                           profile.stripe_subscription_status === 'active' ||
-                           profile.stripe_subscription_status === 'aprovado' || 
-                           profile.stripe_subscription_status === 'approved' ||
-                           profile.stripe_subscription_status === 'trialing'
+            // 3b. BLOQUEIO DE SEGURANÇA - Validação unificada (Admin, Kiwify ou Trial com 48h de carência)
+            const gracePeriodMs = 48 * 60 * 60 * 1000;
+            const subStatus = profile.stripe_subscription_status || '';
+            const isPaidStatus = ['paid', 'active', 'aprovado', 'approved'].includes(subStatus.toLowerCase());
+            const trialEndsAt = profile.trial_ends_at;
+            
+            let hasAccess = profile.is_admin || false;
 
-            const hasTrialActive = profile.trial_ends_at && new Date(profile.trial_ends_at) > new Date()
+            if (!hasAccess) {
+                if (isPaidStatus) {
+                    if (!trialEndsAt) {
+                        hasAccess = true;
+                    } else {
+                        const graceEnd = new Date(new Date(trialEndsAt).getTime() + gracePeriodMs);
+                        hasAccess = new Date() <= graceEnd;
+                    }
+                } else if (subStatus === 'trialing' && trialEndsAt) {
+                    const graceEnd = new Date(new Date(trialEndsAt).getTime() + gracePeriodMs);
+                    hasAccess = new Date() <= graceEnd;
+                }
+            }
 
-            if (!isPaid && !hasTrialActive) {
-                console.log(`[Follow-up] 🚫 Resgate bloqueado para o usuário ${conversation.user_id}: Sem assinatura ativa and sem trial vigente.`)
+            if (!hasAccess) {
+                console.log(`[Follow-up] 🚫 Resgate bloqueado para o usuário ${conversation.user_id}: Plano expirado (vencimento + 48h). Status: ${subStatus}`)
                 continue
             }
 

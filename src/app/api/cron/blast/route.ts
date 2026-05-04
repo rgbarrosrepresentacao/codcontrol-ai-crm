@@ -23,6 +23,7 @@ export async function GET(req: NextRequest) {
             .from('blast_queue')
             .select(`
                 id,
+                user_id,
                 campaign_id,
                 contact_id,
                 instance_id,
@@ -61,6 +62,7 @@ export async function GET(req: NextRequest) {
             .in('id', itemIds)
 
         let processedCount = 0
+        const profilesCache: Record<string, any> = {}
 
         for (const item of queueItems) {
             const campaign = (item as any).blast_campaigns
@@ -69,6 +71,49 @@ export async function GET(req: NextRequest) {
 
             try {
                 // ── Verificações de segurança ────────────────────────────────
+
+                // 1. Assinatura e Carência de 48h
+                let profile = profilesCache[item.user_id]
+                if (!profile) {
+                    const { data: p } = await supabase.from('profiles').select('*').eq('id', item.user_id).single()
+                    if (p) {
+                        profile = p
+                        profilesCache[item.user_id] = p
+                    }
+                }
+
+                if (!profile) {
+                    console.error(`[BLAST_CRON] ❌ Perfil não encontrado para o usuário ${item.user_id}. Pulando item ${item.id}.`)
+                    continue
+                }
+
+                const gracePeriodMs = 48 * 60 * 60 * 1000;
+                const subStatus = profile.stripe_subscription_status || '';
+                const isPaidStatus = ['paid', 'active', 'aprovado', 'approved'].includes(subStatus.toLowerCase());
+                const trialEndsAt = profile.trial_ends_at;
+                
+                let hasAccess = profile.is_admin || false;
+
+                if (!hasAccess) {
+                    if (isPaidStatus) {
+                        if (!trialEndsAt) {
+                            hasAccess = true;
+                        } else {
+                            const graceEnd = new Date(new Date(trialEndsAt).getTime() + gracePeriodMs);
+                            hasAccess = new Date() <= graceEnd;
+                        }
+                    } else if (subStatus === 'trialing' && trialEndsAt) {
+                        const graceEnd = new Date(new Date(trialEndsAt).getTime() + gracePeriodMs);
+                        hasAccess = new Date() <= graceEnd;
+                    }
+                }
+
+                if (!hasAccess) {
+                    console.warn(`[BLAST_CRON] 🚫 Disparo bloqueado para o usuário ${item.user_id}: Plano expirado (vencimento + 48h). Status: ${subStatus}`)
+                    // Pausa a campanha se o dono estiver inadimplente para evitar processamento inútil
+                    await supabase.from('blast_campaigns').update({ status: 'paused' }).eq('id', campaign.id)
+                    continue
+                }
 
                 // Skip: contato optou por sair
                 if (contact.opted_out) {

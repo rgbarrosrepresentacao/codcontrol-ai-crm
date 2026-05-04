@@ -16,32 +16,15 @@ export function CheckoutButton({
     const [loading, setLoading] = useState(false)
 
     const handleCheckout = async () => {
-        // Se tiver link da Kiwify, vai direto
+        // Redireciona direto para o checkout da Kiwify
         if (kiwifyUrl) {
+            setLoading(true)
             window.location.href = kiwifyUrl
             return
         }
 
-        if (!priceId) return alert('Plano indísponível para assinatura online.')
-        setLoading(true)
-        try {
-            const res = await fetch('/api/stripe/checkout', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ priceId })
-            })
-            const data = await res.json()
-            if (data.url) {
-                window.location.href = data.url
-            } else {
-                alert(data.error || 'Erro ao iniciar checkout')
-            }
-        } catch (err) {
-            console.error('Checkout error:', err)
-            alert('Erro ao iniciar checkout')
-        } finally {
-            setLoading(false)
-        }
+        // Fallback: plano sem link configurado
+        alert('Para assinar ou fazer upgrade, entre em contato com nosso suporte.')
     }
 
     return (
