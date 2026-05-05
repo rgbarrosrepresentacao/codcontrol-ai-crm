@@ -309,6 +309,21 @@ async function processWebhook(body: any) {
 
                         console.log(`[WEBHOOK] 🤖 Avaliação da condição: decision="${evaluation.decision}" confidence=${evaluation.confidence}% reason="${evaluation.reason}"`);
 
+                        // Grava a resposta e decisão no log
+                        try {
+                            await supabase.from('funnel_execution_logs').insert({
+                                user_id: profile.id,
+                                contact_id: contact.id,
+                                funnel_id: contact.current_funnel_id,
+                                node_id: currentNodeId,
+                                node_type: 'condition',
+                                customer_response: textMessage,
+                                ai_decision: evaluation
+                            });
+                        } catch (logErr) {
+                            console.error('[WEBHOOK] Error recording condition log:', logErr);
+                        }
+
                         if (evaluation.decision === 'human') {
                             // Transborda para humano — não continua no funil
                             await supabase.from('contacts').update({ funnel_status: 'TRANSBORDADO', is_funnel_active: false }).eq('id', contact.id);
@@ -338,6 +353,20 @@ async function processWebhook(body: any) {
                     console.log(`[WEBHOOK] ▶️ Avançando do nó "${pausedNode?.node_type}" para: ${nextNodeId || 'FIM'}`);
                     
                     if (nextNodeId) {
+                        // Grava log de avanço simples
+                        try {
+                            await supabase.from('funnel_execution_logs').insert({
+                                user_id: profile.id,
+                                contact_id: contact.id,
+                                funnel_id: contact.current_funnel_id,
+                                node_id: currentNodeId,
+                                node_type: pausedNode?.node_type || 'text',
+                                customer_response: textMessage
+                            });
+                        } catch (logErr) {
+                            console.error('[WEBHOOK] Error recording advance log:', logErr);
+                        }
+
                         FunnelService.execute(contact.current_funnel_id, nextNodeId, instanceName, remoteJid, contact.id, profile.id)
                             .catch(err => console.error('[WEBHOOK] Erro ao avançar funil:', err));
                         return NextResponse.json({ received: true, funnel: 'advanced_next' });
@@ -394,7 +423,13 @@ async function processWebhook(body: any) {
             Em vez de assumir que ele quer comprar, faça uma pergunta educada confirmando se ele gostaria de saber mais sobre o "${intentResult.campaign_name}".`;
         }
 
-        let reply = await AIService.generateResponse(formattedHistory, aiConfig, profile.openai_api_key, knowledgeContext, customLeadContext, campaignPrompt);
+        // ── PASSO 10.2: Memória do Funil (NOVO) ──────────────────────
+        let funnelSummary = '';
+        if (contact.current_funnel_id) {
+            funnelSummary = await FunnelService.getFunnelSummary(contact.current_funnel_id, contact.id) || '';
+        }
+
+        let reply = await AIService.generateResponse(formattedHistory, aiConfig, profile.openai_api_key, knowledgeContext, customLeadContext, campaignPrompt, funnelSummary);
         if (!reply) return;
 
         // ── PASSO 10.2: Processar Gatilhos de Mídia (NOVO) ────────────

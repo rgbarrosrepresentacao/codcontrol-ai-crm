@@ -109,6 +109,17 @@ export class FunnelService {
 
                 // ── Passo G: Executa a ação do nó ──
                 try {
+                    // Grava log de execução do nó (o que está sendo enviado)
+                    const logData = {
+                        user_id: userId,
+                        contact_id: contactId,
+                        funnel_id: funnelId,
+                        node_id: node.id,
+                        node_type: node.node_type,
+                        action_executed: node.content || node.node_data?.caption || node.node_data?.text || ''
+                    };
+                    await supabase.from('funnel_execution_logs').insert(logData);
+
                     await this.executeNode(node, instanceName, remoteJid);
                 } catch (execErr) {
                     console.error(`[FUNNEL_ENGINE] ❌ Erro ao executar nó ${node.id} (${node.node_type}):`, execErr);
@@ -357,5 +368,50 @@ export class FunnelService {
 
         // Delay padrão pós-envio
         await new Promise(r => setTimeout(r, 500));
+    }
+
+    /**
+     * Gera um resumo comercial e limpo do que aconteceu no funil para a IA
+     */
+    static async getFunnelSummary(funnelId: string, contactId: string): Promise<string | null> {
+        try {
+            // Busca os logs reais da última execução deste contato neste funil
+            const { data: logs } = await supabase
+                .from('funnel_execution_logs')
+                .select('*')
+                .eq('contact_id', contactId)
+                .eq('funnel_id', funnelId)
+                .order('created_at', { ascending: true })
+                .limit(20);
+
+            if (!logs || logs.length === 0) return null;
+
+            let summary = `Resumo da interação automática (Funil):\n`;
+            
+            logs.forEach(log => {
+                if (log.node_type === 'video' || log.node_type === 'image') {
+                    summary += `- Viu um ${log.node_type}.\n`;
+                } else if (log.node_type === 'text' && log.action_executed) {
+                    // Pega apenas os primeiros 50 caracteres para não poluir
+                    const cleanText = log.action_executed.substring(0, 50).replace(/\n/g, ' ');
+                    summary += `- Recebeu: "${cleanText}..."\n`;
+                }
+
+                if (log.customer_response) {
+                    summary += `  ↳ Cliente respondeu: "${log.customer_response}"\n`;
+                }
+
+                if (log.ai_decision) {
+                    const decision = (log.ai_decision as any).decision;
+                    if (decision === 'yes') summary += `  ↳ Demonstrou INTERESSE.\n`;
+                    if (decision === 'no') summary += `  ↳ Demonstrou DESINTERESSE.\n`;
+                }
+            });
+
+            return summary;
+        } catch (err) {
+            console.error('[FUNNEL_SERVICE] Error generating summary:', err);
+            return null;
+        }
     }
 }

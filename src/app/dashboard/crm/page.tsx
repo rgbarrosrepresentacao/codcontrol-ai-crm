@@ -90,6 +90,7 @@ export default function CRMPage() {
           name,
           whatsapp_id,
           ai_tag,
+          created_at,
           conversations (
             last_message,
             last_message_at,
@@ -107,7 +108,7 @@ export default function CRMPage() {
         whatsapp_id: c.whatsapp_id,
         ai_tag: c.ai_tag || 'NOVO',
         last_message: c.conversations?.[0]?.last_message || 'Nenhuma mensagem',
-        last_message_at: c.conversations?.[0]?.last_message_at || '',
+        last_message_at: c.conversations?.[0]?.last_message_at || c.created_at || '',
         status: c.conversations?.[0]?.status || 'open'
       }))
 

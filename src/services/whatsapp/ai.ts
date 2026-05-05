@@ -108,13 +108,19 @@ export class AIService {
         openaiKey: string,
         knowledgeContext: string = '',
         leadContext: string = '',
-        campaignPrompt: string = ''
+        campaignPrompt: string = '',
+        funnelContext: string = ''
     ): Promise<string | null> {
         try {
             // Se houver um prompt de campanha, ele substitui ou reforça o global
             const systemInstructions = campaignPrompt 
                 ? `${campaignPrompt}\n\nREGRAS GERAIS: ${aiConfig.system_prompt}`
                 : aiConfig.system_prompt;
+
+            // Prepara o contexto do funil se existir
+            const funnelInfo = funnelContext 
+                ? `\nCONTEXTO DO FUNIL DE VENDAS (HISTÓRICO RECENTE):\n${funnelContext}\nInstrução: O cliente acabou de passar por este fluxo automatizado. Use essas informações para continuar o atendimento sem repetir o que já foi dito e focando no fechamento.`
+                : '';
 
             const response = await fetch('https://api.openai.com/v1/chat/completions', {
                 method: 'POST',
@@ -125,6 +131,7 @@ export class AIService {
                         {
                             role: 'system',
                             content: `Você é ${aiConfig.bot_name}. ${systemInstructions}.
+                            ${funnelInfo}
                             
                             CONHECIMENTO ADICIONAL:
                             ${knowledgeContext}
