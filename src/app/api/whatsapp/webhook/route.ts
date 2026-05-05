@@ -18,9 +18,7 @@ const supabase = createClient(
     process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 );
 
-// Cache simples para deduplicação de mensagens (evita processar webhooks duplicados da Evolution API)
-const processedMessages = new Set<string>();
-setInterval(() => processedMessages.clear(), 1000 * 60 * 5); // Limpa a cada 5 min
+// Removido cache em memória instável, agora usamos last_message_id no banco para persistência total
 
 // ── Utilitário: limpa texto antes de converter em áudio ────────────────────
 function cleanTextForAudio(text: string): string {
@@ -53,16 +51,7 @@ export async function POST(req: NextRequest) {
 async function processWebhook(body: any) {
     const messageData = body.data?.message;
     const key = body.data?.key;
-    const instanceName = body.instance;
-
     if (!key || key.fromMe || !messageData) return;
-
-    // Deduplicação: ignora se já processamos este messageId recentemente
-    if (processedMessages.has(key.id)) {
-        console.log(`[WEBHOOK] ♻️ Ignorando mensagem duplicada: ${key.id}`);
-        return;
-    }
-    processedMessages.add(key.id);
 
     const remoteJid = key.remoteJid;
     if (!remoteJid || remoteJid.endsWith('@g.us')) return;
@@ -120,10 +109,16 @@ async function processWebhook(body: any) {
         const textMessage = await ProcessorService.extractMessageContent(body, instanceName, profile.openai_api_key);
         if (!textMessage) return;
 
-        // ── PASSO 5: Upsert do Contato ─────────────────────────────────
         const phone = remoteJid.replace(/\D/g, '');
         const contact = await ContactService.upsert(profile.id, instance.id, remoteJid, phone, body.data?.pushName);
         if (!contact) return;
+
+        // DEDUPLICAÇÃO PERSISTENTE (BANCO)
+        if (contact.last_message_id === key.id) {
+            console.log(`[WEBHOOK] ♻️ Mensagem ${key.id} já processada anteriormente para este contato. Ignorando.`);
+            return;
+        }
+        await supabase.from('contacts').update({ last_message_id: key.id }).eq('id', contact.id);
 
         let wantsAudio = contact.wants_audio ?? false;
         if (isAudioMessage && !wantsAudio) {

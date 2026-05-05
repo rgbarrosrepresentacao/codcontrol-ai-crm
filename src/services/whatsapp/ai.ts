@@ -193,15 +193,35 @@ export class AIService {
                 })
             });
 
-            if (!response.ok) throw new Error();
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`OpenAI API error: ${response.status} - ${errorText}`);
+            }
             const data = await response.json();
             const content = data.choices?.[0]?.message?.content;
-            if (!content) throw new Error();
+            if (!content) throw new Error('Empty response from OpenAI');
             
             return JSON.parse(content);
-        } catch (err) {
-            console.error('[AIService] Condition evaluation error:', err);
-            return { decision: 'unclear', confidence: 0, reason: 'Erro na avaliação' };
+        } catch (err: any) {
+            console.error('[AIService] Condition evaluation error:', err.message);
+            
+            // FALLBACK MANUAL: Se a IA falhar, fazemos um match simples de palavras-chave
+            // Isso evita que o funil trave por erro de API
+            const lastUserMsg = messages[messages.length - 1]?.content?.toLowerCase() || '';
+            
+            if (lastUserMsg.match(/\b(sim|quero|vontade|interesse|pode|com certeza|claro|ok|agora|manda)\b/i)) {
+                return { decision: 'yes', confidence: 100, reason: 'Fallback manual: Palavra-chave positiva detectada' };
+            }
+            
+            if (lastUserMsg.match(/\b(não|nao|no|nem|parar|cancelar|sair|ruim|desinteresse)\b/i)) {
+                return { decision: 'no', confidence: 100, reason: 'Fallback manual: Palavra-chave negativa detectada' };
+            }
+
+            if (lastUserMsg.match(/\b(atendente|humano|pessoa|suporte|falar com alguém)\b/i)) {
+                return { decision: 'human', confidence: 100, reason: 'Fallback manual: Pedido de humano detectado' };
+            }
+
+            return { decision: 'unclear', confidence: 0, reason: 'Erro na avaliação e sem palavras-chave claras' };
         }
     }
 }
