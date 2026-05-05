@@ -156,6 +156,10 @@ export class FunnelService {
 
                 if (!nextNodeId || nextNodeId === currentNodeId) {
                     console.log(`[FUNNEL_ENGINE] └─ Fim do fluxo. Nenhum próximo nó.`);
+                    await supabase.from('contacts').update({
+                        funnel_status: 'FINALIZADO',
+                        is_funnel_active: false,
+                    }).eq('id', contactId);
                     break;
                 }
 

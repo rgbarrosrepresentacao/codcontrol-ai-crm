@@ -376,7 +376,7 @@ async function processWebhook(body: any) {
         }
 
         // 3. Início de Funil Padrão (Novos Contatos / Contatos Inativos)
-        if (!isFunnelActive && (funnelStatus === 'INATIVO' || funnelStatus === 'FINALIZADO') && !funnelJustStarted) {
+        if (!isFunnelActive && (funnelStatus === 'INATIVO') && !funnelJustStarted) {
             const { data: defFunnel } = await supabase.from('funnels').select('*').eq('user_id', profile.id).eq('is_default', true).eq('is_active', true).maybeSingle();
             
             if (defFunnel) {
