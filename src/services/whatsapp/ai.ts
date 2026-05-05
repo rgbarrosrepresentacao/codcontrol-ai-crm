@@ -97,6 +97,8 @@ export class AIService {
         } catch {
             return 'Obrigada pelo seu pedido! 🎉 Em breve nossa equipe entrará em contato.';
         }
+    }
+
     /**
      * Gera a resposta principal da IA
      */
