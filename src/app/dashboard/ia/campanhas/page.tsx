@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Plus, Trash2, Edit3, Save, X, Megaphone, Loader2, AlertCircle } from 'lucide-react'
+import { Plus, Trash2, Edit3, Save, X, Megaphone, Loader2, AlertCircle, BarChart3 } from 'lucide-react'
+import Link from 'next/link'
 import { toast } from 'sonner'
 import { Sidebar } from '@/components/Sidebar'
 
@@ -151,6 +152,13 @@ export default function CampaignsPage() {
             <Plus size={20} />
             Nova Campanha
           </button>
+          <Link 
+            href="/dashboard/ia/campanhas/desempenho"
+            className="bg-zinc-900 hover:bg-zinc-800 text-white px-4 py-2 rounded-lg flex items-center gap-2 border border-zinc-800 transition-all"
+          >
+            <BarChart3 size={20} className="text-emerald-500" />
+            Ver Desempenho
+          </Link>
         </header>
 
         {isAdding && (

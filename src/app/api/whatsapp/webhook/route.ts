@@ -142,16 +142,49 @@ async function processWebhook(body: any) {
             message_id: key.id, from_me: false, content: textMessage, type: isAudioMessage ? 'audio' : 'text', status: 'delivered'
         });
 
-        // ── PASSO 8: Detecção de Campanha (Inteligência Reforçada) ─────
-        let campaignId = await CampaignService.detectWithAI(profile.id, instance.id, textMessage, profile.openai_api_key);
-        if (campaignId) {
-            await supabase.from('contacts').update({ active_campaign_id: campaignId }).eq('id', contact.id);
-        } else {
-            campaignId = contact.active_campaign_id;
+        // ── PASSO 8: Product Intent Engine V2 (Detecção e Trava) ────────
+        const isLocked = contact.campaign_lock ?? false;
+        let campaignId = contact.active_campaign_id;
+        let campaignPrompt = '';
+        let intentResult = null;
+
+        // Só tenta detectar nova campanha se não estiver travado OU se for uma troca explícita
+        if (!isLocked) {
+            intentResult = await CampaignService.detectWithAI(
+                profile.id, 
+                instance.id, 
+                textMessage, 
+                profile.openai_api_key, 
+                contact.origin_source || ''
+            );
+
+            // 1. Log da decisão (Fase 1)
+            await supabase.from('campaign_intelligence_logs').insert({
+                user_id: profile.id,
+                contact_id: contact.id,
+                message: textMessage,
+                detected_campaign_id: intentResult.campaign_id,
+                confidence_score: intentResult.confidence_score,
+                reason: intentResult.reason,
+                origin_source: contact.origin_source
+            });
+
+            // 2. Regra de Decisão Baseada em Score
+            if (intentResult.confidence_score >= 85 && intentResult.campaign_id) {
+                // Ativação Automática e Trava
+                campaignId = intentResult.campaign_id;
+                await supabase.from('contacts').update({ 
+                    active_campaign_id: campaignId,
+                    campaign_lock: true // Trava o contexto para evitar trocas erradas
+                }).eq('id', contact.id);
+            } else if (intentResult.confidence_score >= 60 && intentResult.confidence_score < 85 && intentResult.campaign_id) {
+                // Ambiguidade: Não troca a persona, mas a IA deve perguntar se é sobre esse produto
+                // (Opcional: injetar uma instrução para a IA confirmar o produto)
+                console.log(`[Engine V2] ⚠️ Score ambíguo (${intentResult.confidence_score}). Mantendo neutro.`);
+            }
         }
 
-        // ── PASSO 8.1: Carregar Persona da Campanha (NOVO) ────────────
-        let campaignPrompt = '';
+        // ── PASSO 8.1: Carregar Persona da Campanha (Fase 1) ────────────
         if (campaignId) {
             const { data: campData } = await supabase.from('campaigns').select('system_prompt').eq('id', campaignId).maybeSingle();
             if (campData) campaignPrompt = campData.system_prompt;
@@ -186,7 +219,14 @@ async function processWebhook(body: any) {
         const { data: history } = await supabase.from('messages').select('content, from_me').eq('conversation_id', conversationId).order('created_at', { ascending: false }).limit(20);
         const formattedHistory = (history || []).reverse().map(m => ({ role: m.from_me ? 'assistant' : 'user', content: m.content }));
 
-        let reply = await AIService.generateResponse(formattedHistory, aiConfig, profile.openai_api_key, knowledgeContext, '', campaignPrompt);
+        // Se o score for ambíguo (60-85), injetamos uma regra de confirmação
+        let customLeadContext = '';
+        if (intentResult && intentResult.confidence_score >= 60 && intentResult.confidence_score < 85) {
+            customLeadContext = `IMPORTANTE: O cliente parece interessado no produto "${intentResult.campaign_name}", mas não temos certeza total (Score: ${intentResult.confidence_score}%). 
+            Em vez de assumir que ele quer comprar, faça uma pergunta educada confirmando se ele gostaria de saber mais sobre o "${intentResult.campaign_name}".`;
+        }
+
+        let reply = await AIService.generateResponse(formattedHistory, aiConfig, profile.openai_api_key, knowledgeContext, customLeadContext, campaignPrompt);
         if (!reply) return;
 
         // ── PASSO 10.2: Processar Gatilhos de Mídia (NOVO) ────────────
