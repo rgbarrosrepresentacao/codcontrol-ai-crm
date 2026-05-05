@@ -1,12 +1,15 @@
 import { createClient } from '@supabase/supabase-js'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 
-// Exporta o client apenas se as variáveis existirem para evitar o crash no boot
+if (!supabaseKey && typeof window === 'undefined') {
+    console.error('❌ CRÍTICO: SUPABASE_SERVICE_ROLE_KEY não configurada. Operações administrativas falharão.')
+}
+
 export const supabaseAdmin = createClient(
     supabaseUrl,
-    supabaseKey,
+    supabaseKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '', // Fallback apenas para não quebrar o tipo, mas logado acima
     {
         auth: {
             autoRefreshToken: false,

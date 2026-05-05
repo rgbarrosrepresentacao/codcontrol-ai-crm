@@ -58,45 +58,240 @@ export default function HomePage() {
         </div>
       </nav>
 
-      {/* Hero Section */}
-      <section className="pt-48 md:pt-64 pb-24 relative overflow-hidden">
-        <div className="container-7xl text-center relative z-10">
-          <div className="inline-flex items-center gap-2 bg-primary/10 border border-primary/20 rounded-full px-5 py-2 mb-8 animate-slide-up shadow-[0_0_20px_rgba(20,184,166,0.1)]">
-            <Sparkles className="w-4 h-4 text-primary animate-pulse" />
-            <span className="text-primary text-[11px] font-bold uppercase tracking-[0.2em]">O futuro das vendas no WhatsApp</span>
-          </div>
+      {/* ═══════════════════════════════════════════════
+           HERO SECTION — NÍVEL STRIPE / LINEAR
+      ═══════════════════════════════════════════════ */}
+      <section className="pt-40 md:pt-56 pb-24 relative overflow-hidden">
+        <div className="container-7xl">
+          <div className="grid lg:grid-cols-2 gap-20 items-center">
 
-          <h1 className="text-5xl md:text-8xl font-black text-foreground mb-8 animate-slide-up leading-[0.95] tracking-tightest px-4">
-            Transforme seu WhatsApp em uma <br className="hidden md:block" />
-            <span className="text-gradient from-primary to-cyan-400 text-glow-primary">Máquina de Vendas 24h</span>
-          </h1>
+            {/* ── ESQUERDA: COPY ── */}
+            <div className="space-y-9 animate-slide-up relative z-10">
 
-          <p className="text-muted-foreground text-lg md:text-2xl max-w-3xl mx-auto mb-12 animate-slide-up leading-relaxed text-balance px-4 opacity-80">
-            A vendedora com Inteligência Artificial que responde seus clientes, quebra objeções e fecha vendas pra você — <span className="text-white font-medium">mesmo enquanto você dorme.</span>
-          </p>
+              {/* Badge */}
+              <div className="inline-flex items-center gap-2.5 border border-white/8 rounded-full px-4 py-1.5 bg-white/[0.03]">
+                <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                <span className="text-[11px] font-semibold text-muted-foreground tracking-wide">Sistema de vendas por WhatsApp</span>
+              </div>
 
-          <div className="flex flex-col sm:flex-row gap-6 justify-center items-center animate-slide-up px-4">
-            <Link href="/register?plan=basico" className="w-full sm:w-auto gradient-primary text-black font-black px-12 py-5 rounded-2xl text-xl hover:scale-105 active:scale-95 transition-all glow-primary flex items-center justify-center gap-3">
-              TESTAR 7 DIAS GRÁTIS AGORA
-              <ArrowRight className="w-6 h-6" />
-            </Link>
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <div className="flex -space-x-3">
-                {[...Array(4)].map((_, i) => (
-                  <div key={i} className="w-9 h-9 rounded-full border-[3px] border-background bg-secondary flex items-center justify-center overflow-hidden">
-                     <Users className="w-4 h-4 text-primary/50" />
+              {/* Headline Desktop */}
+              <h1 className="hidden md:block text-[58px] lg:text-[68px] font-black text-foreground leading-[1.0] tracking-[-0.03em]">
+                Seu WhatsApp virando uma máquina de vendas —{' '}
+                <span className="text-primary">automaticamente.</span>
+              </h1>
+
+              {/* Headline Mobile */}
+              <h1 className="md:hidden text-[40px] font-black text-foreground leading-[1.05] tracking-[-0.03em]">
+                Seu WhatsApp vendendo{' '}
+                <span className="text-primary">no automático.</span>
+              </h1>
+
+              {/* Subhead Desktop */}
+              <p className="hidden md:block text-[18px] text-muted-foreground leading-[1.7] max-w-[480px] font-normal">
+                IA que responde, um CRM que organiza e automações que fecham vendas 24h por você.
+              </p>
+
+              {/* Subhead Mobile */}
+              <p className="md:hidden text-[16px] text-muted-foreground leading-[1.7] font-normal">
+                IA + CRM + automação trabalhando por você 24h.
+              </p>
+
+              {/* CTAs */}
+              <div className="flex flex-col sm:flex-row gap-3 pt-1">
+                <Link
+                  href="/register?plan=basico"
+                  className="w-full sm:w-auto gradient-primary text-black font-bold text-[15px] px-7 py-4 rounded-xl hover:opacity-90 active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2 shadow-[0_0_24px_rgba(20,184,166,0.22)]"
+                >
+                  Testar 7 dias grátis
+                  <ArrowRight className="w-4 h-4" />
+                </Link>
+                <a
+                  href="#demo"
+                  className="w-full sm:w-auto text-[15px] font-medium text-muted-foreground px-7 py-4 rounded-xl hover:text-foreground hover:bg-white/5 transition-all duration-200 flex items-center justify-center gap-2"
+                >
+                  Ver como funciona
+                </a>
+              </div>
+
+              {/* Micro trust */}
+              <div className="flex flex-wrap gap-5 pt-1">
+                {[
+                  'Sem cartão de crédito',
+                  'Comece em 2 minutos',
+                  'Funciona no seu WhatsApp atual',
+                ].map((t) => (
+                  <span key={t} className="flex items-center gap-1.5 text-[12px] text-muted-foreground/70 font-medium">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-primary/70" />
+                    {t}
+                  </span>
+                ))}
+              </div>
+
+              {/* Social proof badges */}
+              <div className="flex flex-wrap gap-4 pt-3 border-t border-white/5">
+                {[
+                  { value: '+2.400', label: 'usuários' },
+                  { value: '+400%', label: 'ROI médio' },
+                  { value: '1s', label: 'de resposta' },
+                ].map((m) => (
+                  <div key={m.label} className="flex items-center gap-2 bg-white/[0.03] border border-white/[0.06] rounded-full px-4 py-1.5">
+                    <span className="text-[14px] font-black text-primary">{m.value}</span>
+                    <span className="text-[11px] text-muted-foreground">{m.label}</span>
                   </div>
                 ))}
               </div>
-              <span className="text-sm font-semibold ml-2">+2.400 vendedores já automatizando</span>
             </div>
+
+            {/* ── DIREITA: PRODUCT PREVIEW ── */}
+            <div className="relative hidden lg:block">
+              {/* Ambient glow — sutil */}
+              <div className="absolute inset-0 bg-primary/10 blur-[120px] rounded-full opacity-40 animate-pulse-glow pointer-events-none" />
+
+              <div className="relative animate-float">
+
+                {/* ─ Card Principal: CRM Kanban ─ */}
+                <div style={{background:'hsl(222 47% 5% / 0.9)', backdropFilter:'blur(24px)', border:'1px solid hsl(217 33% 14% / 0.6)'}} className="rounded-[24px] p-5 shadow-[0_32px_64px_rgba(0,0,0,0.6)]">
+
+                  {/* Barra de título app */}
+                  <div className="flex items-center justify-between mb-5 pb-4 border-b border-white/[0.05]">
+                    <div className="flex items-center gap-2.5">
+                      <div className="flex gap-1.5">
+                        <div className="w-2.5 h-2.5 rounded-full bg-red-500/60" />
+                        <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/60" />
+                        <div className="w-2.5 h-2.5 rounded-full bg-green-500/60" />
+                      </div>
+                      <span className="text-[11px] text-muted-foreground/50 font-medium ml-2">CodControl AI — Funil de Vendas</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-[10px] text-primary/70 font-semibold">
+                      <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                      Sistema ativo
+                    </div>
+                  </div>
+
+                  {/* Kanban Columns */}
+                  <div className="grid grid-cols-4 gap-3">
+                    {[
+                      { label: 'Novo Lead', count: '12', color: '#60a5fa', cards: ['Camila S.', 'João M.'] },
+                      { label: 'Em contato', count: '8', color: '#a78bfa', cards: ['Ana P.', 'Lucas T.'] },
+                      { label: 'Proposta', count: '5', color: 'hsl(168 84% 49%)', cards: ['Maria C.'] },
+                      { label: 'Fechado', count: '24', color: '#34d399', cards: ['Pedro A.', 'Roberta K.'] },
+                    ].map((col) => (
+                      <div key={col.label} className="space-y-2">
+                        <div className="flex items-center justify-between mb-2.5">
+                          <span className="text-[9px] font-bold uppercase tracking-wider" style={{color: col.color + 'cc'}}>{col.label}</span>
+                          <span className="text-[9px] font-black" style={{color: col.color}}>{col.count}</span>
+                        </div>
+                        {col.cards.map((name) => (
+                          <div key={name} style={{background:'hsl(222 47% 8% / 0.8)', border:'1px solid hsl(217 33% 16% / 0.5)'}} className="rounded-xl p-2.5">
+                            <div className="flex items-center gap-2 mb-1.5">
+                              <div className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-black" style={{background: col.color + '22', color: col.color}}>
+                                {name[0]}
+                              </div>
+                              <span className="text-[10px] font-semibold text-foreground/80">{name}</span>
+                            </div>
+                            <div className="w-full h-[3px] rounded-full bg-white/5">
+                              <div className="h-full rounded-full" style={{width: col.label === 'Fechado' ? '100%' : col.label === 'Proposta' ? '70%' : '40%', background: col.color, opacity: 0.7}} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* ─ Card Flutuante: Chat IA ─ */}
+                <div
+                  style={{background:'hsl(222 47% 4% / 0.95)', backdropFilter:'blur(20px)', border:'1px solid hsl(217 33% 14% / 0.7)'}}
+                  className="absolute -bottom-14 -left-14 w-72 rounded-[20px] p-4 shadow-[0_24px_48px_rgba(0,0,0,0.7)] animation-delay-300 animate-slide-up"
+                >
+                  {/* Header chat */}
+                  <div className="flex items-center gap-2.5 pb-3 mb-3 border-b border-white/[0.05]">
+                    <div className="w-7 h-7 rounded-full gradient-primary flex items-center justify-center">
+                      <Bot className="w-4 h-4 text-black" />
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-bold text-foreground">Camila · IA</p>
+                      <div className="flex items-center gap-1">
+                        <div className="w-1 h-1 rounded-full bg-primary animate-pulse" />
+                        <span className="text-[9px] text-primary">respondendo agora</span>
+                      </div>
+                    </div>
+                  </div>
+                  {/* Mensagens */}
+                  <div className="space-y-2">
+                    <div style={{background:'hsl(217 33% 12% / 0.8)'}} className="rounded-2xl rounded-tl-[4px] px-3 py-2 text-[10px] text-muted-foreground max-w-[88%]">
+                      Olá! Tenho interesse no Liso Mágico. Como funciona?
+                    </div>
+                    <div className="gradient-primary rounded-2xl rounded-tr-[4px] px-3 py-2 text-[10px] text-black font-semibold ml-auto max-w-[88%]">
+                      Oi! É 100% digital, você recebe no e-mail assim que o PIX for confirmado. Posso gerar seu link agora? 🚀
+                    </div>
+                    <div style={{background:'hsl(217 33% 12% / 0.8)'}} className="rounded-2xl rounded-tl-[4px] px-3 py-2 text-[10px] text-muted-foreground max-w-[70%] flex items-center gap-1.5">
+                      <span className="animate-pulse">●</span>
+                      <span className="animate-pulse animation-delay-300">●</span>
+                      <span className="animate-pulse animation-delay-500">●</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ─ Notificação Flutuante: Pagamento ─ */}
+                <div
+                  style={{background:'hsl(222 47% 5% / 0.96)', backdropFilter:'blur(16px)', border:'1px solid hsl(168 84% 49% / 0.18)'}}
+                  className="absolute -top-8 -right-10 rounded-2xl px-4 py-3 shadow-[0_8px_32px_rgba(20,184,166,0.15)] flex items-center gap-3 animate-slide-up animation-delay-500"
+                >
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{background:'hsl(168 84% 49% / 0.12)'}}>
+                    <DollarSign className="w-4 h-4 text-primary" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-muted-foreground font-medium">Pagamento aprovado</p>
+                    <p className="text-[13px] font-black text-foreground">R$ 1.250,00</p>
+                  </div>
+                  <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse ml-1" />
+                </div>
+
+              </div>
+            </div>
+
+            {/* ── MOBILE: visual simplificado ── */}
+            <div className="lg:hidden mt-8">
+              <div style={{background:'hsl(222 47% 5% / 0.9)', backdropFilter:'blur(24px)', border:'1px solid hsl(217 33% 14% / 0.6)'}} className="rounded-[20px] p-4 shadow-xl">
+                <div className="flex items-center justify-between mb-4 pb-3 border-b border-white/[0.05]">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full gradient-primary flex items-center justify-center">
+                      <Bot className="w-3.5 h-3.5 text-black" />
+                    </div>
+                    <span className="text-[11px] font-bold">Camila · IA Vendedora</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                    <span className="text-[9px] text-primary font-semibold">Online</span>
+                  </div>
+                </div>
+                <div className="space-y-2.5">
+                  <div style={{background:'hsl(217 33% 12% / 0.8)'}} className="rounded-2xl rounded-tl-[4px] px-3 py-2.5 text-[11px] text-muted-foreground max-w-[85%]">
+                    Olá! Tenho interesse no seu produto. Como compro?
+                  </div>
+                  <div className="gradient-primary rounded-2xl rounded-tr-[4px] px-3 py-2.5 text-[11px] text-black font-semibold ml-auto max-w-[85%]">
+                    Oi! Tudo pronto aqui. Vou te enviar o link de pagamento agora! 🚀
+                  </div>
+                </div>
+                <div style={{background:'hsl(168 84% 49% / 0.08)', border:'1px solid hsl(168 84% 49% / 0.15)'}} className="mt-4 rounded-xl p-3 flex items-center justify-between">
+                  <div>
+                    <p className="text-[10px] text-muted-foreground">Pagamento confirmado</p>
+                    <p className="text-[14px] font-black text-primary">R$ 1.250,00</p>
+                  </div>
+                  <div className="text-[10px] font-bold text-primary bg-primary/10 px-2.5 py-1 rounded-full">PIX ✓</div>
+                </div>
+              </div>
+            </div>
+
           </div>
         </div>
 
         {/* Visual Elements Background */}
-        <div className="absolute top-[20%] right-[-10%] w-[40%] h-[40%] bg-primary/10 blur-[150px] animate-pulse-glow" />
-        <div className="absolute bottom-0 left-[-10%] w-[40%] h-[40%] bg-cyan-500/10 blur-[150px] animate-pulse-glow" />
+        <div className="absolute top-[20%] right-[-10%] w-[40%] h-[40%] bg-primary/10 blur-[150px] animate-pulse-glow z-[-1]" />
+        <div className="absolute bottom-0 left-[-10%] w-[40%] h-[40%] bg-cyan-500/10 blur-[150px] animate-pulse-glow z-[-1]" />
       </section>
+
 
       {/* Demo Section (Chat Simulator) */}
       <section className="pb-32 container-7xl px-4 md:px-6">
@@ -399,7 +594,7 @@ export default function HomePage() {
                  </div>
                  <ul className="space-y-4 mb-12 flex-1 text-left list-none">
                     <li className="flex items-center gap-3 text-sm font-semibold text-muted-foreground"><CheckCircle2 className="w-4 h-4 text-primary" /> 10 Canais WhatsApp</li>
-                    <li className="flex items-center gap-3 text-sm font-semibold text-muted-foreground"><CheckCircle2 className="w-4 h-4 text-primary" /> Mensagens Ilimitadas</li>
+                    <li className="flex items-center gap-3 text-sm font-semibold text-muted-foreground"><CheckCircle2 className="w-4 h-4 text-primary" /> Acesso Multi-Usuário</li>
                     <li className="flex items-center gap-3 text-sm font-semibold text-muted-foreground"><CheckCircle2 className="w-4 h-4 text-primary" /> Gerente VIP Dedicado</li>
                     <li className="flex items-center gap-3 text-sm font-semibold text-muted-foreground"><CheckCircle2 className="w-4 h-4 text-primary" /> API Open (Beta)</li>
                  </ul>
@@ -424,48 +619,127 @@ export default function HomePage() {
           </div>
       </section>
 
-      {/* Minimalistic Footer */}
-      <footer className="py-24 border-t border-white/5 bg-black/60 relative backdrop-blur-3xl overflow-hidden">
-         <div className="container-7xl">
-            <div className="grid md:grid-cols-4 gap-16 mb-24">
-               <div className="md:col-span-2 space-y-8 text-left">
-                  <div className="flex items-center gap-4">
-                    <Image src="/logo.png" alt="Logo" width={48} height={48} className="w-12 h-12 rounded-xl" />
-                    <span className="font-black text-3xl tracking-tightest">CodControl <span className="text-primary italic">AI</span></span>
-                  </div>
-                  <p className="text-muted-foreground max-w-sm leading-relaxed text-lg opacity-60">
-                     A vanguarda da automação de vendas. Tecnologia feita para quem não aceita nada menos que o topo.
-                  </p>
-               </div>
-               
-               <div className="space-y-8 text-left">
-                  <h5 className="font-black uppercase tracking-[0.3em] text-[10px] text-primary">Navegação</h5>
-                  <ul className="space-y-4">
-                     <li><a href="#solucao" className="text-sm font-bold text-muted-foreground hover:text-white transition-colors">Sistema</a></li>
-                     <li><a href="#planos" className="text-sm font-bold text-muted-foreground hover:text-white transition-colors">Planos</a></li>
-                     <li><a href="#recursos" className="text-sm font-bold text-muted-foreground hover:text-white transition-colors">Funcionalidades</a></li>
-                  </ul>
-               </div>
+      {/* Footer Premium */}
+      <footer className="relative border-t border-white/[0.06] overflow-hidden" style={{background: 'hsl(222 47% 2%)'}}>
 
-               <div className="space-y-8 text-left">
-                  <h5 className="font-black uppercase tracking-[0.3em] text-[10px] text-primary">Companhia</h5>
-                  <div className="flex flex-col gap-4">
-                      <p className="text-xs text-muted-foreground font-bold">R G BARROS REPRESENTACAO</p>
-                      <p className="text-xs text-muted-foreground/60 leading-relaxed uppercase tracking-widest">CNPJ: 60.047.949/0001-79</p>
-                      <p className="text-[10px] text-muted-foreground/40 italic">&copy; {new Date().getFullYear()} CodControl AI. Todos os vendedos reservados.</p>
-                  </div>
-               </div>
+        {/* Glow sutil no topo do footer */}
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[60%] h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent" />
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[30%] h-[1px] blur-sm bg-primary/30" />
+
+        {/* Mini CTA Banner */}
+        <div style={{borderBottom: '1px solid hsl(217 33% 10%)'}} className="py-8">
+          <div className="container-7xl flex flex-col sm:flex-row items-center justify-between gap-6">
+            <div className="flex items-center gap-3">
+              <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+              <p className="text-sm text-muted-foreground">
+                <span className="text-foreground font-semibold">7 dias grátis.</span> Sem cartão. Cancele quando quiser.
+              </p>
             </div>
-            
-            <div className="pt-12 border-t border-white/5 flex flex-col md:flex-row items-center justify-between gap-8 opacity-20 text-[9px] uppercase font-black tracking-[0.4em] grayscale">
-                <span>Engenharia de Software de Alta Performance</span>
-                <div className="flex gap-4">
-                  <span>Inovação</span>
-                  <span>Evolução</span>
-                  <span>Escala</span>
-                </div>
+            <Link
+              href="/register?plan=basico"
+              className="gradient-primary text-black text-[13px] font-bold px-6 py-2.5 rounded-lg hover:opacity-90 transition-all whitespace-nowrap shadow-[0_0_20px_rgba(20,184,166,0.2)]"
+            >
+              Começar agora →
+            </Link>
+          </div>
+        </div>
+
+        {/* Main Footer Grid */}
+        <div className="container-7xl py-16">
+          <div className="grid grid-cols-2 md:grid-cols-12 gap-10 md:gap-8">
+
+            {/* Brand */}
+            <div className="col-span-2 md:col-span-4 space-y-5">
+              <div className="flex items-center gap-3">
+                <Image src="/logo.png" alt="CodControl AI" width={36} height={36} className="w-9 h-9 rounded-xl" />
+                <span className="font-black text-xl tracking-tight">
+                  CodControl <span className="text-primary">AI</span>
+                </span>
+              </div>
+              <p className="text-[13px] text-muted-foreground leading-[1.7] max-w-[260px] opacity-70">
+                O sistema completo que transforma WhatsApp em canal de vendas automático para negócios brasileiros.
+              </p>
+              {/* Status badge */}
+              <div className="inline-flex items-center gap-2 border border-white/[0.07] rounded-full px-3 py-1.5 bg-white/[0.02]">
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="text-[11px] text-muted-foreground font-medium">Todos sistemas operacionais</span>
+              </div>
             </div>
-         </div>
+
+            {/* Produto */}
+            <div className="col-span-1 md:col-span-2 space-y-4">
+              <h6 className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/50">Produto</h6>
+              <ul className="space-y-3">
+                {[
+                  { label: 'Funcionalidades', href: '#solucao' },
+                  { label: 'Planos e Preços', href: '#planos' },
+                  { label: 'Demo ao vivo', href: '#demo' },
+                  { label: 'Casos de uso', href: '#recursos' },
+                ].map((l) => (
+                  <li key={l.label}>
+                    <a href={l.href} className="text-[13px] text-muted-foreground/60 hover:text-foreground transition-colors duration-150 font-medium">
+                      {l.label}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Suporte */}
+            <div className="col-span-1 md:col-span-2 space-y-4">
+              <h6 className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/50">Suporte</h6>
+              <ul className="space-y-3">
+                {[
+                  { label: 'Central de Ajuda', href: '#' },
+                  { label: 'Fale no WhatsApp', href: 'https://wa.me/5598984426359' },
+                  { label: 'Política de Privacidade', href: '#' },
+                  { label: 'Termos de Uso', href: '#' },
+                ].map((l) => (
+                  <li key={l.label}>
+                    <a href={l.href} target={l.href.startsWith('http') ? '_blank' : undefined} rel="noopener noreferrer" className="text-[13px] text-muted-foreground/60 hover:text-foreground transition-colors duration-150 font-medium">
+                      {l.label}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Empresa */}
+            <div className="col-span-2 md:col-span-4 space-y-4">
+              <h6 className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/50">Empresa</h6>
+              <div className="space-y-2">
+                <p className="text-[13px] font-semibold text-foreground/70">R G Barros Representação</p>
+                <p className="text-[11px] text-muted-foreground/40 font-mono tracking-wide">CNPJ: 60.047.949/0001-79</p>
+              </div>
+              {/* Selos de confiança */}
+              <div className="flex flex-wrap gap-2 pt-2">
+                {[
+                  '🔒 Dados Protegidos',
+                  '🇧🇷 100% Brasileiro',
+                  '⚡ IA Avançada',
+                ].map((badge) => (
+                  <span key={badge} className="text-[10px] font-semibold text-muted-foreground/50 border border-white/[0.06] rounded-full px-3 py-1 bg-white/[0.02]">
+                    {badge}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        {/* Bottom bar */}
+        <div style={{borderTop: '1px solid hsl(217 33% 9%)'}}>
+          <div className="container-7xl py-5 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <p className="text-[11px] text-muted-foreground/30 font-medium">
+              © {new Date().getFullYear()} CodControl AI. Todos os direitos reservados.
+            </p>
+            <div className="flex items-center gap-6">
+              <span className="text-[10px] text-muted-foreground/20 uppercase tracking-[0.2em] font-black">Inovação · Escala · Resultado</span>
+            </div>
+          </div>
+        </div>
+
       </footer>
 
       {/* Floating WhatsApp Button */}

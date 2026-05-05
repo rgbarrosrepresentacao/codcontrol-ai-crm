@@ -1,6 +1,7 @@
 'use client'
 import { usePathname, useRouter } from 'next/navigation'
 import { AlertTriangle, ArrowRight, Clock, Zap, Building2, Sparkles } from 'lucide-react'
+import { SUBSCRIPTION_CONSTANTS } from '@/lib/constants'
 
 interface Plan {
     name: string
@@ -63,14 +64,13 @@ export function TrialWall({
         // Usuário legado SEM data de vencimento → acesso total sempre (compatibilidade)
         if (!trialEndsAt) return <>{children}</>
 
-        // Usuário pagante COM data de vencimento → verifica prazo + 48h de carência
-        // Lógica: prazo pago (~30 dias) + 48h carência para cobranças com atraso
+        // Usuário pagante COM data de vencimento → verifica prazo + carência centralizada
         const expiresAt = new Date(trialEndsAt)
-        const graceEnd  = new Date(expiresAt.getTime() + 48 * 60 * 60 * 1000) // +48h
+        const graceEnd  = new Date(expiresAt.getTime() + SUBSCRIPTION_CONSTANTS.GRACE_PERIOD_MS)
         const now       = new Date()
 
         if (now <= graceEnd) {
-            // Dentro do prazo ou dentro da carência de 48h → libera
+            // Dentro do prazo ou dentro da carência → libera
             return <>{children}</>
         }
         // Fora do prazo E fora da carência → cai no TrialWall abaixo
@@ -79,11 +79,11 @@ export function TrialWall({
     // Usuários em período de trial (lógica sem mudança — já estava correta)
     if (status === 'trialing' && trialEndsAt) {
         const expiresAt = new Date(trialEndsAt)
-        const graceEnd  = new Date(expiresAt.getTime() + 48 * 60 * 60 * 1000) // +48h
+        const graceEnd  = new Date(expiresAt.getTime() + SUBSCRIPTION_CONSTANTS.GRACE_PERIOD_MS)
         const now       = new Date()
 
         if (now <= graceEnd) {
-            // Ainda dentro do trial (ou carência de 48h)
+            // Ainda dentro do trial (ou carência centralizada)
             return <>{children}</>
         }
         // Trial expirado e fora da carência — cai no TrialWall

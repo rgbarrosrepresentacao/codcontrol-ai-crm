@@ -177,6 +177,11 @@
   box-shadow: 0 0 20px hsl(var(--primary) / 0.2);
 }
 
+/* Animation Utilities */
+.animation-delay-300 { animation-delay: 300ms; }
+.animation-delay-500 { animation-delay: 500ms; }
+.animation-duration-3000 { animation-duration: 3s; }
+
 /* Layout Hacks */
 .container-7xl {
   @apply max-w-7xl mx-auto px-6 md:px-12;

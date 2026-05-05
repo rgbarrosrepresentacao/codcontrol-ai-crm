@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import crypto from 'crypto'
+import { SUBSCRIPTION_CONSTANTS } from '@/lib/constants'
 
 export async function POST(req: NextRequest) {
     const supabase = createClient(
@@ -127,13 +128,26 @@ export async function POST(req: NextRequest) {
             body.product_name || body.ProductName || ''
         ).toLowerCase()
 
-        // Detecção pelo nome do plano (novo modelo)
-        if (planName.includes('agência') || planName.includes('agencia') || planName.includes('agency') || amountInReais >= 800) {
-            planSlug = 'agencia'
-        } else if (planName.includes('pro') || planName.includes('professional') || amountInReais >= 200) {
-            planSlug = 'pro'
+        // 1. Tenta buscar o plano pelo product_id oficial (mais robusto)
+        const { data: planByProduct } = await supabase
+            .from('plans')
+            .select('slug')
+            .eq('kiwify_product_id', product_id)
+            .maybeSingle()
+
+        if (planByProduct) {
+            console.log(`[KIWIFY_WEBHOOK] 🎯 Plano detectado via ProductID: ${planByProduct.slug}`)
+            planSlug = planByProduct.slug
         } else {
-            planSlug = 'basico'
+            // 2. Fallback por nome ou valor (legado/segurança)
+            console.log(`[KIWIFY_WEBHOOK] ⚠️ ProductID não mapeado. Usando fallback por nome/valor.`)
+            if (planName.includes('agência') || planName.includes('agencia') || planName.includes('agency') || amountInReais >= 800) {
+                planSlug = 'agencia'
+            } else if (planName.includes('pro') || planName.includes('professional') || amountInReais >= 200) {
+                planSlug = 'pro'
+            } else {
+                planSlug = 'basico'
+            }
         }
 
         // ─── LÓGICA DE STATUS ──────────────────────────────────────────────────
@@ -165,17 +179,16 @@ export async function POST(req: NextRequest) {
 
         const finalStatus = isCanceled ? 'canceled' : (isActive ? 'active' : 'inactive')
         
-        // GRACE PERIOD (Carência de 48h)
-        // Adicionamos 2 dias ao prazo da Kiwify para evitar bloqueios por delay de processamento
+        // GRACE PERIOD (Carência centralizada)
         const nextPayment = subscription?.next_payment || subscription?.customer_access?.access_until
         let trialEndsAt = null
         if (nextPayment) {
             const date = new Date(nextPayment)
-            date.setHours(date.getHours() + 48) // +48h Grace Period
+            date.setHours(date.getHours() + SUBSCRIPTION_CONSTANTS.GRACE_PERIOD_HOURS)
             trialEndsAt = date.toISOString()
         } else if (isActive) {
             const d = new Date()
-            d.setDate(d.getDate() + 32) // 30 dias + 2 de carência
+            d.setDate(d.getDate() + 30 + SUBSCRIPTION_CONSTANTS.GRACE_PERIOD_DAYS)
             trialEndsAt = d.toISOString()
         }
 
