@@ -9,11 +9,23 @@ import { FunnelService } from '@/services/whatsapp/funnels';
 import { AIService } from '@/services/whatsapp/ai';
 import { MessageService } from '@/services/whatsapp/messages';
 import { evolutionApi } from '@/lib/evolution';
+import { generateSpeech } from '@/lib/openai-tts';
 
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 );
+
+// ── Utilitário: limpa texto antes de converter em áudio ────────────────────
+function cleanTextForAudio(text: string): string {
+    const urlRegex = /(https?:\/\/[^\s]+|www\.[^\s]+|[a-zA-Z0-9-]+\.(com|net|org|io|app|bond|shop|top|site|online|me)[^\s]*)/gi;
+    let clean = text.replace(urlRegex, '');
+    // Remove emojis e caracteres especiais que soam estranho em TTS
+    clean = clean.replace(/[\u{1F300}-\u{1F9FF}]/gu, '');
+    clean = clean.replace(/[*_~`#]/g, '');
+    clean = clean.replace(/\s{2,}/g, ' ').trim();
+    return clean || text; // Fallback para o original se ficou vazio
+}
 
 export async function POST(req: NextRequest) {
     try {
@@ -46,7 +58,10 @@ async function processWebhook(body: any) {
     const remoteJid = key.remoteJid;
     if (!remoteJid || remoteJid.endsWith('@g.us')) return; // Ignora grupos
 
-    console.log(`[Webhook] 📩 Mensagem recebida de ${remoteJid} na instância ${instanceName}`);
+    // Detecta se é uma mensagem de áudio (para marcar preferência do contato)
+    const isAudioMessage = !!(messageData.audioMessage || messageData.pttMessage);
+
+    console.log(`[Webhook] 📩 Mensagem recebida de ${remoteJid} (${isAudioMessage ? '🎙️ áudio' : '💬 texto'}) na instância ${instanceName}`);
 
     try {
         // ── PASSO 1: Identificar Instância ──────────────────────────────
@@ -97,8 +112,16 @@ async function processWebhook(body: any) {
             return;
         }
 
+        // ── PASSO 5.1: Detectar preferência de áudio ───────────────────
+        // Se o cliente enviou áudio e ainda não tem preferência marcada, ativa
+        let wantsAudio = contact.wants_audio ?? false;
+        if (isAudioMessage && !wantsAudio) {
+            wantsAudio = true;
+            await supabase.from('contacts').update({ wants_audio: true }).eq('id', contact.id);
+            console.log(`[Webhook] 🎙️ Preferência de áudio ativada para ${phone}`);
+        }
+
         // ── PASSO 6: Upsert da Conversa ────────────────────────────────
-        // Primeiro tenta buscar conversa existente
         let conversationId: string | null = null;
 
         const { data: existingConv } = await supabase
@@ -110,7 +133,6 @@ async function processWebhook(body: any) {
 
         if (existingConv) {
             conversationId = existingConv.id;
-            // Reabre a conversa se estava fechada
             await supabase.from('conversations')
                 .update({ status: 'open', updated_at: new Date().toISOString() })
                 .eq('id', conversationId);
@@ -140,11 +162,10 @@ async function processWebhook(body: any) {
                 message_id: key.id,
                 from_me: false,
                 content: textMessage,
-                type: messageData.audioMessage ? 'audio' : 'text',
+                type: isAudioMessage ? 'audio' : 'text',
                 status: 'delivered'
             });
 
-            // Atualiza última mensagem na conversa
             await supabase.from('conversations').update({
                 last_message: textMessage,
                 last_message_at: new Date().toISOString()
@@ -212,7 +233,9 @@ async function processWebhook(body: any) {
             .from('ai_configurations')
             .select('*')
             .eq('user_id', profile.id)
-            .single();
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
 
         if (aiErr || !aiConfig) {
             console.warn(`[Webhook] ⚠️ Sem configuração de IA para ${profile.id}`);
@@ -247,15 +270,49 @@ async function processWebhook(body: any) {
 
         console.log(`[Webhook] ✅ IA respondeu: "${reply.slice(0, 60)}..."`);
 
-        // Delay para parecer humano + indicador "digitando..."
-        const humanDelay = 3000 + Math.random() * 1000; // 3 a 4 segundos aleatório
-        await evolutionApi.sendPresence(instanceName, remoteJid, 'composing');
-        await new Promise(r => setTimeout(r, humanDelay));
+        // ── PASSO 11: Envio Humanizado (Áudio ou Texto) ─────────────────
+        // Delay proporcional ao tamanho da resposta (mín 2s, máx 10s)
+        const typingTime = Math.min(Math.max(reply.length * 50, 2000), 10000);
+        const canSendAudio = !!(aiConfig.audio_enabled && wantsAudio);
+        let finalType = 'text';
 
-        // Envia via Evolution API
-        await MessageService.send(instanceName, remoteJid, reply);
+        if (canSendAudio) {
+            console.log(`[Webhook] 🎙️ Enviando resposta em ÁUDIO para ${phone}...`);
+            try {
+                // Verifica se tem link no texto — se sim, manda texto primeiro
+                const urlRegex = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi;
+                const hasLink = urlRegex.test(reply);
+                if (hasLink) {
+                    await MessageService.send(instanceName, remoteJid, reply);
+                    await new Promise(r => setTimeout(r, 1500));
+                }
 
-        // Salva resposta no histórico
+                // Mostra indicador "gravando áudio..."
+                await evolutionApi.sendPresence(instanceName, remoteJid, 'recording');
+                await new Promise(r => setTimeout(r, Math.max(typingTime - 3000, 1500)));
+
+                // Gera e envia o áudio via TTS
+                const audioText = cleanTextForAudio(reply);
+                const audioB64 = await generateSpeech(audioText, aiConfig.voice_id || 'nova', profile.openai_api_key);
+                await evolutionApi.sendWhatsAppAudio(instanceName, remoteJid, audioB64);
+                finalType = 'audio';
+                console.log(`[Webhook] ✅ Áudio enviado para ${phone}`);
+            } catch (audioErr: any) {
+                // Áudio falhou — envia texto como fallback
+                console.error(`[Webhook] ⚠️ TTS falhou, enviando texto como fallback:`, audioErr?.message);
+                await evolutionApi.sendPresence(instanceName, remoteJid, 'composing');
+                await new Promise(r => setTimeout(r, 2000));
+                await MessageService.send(instanceName, remoteJid, reply);
+            }
+        } else {
+            // Modo texto padrão com delay proporcional
+            console.log(`[Webhook] 💬 Enviando resposta em TEXTO para ${phone} (delay: ${Math.round(typingTime / 1000)}s)`);
+            await evolutionApi.sendPresence(instanceName, remoteJid, 'composing');
+            await new Promise(r => setTimeout(r, typingTime));
+            await MessageService.send(instanceName, remoteJid, reply);
+        }
+
+        // ── PASSO 12: Salvar Resposta no Banco ─────────────────────────
         await supabase.from('messages').insert({
             user_id: profile.id,
             conversation_id: conversationId,
@@ -263,18 +320,17 @@ async function processWebhook(body: any) {
             contact_id: contact.id,
             from_me: true,
             content: reply,
-            type: 'text',
+            type: finalType,
             status: 'sent',
             ai_generated: true
         });
 
-        // Atualiza última mensagem
         await supabase.from('conversations').update({
             last_message: reply,
             last_message_at: new Date().toISOString()
         }).eq('id', conversationId);
 
-        // Classificação assíncrona em background (não bloqueia)
+        // ── PASSO 13: Classificação Assíncrona (não bloqueia) ──────────
         AIService.classifyContact(formattedHistory, profile.openai_api_key).then(tag => {
             if (tag) supabase.from('contacts').update({ ai_tag: tag }).eq('id', contact.id);
         }).catch(() => {});
