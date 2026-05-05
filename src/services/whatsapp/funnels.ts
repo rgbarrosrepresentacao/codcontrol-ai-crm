@@ -102,9 +102,11 @@ export class FunnelService {
                 }
 
                 // ── Passo F: Atualiza estado para EM_ANDAMENTO antes de enviar ──
+                console.log(`[FUNNEL_ENGINE] │  ↳ Definindo status: EM_ANDAMENTO`);
                 await supabase.from('contacts').update({
                     funnel_current_node_id: currentNodeId,
                     funnel_status: 'EM_ANDAMENTO',
+                    is_funnel_active: true // Garante que a trava está ligada durante o envio
                 }).eq('id', contactId);
 
                 // ── Passo G: Executa a ação do nó ──
@@ -155,7 +157,7 @@ export class FunnelService {
                 handle = 'default';
 
                 if (!nextNodeId || nextNodeId === currentNodeId) {
-                    console.log(`[FUNNEL_ENGINE] └─ Fim do fluxo. Nenhum próximo nó.`);
+                    console.log(`[FUNNEL_ENGINE] 🏁 Fim do fluxo alcançado para ${contactId}.`);
                     await supabase.from('contacts').update({
                         funnel_status: 'FINALIZADO',
                         is_funnel_active: false,

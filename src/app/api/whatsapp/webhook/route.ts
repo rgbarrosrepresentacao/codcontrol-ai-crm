@@ -215,12 +215,15 @@ async function processWebhook(body: any) {
         console.log(`[WEBHOOK] Orchestrating funnel. Current status: ${funnelStatus}, Active: ${isFunnelActive}`);
 
         // ── REGRA DE OURO: PROTEÇÃO DE CONCORRÊNCIA ──────────────────────────
-        // Se o motor já está rodando (is_funnel_active = true), ignoramos novas mensagens
+        // Se o motor está ativamente processando (EM_ANDAMENTO), ignoramos novas mensagens
         // para não interromper o fluxo automatizado ou causar race conditions.
-        if (isFunnelActive) {
-            console.log(`[WEBHOOK] ⏳ Motor já está processando este contato (${phone}). Ignorando mensagem do usuário.`);
+        // Se estiver PAUSADO ou INATIVO, permitimos a passagem para retomada ou IA.
+        if (isFunnelActive && funnelStatus === 'EM_ANDAMENTO') {
+            console.log(`[WEBHOOK] 🛡️ Bloqueio de Concorrência: Motor em andamento para ${phone}. Ignorando entrada.`);
             return NextResponse.json({ success: true, status: 'processing_active_funnel' });
         }
+
+        console.log(`[WEBHOOK] 🚥 Fluxo Liberado | Status: ${funnelStatus} | Active: ${isFunnelActive} | Contato: ${phone}`);
 
         let funnelJustStarted = false;
 
