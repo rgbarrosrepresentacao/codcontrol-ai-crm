@@ -8,6 +8,8 @@ import { CampaignService } from '@/services/whatsapp/campaigns';
 import { FunnelService } from '@/services/whatsapp/funnels';
 import { AIService } from '@/services/whatsapp/ai';
 import { MessageService } from '@/services/whatsapp/messages';
+import { KnowledgeService } from '@/services/whatsapp/knowledge';
+import { NotificationService } from '@/services/whatsapp/notifications';
 import { evolutionApi } from '@/lib/evolution';
 import { generateSpeech } from '@/lib/openai-tts';
 
@@ -20,11 +22,10 @@ const supabase = createClient(
 function cleanTextForAudio(text: string): string {
     const urlRegex = /(https?:\/\/[^\s]+|www\.[^\s]+|[a-zA-Z0-9-]+\.(com|net|org|io|app|bond|shop|top|site|online|me)[^\s]*)/gi;
     let clean = text.replace(urlRegex, '');
-    // Remove emojis e caracteres especiais que soam estranho em TTS
     clean = clean.replace(/[\u{1F300}-\u{1F9FF}]/gu, '');
     clean = clean.replace(/[*_~`#]/g, '');
     clean = clean.replace(/\s{2,}/g, ' ').trim();
-    return clean || text; // Fallback para o original se ficou vazio
+    return clean || text;
 }
 
 export async function POST(req: NextRequest) {
@@ -32,12 +33,10 @@ export async function POST(req: NextRequest) {
         const body = await req.json();
         const eventType = (body.event || body.eventType || '').toLowerCase();
 
-        // Ignora eventos que não são mensagens
         if (eventType !== 'messages.upsert' && eventType !== 'messages_upsert') {
             return NextResponse.json({ success: true, reason: 'ignored_event' });
         }
 
-        // Processamento em background para liberar o WhatsApp rapidamente
         processWebhook(body).catch(err => console.error('❌ Erro fatal no orquestrador:', err));
 
         return NextResponse.json({ success: true, status: 'processing' });
@@ -52,16 +51,15 @@ async function processWebhook(body: any) {
     const key = body.data?.key;
     const instanceName = body.instance;
 
-    // Ignora mensagens enviadas pelo bot ou sem conteúdo
     if (!key || key.fromMe || !messageData) return;
 
     const remoteJid = key.remoteJid;
-    if (!remoteJid || remoteJid.endsWith('@g.us')) return; // Ignora grupos
+    if (!remoteJid || remoteJid.endsWith('@g.us')) return;
 
-    // Detecta se é uma mensagem de áudio (para marcar preferência do contato)
     const isAudioMessage = !!(messageData.audioMessage || messageData.pttMessage);
+    const rawText = body.data?.message?.conversation || body.data?.message?.extendedTextMessage?.text || '';
 
-    console.log(`[Webhook] 📩 Mensagem recebida de ${remoteJid} (${isAudioMessage ? '🎙️ áudio' : '💬 texto'}) na instância ${instanceName}`);
+    console.log(`[Webhook] 📩 Mensagem de ${remoteJid} na instância ${instanceName}`);
 
     try {
         // ── PASSO 1: Identificar Instância ──────────────────────────────
@@ -71,59 +69,53 @@ async function processWebhook(body: any) {
             .eq('instance_name', instanceName)
             .single();
 
-        if (instanceErr || !instance) {
-            console.error(`[Webhook] ❌ Instância não encontrada: ${instanceName}`, instanceErr?.message);
-            return;
+        if (instanceErr || !instance) return;
+
+        // ── PASSO 1.1: Blast Opt-Out (NOVO) ───────────────────────────
+        const OPT_OUT_REGEX = /^(sair|parar|stop|cancelar|nao quero|não quero|descadastrar|remover|bloquear|chega|para|pare)\s*[!.]*$/i;
+        if (OPT_OUT_REGEX.test(rawText.trim())) {
+            const phone = remoteJid.replace(/\D/g, '');
+            const normalizedPhone = phone.startsWith('55') ? phone : '55' + phone;
+            
+            await supabase
+                .from('blast_contacts')
+                .update({ opted_out: true, opted_out_at: new Date().toISOString() })
+                .eq('phone', normalizedPhone)
+                .eq('opted_out', false);
+
+            console.log(`[BLAST OPT-OUT] ⛔ ${phone} pediu para sair.`);
         }
 
         // ── PASSO 2: Carregar Perfil do Usuário ────────────────────────
         const { data: profile, error: profileErr } = await supabase
             .from('profiles')
-            .select('id, is_admin, stripe_subscription_status, trial_ends_at, openai_api_key')
+            .select('*') // Pega tudo para ver notificações
             .eq('id', instance.user_id)
             .single();
 
-        if (profileErr || !profile) {
-            console.error(`[Webhook] ❌ Perfil não encontrado para user_id: ${instance.user_id}`, profileErr?.message);
-            return;
-        }
+        if (profileErr || !profile) return;
 
         // ── PASSO 3: Verificar Acesso ──────────────────────────────────
         const access = GuardService.checkAccess(profile);
-        if (!access.hasAccess) {
-            console.log(`[Webhook] 🚫 Acesso negado (${access.reason}) para ${profile.id}`);
-            return;
-        }
+        if (!access.hasAccess) return;
 
         // ── PASSO 4: Extrair Texto da Mensagem ─────────────────────────
         const textMessage = await ProcessorService.extractMessageContent(body, instanceName, profile.openai_api_key);
-        if (!textMessage) {
-            console.log(`[Webhook] ⚠️ Mensagem sem conteúdo extraível. Ignorando.`);
-            return;
-        }
-
-        console.log(`[Webhook] 💬 Texto extraído: "${textMessage.slice(0, 60)}..."`);
+        if (!textMessage) return;
 
         // ── PASSO 5: Upsert do Contato ─────────────────────────────────
         const phone = remoteJid.replace(/\D/g, '');
         const contact = await ContactService.upsert(profile.id, instance.id, remoteJid, phone, body.data?.pushName);
-        if (!contact) {
-            console.error(`[Webhook] ❌ Falha ao criar/atualizar contato para ${remoteJid}`);
-            return;
-        }
+        if (!contact) return;
 
-        // ── PASSO 5.1: Detectar preferência de áudio ───────────────────
-        // Se o cliente enviou áudio e ainda não tem preferência marcada, ativa
         let wantsAudio = contact.wants_audio ?? false;
         if (isAudioMessage && !wantsAudio) {
             wantsAudio = true;
             await supabase.from('contacts').update({ wants_audio: true }).eq('id', contact.id);
-            console.log(`[Webhook] 🎙️ Preferência de áudio ativada para ${phone}`);
         }
 
         // ── PASSO 6: Upsert da Conversa ────────────────────────────────
         let conversationId: string | null = null;
-
         const { data: existingConv } = await supabase
             .from('conversations')
             .select('id')
@@ -133,209 +125,116 @@ async function processWebhook(body: any) {
 
         if (existingConv) {
             conversationId = existingConv.id;
-            await supabase.from('conversations')
-                .update({ status: 'open', updated_at: new Date().toISOString() })
-                .eq('id', conversationId);
+            await supabase.from('conversations').update({ status: 'open', updated_at: new Date().toISOString() }).eq('id', conversationId);
         } else {
-            const { data: newConv, error: convErr } = await supabase
+            const { data: newConv } = await supabase
                 .from('conversations')
                 .insert({ user_id: profile.id, instance_id: instance.id, contact_id: contact.id, status: 'open' })
                 .select('id')
                 .single();
-
-            if (convErr || !newConv) {
-                console.error(`[Webhook] ❌ Falha ao criar conversa:`, convErr?.message);
-                return;
-            }
-            conversationId = newConv.id;
+            conversationId = newConv?.id || null;
         }
-
-        console.log(`[Webhook] ✅ Conversa: ${conversationId}`);
+        if (!conversationId) return;
 
         // ── PASSO 7: Salvar Mensagem Recebida ──────────────────────────
-        try {
-            await supabase.from('messages').insert({
-                user_id: profile.id,
-                conversation_id: conversationId,
-                instance_id: instance.id,
-                contact_id: contact.id,
-                message_id: key.id,
-                from_me: false,
-                content: textMessage,
-                type: isAudioMessage ? 'audio' : 'text',
-                status: 'delivered'
-            });
-
-            await supabase.from('conversations').update({
-                last_message: textMessage,
-                last_message_at: new Date().toISOString()
-            }).eq('id', conversationId);
-        } catch (msgSaveErr) {
-            console.error(`[Webhook] ⚠️ Erro ao salvar mensagem (não fatal):`, msgSaveErr);
-        }
+        await supabase.from('messages').insert({
+            user_id: profile.id, conversation_id: conversationId, instance_id: instance.id, contact_id: contact.id,
+            message_id: key.id, from_me: false, content: textMessage, type: isAudioMessage ? 'audio' : 'text', status: 'delivered'
+        });
 
         // ── PASSO 8: Detecção de Campanha ──────────────────────────────
-        try {
-            const campaignId = await CampaignService.detect(profile.id, instance.id, textMessage);
-            if (campaignId) {
-                await supabase.from('contacts').update({ active_campaign_id: campaignId }).eq('id', contact.id);
-            }
-        } catch {
-            // Não é crítico
+        const campaignId = await CampaignService.detect(profile.id, instance.id, textMessage);
+        if (campaignId) {
+            await supabase.from('contacts').update({ active_campaign_id: campaignId }).eq('id', contact.id);
         }
 
         // ── PASSO 9: Verificação de Funil ──────────────────────────────
         const funnelStatus = contact.funnel_status || 'INATIVO';
-        const funnelId = contact.current_funnel_id;
-
-        if (funnelId && (funnelStatus === 'INICIADO' || funnelStatus === 'EM_ANDAMENTO')) {
+        if (contact.current_funnel_id && (funnelStatus === 'INICIADO' || funnelStatus === 'EM_ANDAMENTO')) {
             await supabase.from('contacts').update({ funnel_status: 'PAUSADO' }).eq('id', contact.id);
-        } else if (funnelStatus === 'INATIVO' && !funnelId) {
-            try {
-                const { data: defFunnel } = await supabase
-                    .from('funnels').select('id')
-                    .eq('user_id', profile.id).eq('is_default', true)
-                    .maybeSingle();
-
-                if (defFunnel) {
-                    const { data: startNode } = await supabase
-                        .from('funnel_steps').select('id')
-                        .eq('funnel_id', defFunnel.id).eq('node_type', 'start')
-                        .maybeSingle();
-
-                    if (startNode) {
-                        await supabase.from('contacts').update({
-                            current_funnel_id: defFunnel.id,
-                            is_funnel_active: true,
-                            funnel_status: 'INICIADO'
-                        }).eq('id', contact.id);
-                        await FunnelService.execute(defFunnel.id, startNode.id, instanceName, remoteJid, contact.id);
-                        return; // Funil assumiu o controle
-                    }
+        } else if (funnelStatus === 'INATIVO' && !contact.current_funnel_id) {
+            const { data: defFunnel } = await supabase.from('funnels').select('id').eq('user_id', profile.id).eq('is_default', true).maybeSingle();
+            if (defFunnel) {
+                const { data: startNode } = await supabase.from('funnel_steps').select('id').eq('funnel_id', defFunnel.id).eq('node_type', 'start').maybeSingle();
+                if (startNode) {
+                    await supabase.from('contacts').update({ current_funnel_id: defFunnel.id, is_funnel_active: true, funnel_status: 'INICIADO' }).eq('id', contact.id);
+                    await FunnelService.execute(defFunnel.id, startNode.id, instanceName, remoteJid, contact.id);
+                    return;
                 }
-            } catch {
-                // Sem funil padrão — IA assume
             }
         }
 
         // ── PASSO 10: Resposta da IA ────────────────────────────────────
-        if (GuardService.shouldPauseAI(contact.ai_tag)) {
-            console.log(`[Webhook] 🤝 Handoff ativo para ${phone}. IA pausada.`);
-            return;
-        }
+        if (GuardService.shouldPauseAI(contact.ai_tag)) return;
+        if (!profile.openai_api_key) return;
 
-        if (!profile.openai_api_key) {
-            console.warn(`[Webhook] ⚠️ Sem openai_api_key para o usuário ${profile.id}. IA não pode responder.`);
-            return;
-        }
+        const { data: aiConfig } = await supabase.from('ai_configurations').select('*').eq('user_id', profile.id).order('created_at', { ascending: false }).limit(1).maybeSingle();
+        if (!aiConfig) return;
 
-        const { data: aiConfig, error: aiErr } = await supabase
-            .from('ai_configurations')
-            .select('*')
-            .eq('user_id', profile.id)
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
+        // ── PASSO 10.1: Knowledge Base (NOVO) ─────────────────────────
+        const { context: knowledgeContext, items: knowledgeItems } = await KnowledgeService.buildContext(profile.id, campaignId || contact.active_campaign_id);
 
-        if (aiErr || !aiConfig) {
-            console.warn(`[Webhook] ⚠️ Sem configuração de IA para ${profile.id}`);
-            return;
-        }
+        const { data: history } = await supabase.from('messages').select('content, from_me').eq('conversation_id', conversationId).order('created_at', { ascending: false }).limit(20);
+        const formattedHistory = (history || []).reverse().map(m => ({ role: m.from_me ? 'assistant' : 'user', content: m.content }));
 
-        console.log(`[Webhook] 🤖 IA gerando resposta para ${phone}...`);
+        let reply = await AIService.generateResponse(formattedHistory, aiConfig, profile.openai_api_key, knowledgeContext);
+        if (!reply) return;
 
-        // Busca histórico das últimas 20 mensagens
-        const { data: history } = await supabase
-            .from('messages')
-            .select('content, from_me')
-            .eq('conversation_id', conversationId)
-            .order('created_at', { ascending: false })
-            .limit(20);
+        // ── PASSO 10.2: Processar Gatilhos de Mídia (NOVO) ────────────
+        const { item: mediaItem, cleanReply } = KnowledgeService.detectMediaTrigger(reply, knowledgeItems);
+        reply = cleanReply;
 
-        const formattedHistory = (history || []).reverse().map(m => ({
-            role: m.from_me ? 'assistant' : 'user',
-            content: m.content
-        }));
-
-        const reply = await AIService.generateResponse(
-            formattedHistory,
-            aiConfig,
-            profile.openai_api_key
-        );
-
-        if (!reply) {
-            console.error(`[Webhook] ❌ IA não retornou resposta para ${phone}`);
-            return;
-        }
-
-        console.log(`[Webhook] ✅ IA respondeu: "${reply.slice(0, 60)}..."`);
-
-        // ── PASSO 11: Envio Humanizado (Áudio ou Texto) ─────────────────
-        // Delay proporcional ao tamanho da resposta (mín 2s, máx 10s)
+        // ── PASSO 11: Envio Humanizado ─────────────────────────────────
         const typingTime = Math.min(Math.max(reply.length * 50, 2000), 10000);
         const canSendAudio = !!(aiConfig.audio_enabled && wantsAudio);
         let finalType = 'text';
 
         if (canSendAudio) {
-            console.log(`[Webhook] 🎙️ Enviando resposta em ÁUDIO para ${phone}...`);
             try {
-                // Verifica se tem link no texto — se sim, manda texto primeiro
-                const urlRegex = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi;
-                const hasLink = urlRegex.test(reply);
+                const hasLink = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi.test(reply);
                 if (hasLink) {
                     await MessageService.send(instanceName, remoteJid, reply);
                     await new Promise(r => setTimeout(r, 1500));
                 }
-
-                // Mostra indicador "gravando áudio..."
                 await evolutionApi.sendPresence(instanceName, remoteJid, 'recording');
                 await new Promise(r => setTimeout(r, Math.max(typingTime - 3000, 1500)));
-
-                // Gera e envia o áudio via TTS
-                const audioText = cleanTextForAudio(reply);
-                const audioB64 = await generateSpeech(audioText, aiConfig.voice_id || 'nova', profile.openai_api_key);
+                const audioB64 = await generateSpeech(cleanTextForAudio(reply), aiConfig.voice_id || 'nova', profile.openai_api_key);
                 await evolutionApi.sendWhatsAppAudio(instanceName, remoteJid, audioB64);
                 finalType = 'audio';
-                console.log(`[Webhook] ✅ Áudio enviado para ${phone}`);
-            } catch (audioErr: any) {
-                // Áudio falhou — envia texto como fallback
-                console.error(`[Webhook] ⚠️ TTS falhou, enviando texto como fallback:`, audioErr?.message);
-                await evolutionApi.sendPresence(instanceName, remoteJid, 'composing');
-                await new Promise(r => setTimeout(r, 2000));
+            } catch {
                 await MessageService.send(instanceName, remoteJid, reply);
             }
         } else {
-            // Modo texto padrão com delay proporcional
-            console.log(`[Webhook] 💬 Enviando resposta em TEXTO para ${phone} (delay: ${Math.round(typingTime / 1000)}s)`);
             await evolutionApi.sendPresence(instanceName, remoteJid, 'composing');
             await new Promise(r => setTimeout(r, typingTime));
             await MessageService.send(instanceName, remoteJid, reply);
         }
 
-        // ── PASSO 12: Salvar Resposta no Banco ─────────────────────────
-        await supabase.from('messages').insert({
-            user_id: profile.id,
-            conversation_id: conversationId,
-            instance_id: instance.id,
-            contact_id: contact.id,
-            from_me: true,
-            content: reply,
-            type: finalType,
-            status: 'sent',
-            ai_generated: true
-        });
+        // ── PASSO 11.1: Enviar Mídia se detectado (NOVO) ──────────────
+        if (mediaItem) {
+            await KnowledgeService.sendMedia(instanceName, remoteJid, mediaItem, profile.id, instance.id, conversationId, contact.id);
+        }
 
-        await supabase.from('conversations').update({
-            last_message: reply,
-            last_message_at: new Date().toISOString()
-        }).eq('id', conversationId);
+        // ── PASSO 12: Salvar e Classificar ─────────────────────────────
+        await supabase.from('messages').insert({ user_id: profile.id, conversation_id: conversationId, instance_id: instance.id, contact_id: contact.id, from_me: true, content: reply, type: finalType, status: 'sent', ai_generated: true });
+        
+        const newTag = await AIService.classifyContact(formattedHistory, profile.openai_api_key);
+        if (newTag) {
+            await supabase.from('contacts').update({ ai_tag: newTag }).eq('id', contact.id);
 
-        // ── PASSO 13: Classificação Assíncrona (não bloqueia) ──────────
-        AIService.classifyContact(formattedHistory, profile.openai_api_key).then(tag => {
-            if (tag) supabase.from('contacts').update({ ai_tag: tag }).eq('id', contact.id);
-        }).catch(() => {});
+            // ── PASSO 12.1: Notificação de Venda (NOVO) ─────────────────
+            if (newTag === 'FECHADO' && profile.sale_notifications_enabled && profile.notification_whatsapp) {
+                const orderData = await AIService.extractOrderData([...formattedHistory, { role: 'assistant', content: reply }], profile.openai_api_key);
+                if (orderData) {
+                    await NotificationService.sendSaleNotification(instanceName, orderData, phone, profile.notification_whatsapp);
+                    
+                    const closingMsg = await AIService.generateClosingMessage(formattedHistory, aiConfig, profile.openai_api_key);
+                    await MessageService.send(instanceName, remoteJid, closingMsg);
+                }
+            }
+        }
 
     } catch (err: any) {
-        console.error('❌ Erro crítico no processamento do webhook:', err?.message || err);
+        console.error('❌ Erro no webhook:', err);
     }
 }
