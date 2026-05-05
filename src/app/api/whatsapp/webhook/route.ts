@@ -127,6 +127,22 @@ async function processWebhook(body: any) {
             await supabase.from('contacts').update({ wants_audio: true }).eq('id', contact.id);
         }
 
+        // 3. Acesso à Configuração da IA (Prioriza Instância específica, depois Global)
+        const { data: aiConfig } = await supabase
+            .from('ai_configurations')
+            .select('*')
+            .eq('user_id', profile.id)
+            .or(`instance_id.eq.${instance.id},instance_id.is.null`)
+            .order('instance_id', { ascending: false, nullsFirst: false }) // IDs de instância vêm antes de NULL
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+        if (!aiConfig || !aiConfig.is_active) {
+            console.log('IA desativada ou não configurada para este usuário');
+            return NextResponse.json({ message: 'IA inactive' });
+        }
+
         // ── PASSO 6: Upsert da Conversa ────────────────────────────────
         let conversationId: string | null = null;
         const { data: existingConv } = await supabase

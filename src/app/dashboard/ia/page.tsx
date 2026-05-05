@@ -97,41 +97,40 @@ export default function IAPage() {
     const currentConfig = getConfigForInstance(activeTab === 'global' ? null : activeTab)
 
     const handleSave = async () => {
+        if (loading) return
         setSaving(true)
         try {
             const { data: { user } } = await supabase.auth.getUser()
             if (!user) return
             const config = currentConfig
-            if (config.id) {
-                const { error } = await supabase.from('ai_configurations').update({
-                    bot_name: config.bot_name,
-                    system_prompt: config.system_prompt,
-                    tone: config.tone,
-                    language: config.language,
-                    is_active: config.is_active,
-                    audio_enabled: config.audio_enabled,
-                    voice_id: config.voice_id,
-                }).eq('id', config.id)
-                if (error) throw error
-            } else {
-                const { data, error } = await supabase.from('ai_configurations').insert({
-                    user_id: user.id,
-                    instance_id: config.instance_id,
-                    bot_name: config.bot_name,
-                    system_prompt: config.system_prompt,
-                    tone: config.tone,
-                    language: config.language,
-                    is_active: config.is_active,
-                    audio_enabled: config.audio_enabled,
-                    voice_id: config.voice_id,
-                }).select().single()
-                if (error) throw error
-                setConfigs(prev => {
-                    const idx = prev.findIndex(c => c.instance_id === config.instance_id)
-                    if (idx >= 0) { const updated = [...prev]; updated[idx] = data; return updated }
-                    return [...prev, data]
-                })
-            }
+            
+            // Usar UPSERT para evitar duplicatas por user_id e instance_id
+            const { data, error } = await supabase.from('ai_configurations').upsert({
+                id: config.id,
+                user_id: user.id,
+                instance_id: config.instance_id,
+                bot_name: config.bot_name,
+                system_prompt: config.system_prompt,
+                tone: config.tone,
+                language: config.language,
+                is_active: config.is_active,
+                audio_enabled: config.audio_enabled,
+                voice_id: config.voice_id,
+                updated_at: new Date().toISOString()
+            }).select().single()
+
+            if (error) throw error
+            
+            setConfigs(prev => {
+                const idx = prev.findIndex(c => c.instance_id === config.instance_id)
+                if (idx >= 0) {
+                    const updated = [...prev]
+                    updated[idx] = data
+                    return updated
+                }
+                return [...prev, data]
+            })
+            
             toast.success('Configuração de IA salva!')
         } catch (error: any) {
             toast.error(error.message)
@@ -181,6 +180,7 @@ export default function IAPage() {
     }
 
     const handleToggleActive = async () => {
+        if (loading) return
         const newValue = !currentConfig.is_active
         updateConfig('is_active', newValue)
 
@@ -189,41 +189,34 @@ export default function IAPage() {
             if (!user) return
             const config = currentConfig
 
-            if (config.id) {
-                // Já existe no banco, atualiza diretamente
-                const { error } = await supabase
-                    .from('ai_configurations')
-                    .update({ is_active: newValue })
-                    .eq('id', config.id)
-                if (error) throw error
-            } else {
-                // Cria um novo registro já com o estado correto
-                const { data, error } = await supabase
-                    .from('ai_configurations')
-                    .insert({
-                        user_id: user.id,
-                        instance_id: config.instance_id,
-                        bot_name: config.bot_name,
-                        system_prompt: config.system_prompt,
-                        tone: config.tone,
-                        language: config.language,
-                        is_active: newValue,
-                        audio_enabled: config.audio_enabled,
-                        voice_id: config.voice_id,
-                    })
-                    .select()
-                    .single()
-                if (error) throw error
-                setConfigs(prev => {
-                    const idx = prev.findIndex(c => c.instance_id === config.instance_id)
-                    if (idx >= 0) { const updated = [...prev]; updated[idx] = { ...updated[idx], id: data.id }; return updated }
-                    return [...prev, data]
-                })
-            }
+            const { data, error } = await supabase.from('ai_configurations').upsert({
+                id: config.id,
+                user_id: user.id,
+                instance_id: config.instance_id,
+                bot_name: config.bot_name,
+                system_prompt: config.system_prompt,
+                tone: config.tone,
+                language: config.language,
+                is_active: newValue,
+                audio_enabled: config.audio_enabled,
+                voice_id: config.voice_id,
+                updated_at: new Date().toISOString()
+            }).select().single()
+
+            if (error) throw error
+            
+            setConfigs(prev => {
+                const idx = prev.findIndex(c => c.instance_id === config.instance_id)
+                if (idx >= 0) {
+                    const updated = [...prev]
+                    updated[idx] = data
+                    return updated
+                }
+                return [...prev, data]
+            })
 
             toast.success(newValue ? 'IA ativada! Respondendo mensagens.' : 'IA desativada. Não vai mais responder.')
         } catch (error: any) {
-            // Reverte o estado visual em caso de erro
             updateConfig('is_active', !newValue)
             toast.error(`Erro ao alterar estado: ${error.message}`)
         }
