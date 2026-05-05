@@ -295,7 +295,7 @@ async function processWebhook(body: any) {
         }
 
         // 2. Fluxo de Retomada (Lead Respondeu uma Pergunta)
-        if (isFunnelActive && funnelStatus === 'PAUSADO' && !funnelJustStarted) {
+        if (funnelStatus === 'PAUSADO' && !funnelJustStarted) {
             console.log(`[WEBHOOK] 🔄 Retomando funil para ${phone}. Nó pausado: ${contact.funnel_current_node_id}`);
             
             const currentNodeId = contact.funnel_current_node_id;
