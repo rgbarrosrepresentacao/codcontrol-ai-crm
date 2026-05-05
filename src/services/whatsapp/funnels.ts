@@ -170,6 +170,16 @@ export class FunnelService {
             }
         } catch (fatalErr) {
             console.error('[FUNNEL_ENGINE] 💀 Erro fatal no loop:', fatalErr);
+            // CORREÇÃO: Salva FINALIZADO para não deixar o contato travado em EM_ANDAMENTO
+            try {
+                await supabase.from('contacts').update({
+                    funnel_status: 'FINALIZADO',
+                    is_funnel_active: false,
+                }).eq('id', contactId);
+                console.error('[FUNNEL_ENGINE] 🔒 Status salvo como FINALIZADO após erro fatal.');
+            } catch (saveErr) {
+                console.error('[FUNNEL_ENGINE] Não foi possível salvar estado após erro fatal:', saveErr);
+            }
         }
 
         console.log(`[FUNNEL_ENGINE] ==========================================`);

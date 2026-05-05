@@ -299,7 +299,6 @@ async function processWebhook(body: any) {
                     .single();
 
                 if (pausedNode?.node_type === 'condition') {
-                    // ── BUG #3 FIX ─────────────────────────────────────────────────────────
                     // ANTES: passava textMessage bruto como handle (nunca batia com 'yes'/'no')
                     // AGORA: usa IA para converter a resposta do usuário em 'yes', 'no' ou 'unclear'
                     console.log(`[WEBHOOK] 🤖 Nó CONDITION pausado. Avaliando resposta com IA...`);
@@ -340,9 +339,28 @@ async function processWebhook(body: any) {
                             // Confiança suficiente — usa o handle 'yes' ou 'no' para seguir o caminho correto
                             handle = evaluation.decision;
                         } else {
-                            // Resposta ambígua — a IA responde normalmente sem avançar no funil
+                            // Resposta ambígua — verifica quantas vezes consecutivas isso aconteceu
                             console.log(`[WEBHOOK] ⚠️ Resposta ambígua (${evaluation.decision} / ${evaluation.confidence}%). Deixando IA responder.`);
-                            // handle permanece 'default' — o funil fica pausado, a IA responde abaixo
+                            
+                            // CORREÇÃO BUG #2: Conta tentativas ambíguas consecutivas no log
+                            const { count: ambiguousCount } = await supabase
+                                .from('funnel_execution_logs')
+                                .select('*', { count: 'exact', head: true })
+                                .eq('contact_id', contact.id)
+                                .eq('node_id', currentNodeId)
+                                .eq('node_type', 'condition')
+                                .not('customer_response', 'is', null);
+
+                            if ((ambiguousCount || 0) >= 3) {
+                                // Após 3 tentativas sem resposta clara, finaliza o funil e deixa a IA assumir
+                                console.log(`[WEBHOOK] 🔒 3 tentativas ambíguas consecutivas. Finalizando funil e liberando IA.`);
+                                await supabase.from('contacts').update({
+                                    funnel_status: 'FINALIZADO',
+                                    is_funnel_active: false,
+                                }).eq('id', contact.id);
+                                // Cai para a IA responder abaixo
+                            }
+                            // handle permanece 'default' — a IA responde abaixo
                         }
                     }
 
@@ -377,9 +395,27 @@ async function processWebhook(body: any) {
                         FunnelService.execute(contact.current_funnel_id, nextNodeId, instanceName, remoteJid, contact.id, profile.id)
                             .catch(err => console.error('[WEBHOOK] Erro ao avançar funil:', err));
                         return NextResponse.json({ received: true, funnel: 'advanced_next' });
+                    } else {
+                        // Não há próximo nó — funil chegou ao fim
+                        await supabase.from('contacts').update({
+                            funnel_status: 'FINALIZADO',
+                            is_funnel_active: false,
+                        }).eq('id', contact.id);
+                        console.log(`[WEBHOOK] 🏁 Não há próximo nó após wait_for_reply. Funil FINALIZADO.`);
+                        // Cai para a IA responder abaixo
                     }
                 }
             }
+        }
+
+        // CORREÇÃO BUG #3: Detectar funil travado em EM_ANDAMENTO (erro fatal anterior)
+        // Se is_funnel_active=true mas status é EM_ANDAMENTO, o motor morreu sem finalizar
+        if (isFunnelActive && funnelStatus === 'EM_ANDAMENTO' && !funnelJustStarted) {
+            console.log(`[WEBHOOK] 🚨 Funil travado em EM_ANDAMENTO detectado. Finalizando para liberar IA.`);
+            await supabase.from('contacts').update({
+                funnel_status: 'FINALIZADO',
+                is_funnel_active: false,
+            }).eq('id', contact.id);
         }
 
         // 3. Início de Funil Padrão (Novos Contatos / Contatos Inativos)
