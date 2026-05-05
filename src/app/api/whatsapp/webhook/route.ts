@@ -117,14 +117,47 @@ async function processWebhook(body: any) {
         if (!GuardService.shouldPauseAI(contact.ai_tag)) {
             const { data: aiConfig } = await supabase.from('ai_configurations').select('*').eq('user_id', profile.id).single();
             if (aiConfig) {
-                // Aqui você chamaria o AIService para gerar a resposta
-                // Para manter a segurança, estou apenas orquestrando os blocos principais
-                console.log(`[Orchestrator] 🤖 IA pronta para responder para ${phone}`);
-                
-                // Exemplo simplificado de fluxo de resposta
-                // const reply = await AIService.generateResponse(...);
-                // await MessageService.send(instanceName, remoteJid, reply);
-                // await MessageService.save(...);
+                console.log(`[Orchestrator] 🤖 IA processando resposta para ${phone}`);
+
+                // Busca histórico das últimas 20 mensagens
+                const { data: history } = await supabase
+                    .from('messages')
+                    .select('content, from_me')
+                    .eq('conversation_id', conversation.id)
+                    .order('created_at', { ascending: false })
+                    .limit(20);
+
+                const formattedHistory = (history || []).reverse().map(m => ({
+                    role: m.from_me ? 'assistant' : 'user',
+                    content: m.content
+                }));
+
+                const reply = await AIService.generateResponse(
+                    formattedHistory,
+                    aiConfig,
+                    profile.openai_api_key!
+                );
+
+                if (reply) {
+                    await new Promise(r => setTimeout(r, 2000)); // Delay humano
+                    await MessageService.send(instanceName, remoteJid, reply);
+                    
+                    await MessageService.save({
+                        user_id: profile.id,
+                        conversation_id: conversation.id,
+                        instance_id: instance.id,
+                        contact_id: contact.id,
+                        from_me: true,
+                        content: reply,
+                        type: 'text',
+                        ai_generated: true
+                    });
+
+                    // 9. Classificação Automática (Opcional - em background)
+                    AIService.classifyContact(formattedHistory, profile.openai_api_key!).then(tag => {
+                        if (tag) supabase.from('contacts').update({ ai_tag: tag }).eq('id', contact.id);
+                    }).catch(() => {});
+                }
             }
         }
 

@@ -97,5 +97,51 @@ export class AIService {
         } catch {
             return 'Obrigada pelo seu pedido! 🎉 Em breve nossa equipe entrará em contato.';
         }
+    /**
+     * Gera a resposta principal da IA
+     */
+    static async generateResponse(
+        messages: any[], 
+        aiConfig: any, 
+        openaiKey: string,
+        knowledgeContext: string = '',
+        leadContext: string = ''
+    ): Promise<string | null> {
+        try {
+            const response = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openaiKey}` },
+                body: JSON.stringify({
+                    model: 'gpt-4o-mini',
+                    messages: [
+                        {
+                            role: 'system',
+                            content: `Você é ${aiConfig.bot_name}. ${aiConfig.system_prompt}.
+                            
+                            CONHECIMENTO ADICIONAL:
+                            ${knowledgeContext}
+                            
+                            CONTEXTO DO LEAD:
+                            ${leadContext}
+                            
+                            REGRAS:
+                            - Responda de forma natural e humana.
+                            - Use emojis moderadamente.
+                            - Se o cliente quiser comprar, direcione para o fechamento.`
+                        },
+                        ...messages
+                    ],
+                    temperature: 0.7,
+                    max_tokens: 500
+                })
+            });
+
+            if (!response.ok) return null;
+            const data = await response.json();
+            return data.choices?.[0]?.message?.content || null;
+        } catch (err) {
+            console.error('[AIService] Error generating response:', err);
+            return null;
+        }
     }
 }
