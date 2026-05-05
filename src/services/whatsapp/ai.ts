@@ -152,4 +152,56 @@ export class AIService {
             return null;
         }
     }
+    /**
+     * Avalia uma condição de funil baseado na resposta do cliente
+     */
+    static async evaluateCondition(
+        messages: any[], 
+        conditionLabel: string, 
+        openaiKey: string
+    ): Promise<{ decision: 'yes' | 'no' | 'unclear' | 'human'; confidence: number; reason: string }> {
+        try {
+            const conversationText = messages.slice(-10).map(m => `${m.role === 'user' ? 'Cliente' : 'IA'}: ${m.content}`).join('\n');
+            const response = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openaiKey}` },
+                body: JSON.stringify({
+                    model: 'gpt-4o-mini',
+                    messages: [
+                        {
+                            role: 'system',
+                            content: `Você é um avaliador de condições lógicas de vendas.
+                            OBJETIVO: Avaliar se a última resposta do cliente atende à condição: "${conditionLabel}".
+                            
+                            REGRAS:
+                            - "yes": Cliente confirmou, demonstrou interesse ou aceitou.
+                            - "no": Cliente recusou, disse que não quer ou demonstrou desinteresse.
+                            - "human": Cliente pediu para falar com um humano, suporte ou atendente.
+                            - "unclear": A resposta foi vaga, uma dúvida ou não permitiu decidir.
+                            
+                            Retorne APENAS um JSON puro no formato:
+                            {
+                                "decision": "yes" | "no" | "unclear" | "human",
+                                "confidence": 0-100,
+                                "reason": "explicação curta"
+                            }`
+                        },
+                        { role: 'user', content: `Avalie esta conversa:\n\n${conversationText}` }
+                    ],
+                    temperature: 0,
+                    response_format: { type: 'json_object' }
+                })
+            });
+
+            if (!response.ok) throw new Error();
+            const data = await response.json();
+            const content = data.choices?.[0]?.message?.content;
+            if (!content) throw new Error();
+            
+            return JSON.parse(content);
+        } catch (err) {
+            console.error('[AIService] Condition evaluation error:', err);
+            return { decision: 'unclear', confidence: 0, reason: 'Erro na avaliação' };
+        }
+    }
 }

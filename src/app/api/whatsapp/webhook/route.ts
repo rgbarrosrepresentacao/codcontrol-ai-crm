@@ -69,7 +69,10 @@ async function processWebhook(body: any) {
             .eq('instance_name', instanceName)
             .single();
 
-        if (instanceErr || !instance) return;
+        if (instanceErr || !instance) {
+            console.log(`[Webhook Debug] Instance not found: ${instanceName}`);
+            return;
+        }
 
         // ── PASSO 1.1: Blast Opt-Out (NOVO) ───────────────────────────
         const OPT_OUT_REGEX = /^(sair|parar|stop|cancelar|nao quero|não quero|descadastrar|remover|bloquear|chega|para|pare)\s*[!.]*$/i;
@@ -93,7 +96,10 @@ async function processWebhook(body: any) {
             .eq('id', instance.user_id)
             .single();
 
-        if (profileErr || !profile) return;
+        if (profileErr || !profile) {
+            console.log(`[Webhook Debug] Profile not found for userId: ${instance.user_id}`);
+            return;
+        }
 
         // ── PASSO 3: Verificar Acesso ──────────────────────────────────
         const access = GuardService.checkAccess(profile);
@@ -137,9 +143,15 @@ async function processWebhook(body: any) {
         if (!conversationId) return;
 
         // ── PASSO 7: Salvar Mensagem Recebida ──────────────────────────
-        await supabase.from('messages').insert({
-            user_id: profile.id, conversation_id: conversationId, instance_id: instance.id, contact_id: contact.id,
-            message_id: key.id, from_me: false, content: textMessage, type: isAudioMessage ? 'audio' : 'text', status: 'delivered'
+        await MessageService.save({
+            user_id: profile.id,
+            conversation_id: conversationId,
+            instance_id: instance.id,
+            contact_id: contact.id,
+            message_id: key.id,
+            from_me: false,
+            content: textMessage,
+            type: isAudioMessage ? 'audio' : 'text'
         });
 
         // ── PASSO 8: Product Intent Engine V2 (Detecção e Trava) ────────
@@ -179,7 +191,6 @@ async function processWebhook(body: any) {
                 }).eq('id', contact.id);
             } else if (intentResult.confidence_score >= 60 && intentResult.confidence_score < 85 && intentResult.campaign_id) {
                 // Ambiguidade: Não troca a persona, mas a IA deve perguntar se é sobre esse produto
-                // (Opcional: injetar uma instrução para a IA confirmar o produto)
                 console.log(`[Engine V2] ⚠️ Score ambíguo (${intentResult.confidence_score}). Mantendo neutro.`);
             }
         }
@@ -190,18 +201,159 @@ async function processWebhook(body: any) {
             if (campData) campaignPrompt = campData.system_prompt;
         }
 
-        // ── PASSO 9: Verificação de Funil ──────────────────────────────
+        // ── PASSO 9: Orquestração de Funil ─────────────────────────────
         const funnelStatus = contact.funnel_status || 'INATIVO';
-        if (contact.current_funnel_id && (funnelStatus === 'INICIADO' || funnelStatus === 'EM_ANDAMENTO')) {
-            await supabase.from('contacts').update({ funnel_status: 'PAUSADO' }).eq('id', contact.id);
-        } else if (funnelStatus === 'INATIVO' && !contact.current_funnel_id) {
-            const { data: defFunnel } = await supabase.from('funnels').select('id').eq('user_id', profile.id).eq('is_default', true).maybeSingle();
+        const isFunnelActive = contact.is_funnel_active ?? false;
+
+        console.log(`[WEBHOOK] Orchestrating funnel. Current status: ${funnelStatus}, Active: ${isFunnelActive}`);
+
+        // 1. Gatilho de Reinício via Campanha (Engine V2)
+        // Se detectamos um produto com alta confiança, forçamos o reinício do funil específico ou default
+        if (intentResult && intentResult.confidence_score >= 90 && (funnelStatus !== 'EM_ANDAMENTO' || intentResult.confidence_score >= 98)) {
+            console.log(`[WEBHOOK] 🎯 Campanha detectada: "${intentResult.campaign_id}". Tentando iniciar funil correspondente.`);
+            
+            // Busca a campanha para pegar o nome
+            const { data: campaign } = await supabase
+                .from('campaigns')
+                .select('name')
+                .eq('id', intentResult.campaign_id)
+                .single();
+
+            if (campaign) {
+                // Tenta encontrar um funil com o MESMO NOME da campanha
+                let { data: targetFunnel } = await supabase
+                    .from('funnels')
+                    .select('*')
+                    .eq('user_id', profile.id)
+                    .ilike('name', campaign.name) // Case-insensitive match
+                    .eq('is_active', true)
+                    .maybeSingle();
+
+                // Se não achou por nome, busca o default
+                if (!targetFunnel) {
+                    console.log(`[WEBHOOK] ⚠️ Nenhum funil encontrado com nome "${campaign.name}". Usando default.`);
+                    targetFunnel = await supabase
+                        .from('funnels')
+                        .select('*')
+                        .eq('user_id', profile.id)
+                        .eq('is_default', true)
+                        .eq('is_active', true)
+                        .maybeSingle()
+                        .then(res => res.data);
+                }
+
+                if (targetFunnel) {
+                    const { data: startNode } = await supabase
+                        .from('funnel_steps')
+                        .select('id')
+                        .eq('funnel_id', targetFunnel.id)
+                        .eq('node_type', 'start')
+                        .maybeSingle();
+
+                    if (startNode) {
+                        console.log(`[WEBHOOK] 🔥 Disparando Funil: ${targetFunnel.name} (${targetFunnel.id})`);
+                        await supabase.from('contacts').update({ 
+                            is_funnel_active: true,
+                            funnel_status: 'EM_ANDAMENTO',
+                            current_funnel_id: targetFunnel.id
+                        }).eq('id', contact.id);
+
+                        // Inicia o funil em segundo plano para não travar o webhook
+                        FunnelService.execute(targetFunnel.id, startNode.id, instanceName, remoteJid, contact.id, profile.id)
+                            .catch(err => console.error('[WEBHOOK] Error executing funnel:', err));
+                        
+                        return NextResponse.json({ received: true, funnel: 'started_by_campaign' });
+                    }
+                }
+            }
+        }
+
+        // 2. Fluxo de Retomada (Lead Respondeu uma Pergunta)
+        if (isFunnelActive && funnelStatus === 'PAUSADO') {
+            console.log(`[WEBHOOK] 🔄 Retomando funil para ${phone}. Nó pausado: ${contact.funnel_current_node_id}`);
+            
+            const currentNodeId = contact.funnel_current_node_id;
+            if (currentNodeId && contact.current_funnel_id) {
+                const { data: pausedNode } = await supabase
+                    .from('funnel_steps')
+                    .select('*')
+                    .eq('id', currentNodeId)
+                    .single();
+
+                if (pausedNode?.node_type === 'condition') {
+                    // ── BUG #3 FIX ─────────────────────────────────────────────────────────
+                    // ANTES: passava textMessage bruto como handle (nunca batia com 'yes'/'no')
+                    // AGORA: usa IA para converter a resposta do usuário em 'yes', 'no' ou 'unclear'
+                    console.log(`[WEBHOOK] 🤖 Nó CONDITION pausado. Avaliando resposta com IA...`);
+                    
+                    let handle = 'default';
+                    
+                    if (profile.openai_api_key) {
+                        const conditionLabel = pausedNode.node_data?.condition_label || 'O cliente demonstrou interesse?';
+                        const evaluation = await AIService.evaluateCondition(
+                            [{ role: 'user', content: textMessage }],
+                            conditionLabel,
+                            profile.openai_api_key
+                        );
+
+                        console.log(`[WEBHOOK] 🤖 Avaliação da condição: decision="${evaluation.decision}" confidence=${evaluation.confidence}% reason="${evaluation.reason}"`);
+
+                        if (evaluation.decision === 'human') {
+                            // Transborda para humano — não continua no funil
+                            await supabase.from('contacts').update({ funnel_status: 'TRANSBORDADO', is_funnel_active: false }).eq('id', contact.id);
+                            console.log(`[WEBHOOK] 🆘 Cliente pediu humano. Funil TRANSBORDADO.`);
+                            // Cai no bloco da IA abaixo para responder normalmente
+                        } else if (evaluation.confidence >= 70 && (evaluation.decision === 'yes' || evaluation.decision === 'no')) {
+                            // Confiança suficiente — usa o handle 'yes' ou 'no' para seguir o caminho correto
+                            handle = evaluation.decision;
+                        } else {
+                            // Resposta ambígua — a IA responde normalmente sem avançar no funil
+                            console.log(`[WEBHOOK] ⚠️ Resposta ambígua (${evaluation.decision} / ${evaluation.confidence}%). Deixando IA responder.`);
+                            // handle permanece 'default' — o funil fica pausado, a IA responde abaixo
+                        }
+                    }
+
+                    if (handle === 'yes' || handle === 'no') {
+                        // Avança pelo caminho correto da condição
+                        FunnelService.execute(contact.current_funnel_id, currentNodeId, instanceName, remoteJid, contact.id, profile.id, handle)
+                            .catch(err => console.error('[WEBHOOK] Erro ao retomar condição:', err));
+                        return NextResponse.json({ received: true, funnel: 'resumed_condition', handle });
+                    }
+                    // Se handle ainda for 'default' (ambíguo ou transbordado), cai para a IA responder
+
+                } else {
+                    // Nó era 'text' com wait_for_reply=true — usuário respondeu, avançamos para o PRÓXIMO nó
+                    const nextNodeId = await FunnelService.getNextNodeId(contact.current_funnel_id, currentNodeId);
+                    console.log(`[WEBHOOK] ▶️ Avançando do nó "${pausedNode?.node_type}" para: ${nextNodeId || 'FIM'}`);
+                    
+                    if (nextNodeId) {
+                        FunnelService.execute(contact.current_funnel_id, nextNodeId, instanceName, remoteJid, contact.id, profile.id)
+                            .catch(err => console.error('[WEBHOOK] Erro ao avançar funil:', err));
+                        return NextResponse.json({ received: true, funnel: 'advanced_next' });
+                    }
+                }
+            }
+        }
+
+        // 3. Início de Funil Padrão (Novos Contatos / Contatos Inativos)
+        if (!isFunnelActive && (funnelStatus === 'INATIVO' || funnelStatus === 'FINALIZADO')) {
+            const { data: defFunnel } = await supabase.from('funnels').select('*').eq('user_id', profile.id).eq('is_default', true).eq('is_active', true).maybeSingle();
+            
             if (defFunnel) {
                 const { data: startNode } = await supabase.from('funnel_steps').select('id').eq('funnel_id', defFunnel.id).eq('node_type', 'start').maybeSingle();
+                
                 if (startNode) {
-                    await supabase.from('contacts').update({ current_funnel_id: defFunnel.id, is_funnel_active: true, funnel_status: 'INICIADO' }).eq('id', contact.id);
-                    await FunnelService.execute(defFunnel.id, startNode.id, instanceName, remoteJid, contact.id);
-                    return;
+                    console.log(`[WEBHOOK] 🚀 Iniciando Funil Default para novo contato: ${phone}`);
+                    await supabase.from('contacts').update({ 
+                        is_funnel_active: true,
+                        funnel_status: 'EM_ANDAMENTO',
+                        current_funnel_id: defFunnel.id
+                    }).eq('id', contact.id);
+
+                    FunnelService.execute(defFunnel.id, startNode.id, instanceName, remoteJid, contact.id, profile.id)
+                        .catch(err => console.error('[WEBHOOK] Error starting default funnel:', err));
+                    
+                    return NextResponse.json({ received: true, funnel: 'started_default' });
                 }
             }
         }

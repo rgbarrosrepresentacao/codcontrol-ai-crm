@@ -134,20 +134,32 @@ export const evolutionApi = {
     },
 
     async sendMedia(instanceName: string, to: string, mediaUrl: string, mediaType: 'audio' | 'video' | 'image' | 'document', caption?: string) {
+        // Monta payload limpo — sem 'quoted: null' que causa rejeição em algumas versões
+        const payload: any = {
+            number: to,
+            media: mediaUrl,
+            mediatype: mediaType,
+            caption: caption || '',
+        };
+
+        console.log(`[EVOLUTION_API] sendMedia → ${instanceName} | type=${mediaType} | to=${to}`);
+        console.log(`[EVOLUTION_API] URL: ${mediaUrl.substring(0, 80)}...`);
+
         const res = await fetch(`${EVOLUTION_URL}/message/sendMedia/${instanceName}`, {
             method: 'POST',
             headers,
-            body: JSON.stringify({
-                number: to,
-                media: mediaUrl,
-                mediatype: mediaType,
-                caption: caption || '',
-                delay: 1500,
-                quoted: null
-            }),
-        })
-        if (!res.ok) throw new Error(`Failed to send media: ${res.statusText}`)
-        return res.json()
+            body: JSON.stringify(payload),
+        });
+
+        if (!res.ok) {
+            const errorText = await res.text();
+            console.error(`[EVOLUTION_API] ❌ sendMedia FALHOU (${res.status}) para ${to}:`, errorText);
+            throw new Error(`sendMedia failed [${res.status}]: ${errorText}`);
+        }
+
+        const result = await res.json();
+        console.log(`[EVOLUTION_API] ✅ sendMedia OK → key.id=${result?.key?.id || 'unknown'}`);
+        return result;
     },
 
     async fetchInstances() {
