@@ -216,9 +216,18 @@ async function processWebhook(body: any) {
 
         let funnelJustStarted = false;
 
+        // ── REGRA CENTRAL DE PROTEÇÃO ──────────────────────────────────────
+        // Se o funil já foi FINALIZADO ou TRANSBORDADO, a IA assume o controle.
+        // Nenhum bloco abaixo pode disparar novo funil automaticamente.
+        const funnelIsLocked = (funnelStatus === 'FINALIZADO' || funnelStatus === 'TRANSBORDADO');
+        if (funnelIsLocked) {
+            console.log(`[WEBHOOK] 🔒 Funil bloqueado (status: ${funnelStatus}). IA assumirá a conversa com memória do funil.`);
+        }
+
         // 1. Gatilho de Reinício via Campanha (Engine V2)
         // Se detectamos um produto com alta confiança, forçamos o reinício do funil específico ou default
-        if (intentResult && intentResult.confidence_score >= 90 && (funnelStatus !== 'EM_ANDAMENTO' || intentResult.confidence_score >= 98)) {
+        // PROTEÇÃO: Nunca reinicia se o funil já foi finalizado
+        if (!funnelIsLocked && intentResult && intentResult.confidence_score >= 90 && (funnelStatus !== 'EM_ANDAMENTO' || intentResult.confidence_score >= 98)) {
             console.log(`[WEBHOOK] 🎯 Campanha detectada: "${intentResult.campaign_id}". Tentando iniciar funil correspondente.`);
             
             // Busca a campanha para pegar o nome
@@ -252,32 +261,26 @@ async function processWebhook(body: any) {
                 }
 
                 if (targetFunnel) {
-                    // BLOQUEIO DE REPETIÇÃO: Se o cliente já finalizou ESTE funil específico, não reiniciamos automaticamente
-                    // Permitimos que a IA responda usando o resumo que implementamos
-                    if (funnelStatus === 'FINALIZADO' && targetFunnel.id === contact.current_funnel_id) {
-                        console.log(`[WEBHOOK] ⏭️ Funil "${targetFunnel.name}" já foi finalizado para este contato. Deixando IA responder.`);
-                    } else {
-                        const { data: startNode } = await supabase
-                            .from('funnel_steps')
-                            .select('id')
-                            .eq('funnel_id', targetFunnel.id)
-                            .eq('node_type', 'start')
-                            .maybeSingle();
+                    const { data: startNode } = await supabase
+                        .from('funnel_steps')
+                        .select('id')
+                        .eq('funnel_id', targetFunnel.id)
+                        .eq('node_type', 'start')
+                        .maybeSingle();
 
-                        if (startNode) {
-                            console.log(`[WEBHOOK] 🔥 Disparando Funil: ${targetFunnel.name} (${targetFunnel.id})`);
-                            await supabase.from('contacts').update({ 
-                                is_funnel_active: true,
-                                funnel_status: 'EM_ANDAMENTO',
-                                current_funnel_id: targetFunnel.id
-                            }).eq('id', contact.id);
+                    if (startNode) {
+                        console.log(`[WEBHOOK] 🔥 Disparando Funil: ${targetFunnel.name} (${targetFunnel.id})`);
+                        await supabase.from('contacts').update({ 
+                            is_funnel_active: true,
+                            funnel_status: 'EM_ANDAMENTO',
+                            current_funnel_id: targetFunnel.id
+                        }).eq('id', contact.id);
 
-                            // Inicia o funil em segundo plano para não travar o webhook
-                            FunnelService.execute(targetFunnel.id, startNode.id, instanceName, remoteJid, contact.id, profile.id)
-                                .catch(err => console.error('[WEBHOOK] Error executing funnel:', err));
-                            
-                            funnelJustStarted = true;
-                        }
+                        // Inicia o funil em segundo plano para não travar o webhook
+                        FunnelService.execute(targetFunnel.id, startNode.id, instanceName, remoteJid, contact.id, profile.id)
+                            .catch(err => console.error('[WEBHOOK] Error executing funnel:', err));
+                        
+                        funnelJustStarted = true;
                     }
                 }
             }
@@ -380,7 +383,8 @@ async function processWebhook(body: any) {
         }
 
         // 3. Início de Funil Padrão (Novos Contatos / Contatos Inativos)
-        if (!isFunnelActive && (funnelStatus === 'INATIVO') && !funnelJustStarted) {
+        // PROTEÇÃO: Nunca inicia se o funil já foi finalizado
+        if (!funnelIsLocked && !isFunnelActive && (funnelStatus === 'INATIVO') && !funnelJustStarted) {
             const { data: defFunnel } = await supabase.from('funnels').select('*').eq('user_id', profile.id).eq('is_default', true).eq('is_active', true).maybeSingle();
             
             if (defFunnel) {
