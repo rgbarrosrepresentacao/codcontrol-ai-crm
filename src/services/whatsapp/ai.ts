@@ -142,6 +142,7 @@ export class AIService {
                             REGRAS DE CONDUTA:
                             - Responda de forma natural e humana.
                             - Use emojis moderadamente.
+                            - ANTI-ALUCINAÇÃO: Se o cliente perguntar sobre algo que você não conhece ou termos que pareçam erro de áudio (ex: HCI), não invente. Peça desculpas por não ter entendido bem e peça para ele repetir ou esclarecer se a dúvida é sobre o produto que estão conversando ou sobre o atendimento.
                             - Se o cliente quiser comprar, direcione para o fechamento.`
                         },
                         ...messages

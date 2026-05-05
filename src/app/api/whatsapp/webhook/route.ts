@@ -214,6 +214,14 @@ async function processWebhook(body: any) {
 
         console.log(`[WEBHOOK] Orchestrating funnel. Current status: ${funnelStatus}, Active: ${isFunnelActive}`);
 
+        // ── REGRA DE OURO: PROTEÇÃO DE CONCORRÊNCIA ──────────────────────────
+        // Se o motor já está rodando (is_funnel_active = true), ignoramos novas mensagens
+        // para não interromper o fluxo automatizado ou causar race conditions.
+        if (isFunnelActive) {
+            console.log(`[WEBHOOK] ⏳ Motor já está processando este contato (${phone}). Ignorando mensagem do usuário.`);
+            return NextResponse.json({ success: true, status: 'processing_active_funnel' });
+        }
+
         let funnelJustStarted = false;
 
         // ── REGRA CENTRAL DE PROTEÇÃO ──────────────────────────────────────
@@ -409,9 +417,13 @@ async function processWebhook(body: any) {
         }
 
         // CORREÇÃO BUG #3: Detectar funil travado em EM_ANDAMENTO (erro fatal anterior)
-        // Se is_funnel_active=true mas status é EM_ANDAMENTO, o motor morreu sem finalizar
-        if (isFunnelActive && funnelStatus === 'EM_ANDAMENTO' && !funnelJustStarted) {
-            console.log(`[WEBHOOK] 🚨 Funil travado em EM_ANDAMENTO detectado. Finalizando para liberar IA.`);
+        // Só atua se o contato estiver em EM_ANDAMENTO há mais de 5 minutos (timeout)
+        const lastUpdate = new Date(contact.updated_at).getTime();
+        const now = new Date().getTime();
+        const minutesSinceUpdate = (now - lastUpdate) / (1000 * 60);
+
+        if (funnelStatus === 'EM_ANDAMENTO' && minutesSinceUpdate > 5 && !funnelJustStarted) {
+            console.log(`[WEBHOOK] 🚨 Funil travado em EM_ANDAMENTO detectado (>5min). Finalizando para liberar IA.`);
             await supabase.from('contacts').update({
                 funnel_status: 'FINALIZADO',
                 is_funnel_active: false,
