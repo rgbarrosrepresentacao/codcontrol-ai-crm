@@ -142,10 +142,19 @@ async function processWebhook(body: any) {
             message_id: key.id, from_me: false, content: textMessage, type: isAudioMessage ? 'audio' : 'text', status: 'delivered'
         });
 
-        // ── PASSO 8: Detecção de Campanha ──────────────────────────────
-        const campaignId = await CampaignService.detect(profile.id, instance.id, textMessage);
+        // ── PASSO 8: Detecção de Campanha (Inteligência Reforçada) ─────
+        let campaignId = await CampaignService.detectWithAI(profile.id, instance.id, textMessage, profile.openai_api_key);
         if (campaignId) {
             await supabase.from('contacts').update({ active_campaign_id: campaignId }).eq('id', contact.id);
+        } else {
+            campaignId = contact.active_campaign_id;
+        }
+
+        // ── PASSO 8.1: Carregar Persona da Campanha (NOVO) ────────────
+        let campaignPrompt = '';
+        if (campaignId) {
+            const { data: campData } = await supabase.from('campaigns').select('system_prompt').eq('id', campaignId).maybeSingle();
+            if (campData) campaignPrompt = campData.system_prompt;
         }
 
         // ── PASSO 9: Verificação de Funil ──────────────────────────────
@@ -171,13 +180,13 @@ async function processWebhook(body: any) {
         const { data: aiConfig } = await supabase.from('ai_configurations').select('*').eq('user_id', profile.id).order('created_at', { ascending: false }).limit(1).maybeSingle();
         if (!aiConfig) return;
 
-        // ── PASSO 10.1: Knowledge Base (NOVO) ─────────────────────────
-        const { context: knowledgeContext, items: knowledgeItems } = await KnowledgeService.buildContext(profile.id, campaignId || contact.active_campaign_id);
+        // ── PASSO 10.1: Knowledge Base (Filtro por Produto) ────────────
+        const { context: knowledgeContext, items: knowledgeItems } = await KnowledgeService.buildContext(profile.id, campaignId);
 
         const { data: history } = await supabase.from('messages').select('content, from_me').eq('conversation_id', conversationId).order('created_at', { ascending: false }).limit(20);
         const formattedHistory = (history || []).reverse().map(m => ({ role: m.from_me ? 'assistant' : 'user', content: m.content }));
 
-        let reply = await AIService.generateResponse(formattedHistory, aiConfig, profile.openai_api_key, knowledgeContext);
+        let reply = await AIService.generateResponse(formattedHistory, aiConfig, profile.openai_api_key, knowledgeContext, '', campaignPrompt);
         if (!reply) return;
 
         // ── PASSO 10.2: Processar Gatilhos de Mídia (NOVO) ────────────

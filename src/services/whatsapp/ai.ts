@@ -107,9 +107,15 @@ export class AIService {
         aiConfig: any, 
         openaiKey: string,
         knowledgeContext: string = '',
-        leadContext: string = ''
+        leadContext: string = '',
+        campaignPrompt: string = ''
     ): Promise<string | null> {
         try {
+            // Se houver um prompt de campanha, ele substitui ou reforça o global
+            const systemInstructions = campaignPrompt 
+                ? `${campaignPrompt}\n\nREGRAS GERAIS: ${aiConfig.system_prompt}`
+                : aiConfig.system_prompt;
+
             const response = await fetch('https://api.openai.com/v1/chat/completions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openaiKey}` },
@@ -118,7 +124,7 @@ export class AIService {
                     messages: [
                         {
                             role: 'system',
-                            content: `Você é ${aiConfig.bot_name}. ${aiConfig.system_prompt}.
+                            content: `Você é ${aiConfig.bot_name}. ${systemInstructions}.
                             
                             CONHECIMENTO ADICIONAL:
                             ${knowledgeContext}
@@ -126,7 +132,7 @@ export class AIService {
                             CONTEXTO DO LEAD:
                             ${leadContext}
                             
-                            REGRAS:
+                            REGRAS DE CONDUTA:
                             - Responda de forma natural e humana.
                             - Use emojis moderadamente.
                             - Se o cliente quiser comprar, direcione para o fechamento.`
