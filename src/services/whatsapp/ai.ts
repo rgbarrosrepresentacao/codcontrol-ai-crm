@@ -174,12 +174,12 @@ export class AIService {
                             OBJETIVO: Avaliar se a última resposta do cliente atende à condição: "${conditionLabel}".
                             
                             REGRAS:
-                            - "yes": Cliente confirmou, demonstrou interesse ou aceitou.
-                            - "no": Cliente recusou, disse que não quer ou demonstrou desinteresse.
-                            - "human": Cliente pediu para falar com um humano, suporte ou atendente.
-                            - "unclear": A resposta foi vaga, uma dúvida ou não permitiu decidir.
+                            - "yes": Cliente confirmou, disse "sim", "quero", "tenho interesse", mandou emoji de joinha, ou demonstrou qualquer aceitação.
+                            - "no": Cliente recusou explicitamente, disse que não quer agora ou demonstrou desinteresse total.
+                            - "human": Cliente pediu para falar com um humano, suporte, atendente ou pessoa real.
+                            - "unclear": A resposta foi apenas um "olá", uma dúvida técnica não relacionada à decisão, ou algo totalmente vago que exige resposta da IA antes de decidir.
                             
-                            Retorne APENAS um JSON puro no formato:
+                            IMPORTANTE: Se o cliente disser apenas "Sim", "Quero" ou algo positivo curto, a decisão DEVE ser "yes".
                             {
                                 "decision": "yes" | "no" | "unclear" | "human",
                                 "confidence": 0-100,

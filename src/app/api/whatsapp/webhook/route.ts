@@ -18,6 +18,10 @@ const supabase = createClient(
     process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 );
 
+// Cache simples para deduplicação de mensagens (evita processar webhooks duplicados da Evolution API)
+const processedMessages = new Set<string>();
+setInterval(() => processedMessages.clear(), 1000 * 60 * 5); // Limpa a cada 5 min
+
 // ── Utilitário: limpa texto antes de converter em áudio ────────────────────
 function cleanTextForAudio(text: string): string {
     const urlRegex = /(https?:\/\/[^\s]+|www\.[^\s]+|[a-zA-Z0-9-]+\.(com|net|org|io|app|bond|shop|top|site|online|me)[^\s]*)/gi;
@@ -52,6 +56,13 @@ async function processWebhook(body: any) {
     const instanceName = body.instance;
 
     if (!key || key.fromMe || !messageData) return;
+
+    // Deduplicação: ignora se já processamos este messageId recentemente
+    if (processedMessages.has(key.id)) {
+        console.log(`[WEBHOOK] ♻️ Ignorando mensagem duplicada: ${key.id}`);
+        return;
+    }
+    processedMessages.add(key.id);
 
     const remoteJid = key.remoteJid;
     if (!remoteJid || remoteJid.endsWith('@g.us')) return;
@@ -207,6 +218,8 @@ async function processWebhook(body: any) {
 
         console.log(`[WEBHOOK] Orchestrating funnel. Current status: ${funnelStatus}, Active: ${isFunnelActive}`);
 
+        let funnelJustStarted = false;
+
         // 1. Gatilho de Reinício via Campanha (Engine V2)
         // Se detectamos um produto com alta confiança, forçamos o reinício do funil específico ou default
         if (intentResult && intentResult.confidence_score >= 90 && (funnelStatus !== 'EM_ANDAMENTO' || intentResult.confidence_score >= 98)) {
@@ -262,14 +275,16 @@ async function processWebhook(body: any) {
                         FunnelService.execute(targetFunnel.id, startNode.id, instanceName, remoteJid, contact.id, profile.id)
                             .catch(err => console.error('[WEBHOOK] Error executing funnel:', err));
                         
-                        return NextResponse.json({ received: true, funnel: 'started_by_campaign' });
+                        funnelJustStarted = true;
+                        // Não damos return aqui para permitir que o fluxo continue e caia na resposta da IA se necessário,
+                        // mas vamos usar a flag funnelJustStarted para evitar que a mesma mensagem retome o funil abaixo.
                     }
                 }
             }
         }
 
         // 2. Fluxo de Retomada (Lead Respondeu uma Pergunta)
-        if (isFunnelActive && funnelStatus === 'PAUSADO') {
+        if (isFunnelActive && funnelStatus === 'PAUSADO' && !funnelJustStarted) {
             console.log(`[WEBHOOK] 🔄 Retomando funil para ${phone}. Nó pausado: ${contact.funnel_current_node_id}`);
             
             const currentNodeId = contact.funnel_current_node_id;
@@ -336,7 +351,7 @@ async function processWebhook(body: any) {
         }
 
         // 3. Início de Funil Padrão (Novos Contatos / Contatos Inativos)
-        if (!isFunnelActive && (funnelStatus === 'INATIVO' || funnelStatus === 'FINALIZADO')) {
+        if (!isFunnelActive && (funnelStatus === 'INATIVO' || funnelStatus === 'FINALIZADO') && !funnelJustStarted) {
             const { data: defFunnel } = await supabase.from('funnels').select('*').eq('user_id', profile.id).eq('is_default', true).eq('is_active', true).maybeSingle();
             
             if (defFunnel) {
@@ -353,9 +368,14 @@ async function processWebhook(body: any) {
                     FunnelService.execute(defFunnel.id, startNode.id, instanceName, remoteJid, contact.id, profile.id)
                         .catch(err => console.error('[WEBHOOK] Error starting default funnel:', err));
                     
-                    return NextResponse.json({ received: true, funnel: 'started_default' });
+                    funnelJustStarted = true;
                 }
             }
+        }
+
+        // Se o funil acabou de começar, encerramos o processamento deste webhook aqui
+        if (funnelJustStarted) {
+            return NextResponse.json({ success: true, funnel: 'initiated' });
         }
 
         // ── PASSO 10: Resposta da IA ────────────────────────────────────
