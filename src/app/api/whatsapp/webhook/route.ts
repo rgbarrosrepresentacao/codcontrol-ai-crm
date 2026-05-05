@@ -8,6 +8,7 @@ import { CampaignService } from '@/services/whatsapp/campaigns';
 import { FunnelService } from '@/services/whatsapp/funnels';
 import { AIService } from '@/services/whatsapp/ai';
 import { MessageService } from '@/services/whatsapp/messages';
+import { evolutionApi } from '@/lib/evolution';
 
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -246,8 +247,10 @@ async function processWebhook(body: any) {
 
         console.log(`[Webhook] ✅ IA respondeu: "${reply.slice(0, 60)}..."`);
 
-        // Delay para parecer humano
-        await new Promise(r => setTimeout(r, 1500));
+        // Delay para parecer humano + indicador "digitando..."
+        const humanDelay = 3000 + Math.random() * 1000; // 3 a 4 segundos aleatório
+        await evolutionApi.sendPresence(instanceName, remoteJid, 'composing');
+        await new Promise(r => setTimeout(r, humanDelay));
 
         // Envia via Evolution API
         await MessageService.send(instanceName, remoteJid, reply);
