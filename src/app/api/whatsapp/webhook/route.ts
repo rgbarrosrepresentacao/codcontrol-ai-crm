@@ -58,6 +58,7 @@ async function processWebhook(body: any) {
 
     const isAudioMessage = !!(messageData.audioMessage || messageData.pttMessage);
     const rawText = body.data?.message?.conversation || body.data?.message?.extendedTextMessage?.text || '';
+    const instanceName = body.instance;
 
     console.log(`[Webhook] 📩 Mensagem de ${remoteJid} na instância ${instanceName}`);
 
@@ -114,7 +115,7 @@ async function processWebhook(body: any) {
         if (!contact) return;
 
         // DEDUPLICAÇÃO PERSISTENTE (BANCO)
-        if (contact.last_message_id === key.id) {
+        if ((contact as any).last_message_id === key.id) {
             console.log(`[WEBHOOK] ♻️ Mensagem ${key.id} já processada anteriormente para este contato. Ignorando.`);
             return;
         }
