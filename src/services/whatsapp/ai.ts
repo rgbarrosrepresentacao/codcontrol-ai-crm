@@ -180,6 +180,8 @@ export class AIService {
                             - "unclear": A resposta foi apenas um "olá", uma dúvida técnica não relacionada à decisão, ou algo totalmente vago que exige resposta da IA antes de decidir.
                             
                             IMPORTANTE: Se o cliente disser apenas "Sim", "Quero" ou algo positivo curto, a decisão DEVE ser "yes".
+                            
+                            Responda estritamente em formato JSON.
                             {
                                 "decision": "yes" | "no" | "unclear" | "human",
                                 "confidence": 0-100,
@@ -207,13 +209,16 @@ export class AIService {
             
             // FALLBACK MANUAL: Se a IA falhar, fazemos um match simples de palavras-chave
             // Isso evita que o funil trave por erro de API
-            const lastUserMsg = messages[messages.length - 1]?.content?.toLowerCase() || '';
+            const lastUserMsg = messages[messages.length - 1]?.content?.toLowerCase().trim() || '';
             
-            if (lastUserMsg.match(/\b(sim|quero|vontade|interesse|pode|com certeza|claro|ok|agora|manda)\b/i)) {
+            // Regex mais abrangente para respostas positivas curtas
+            if (lastUserMsg.match(/^(sim|s|ss|si|simm|quero|queremos|vontade|interesse|pode|com certeza|claro|ok|agora|manda|bora|vqv|👍|✅)$/i) || 
+                lastUserMsg.match(/\b(sim|quero|tenho interesse|pode mandar|com certeza)\b/i)) {
                 return { decision: 'yes', confidence: 100, reason: 'Fallback manual: Palavra-chave positiva detectada' };
             }
             
-            if (lastUserMsg.match(/\b(não|nao|no|nem|parar|cancelar|sair|ruim|desinteresse)\b/i)) {
+            if (lastUserMsg.match(/^(não|nao|n|nn|no|nem|parar|cancelar|sair|👎|❌)$/i) || 
+                lastUserMsg.match(/\b(não quero|nao tenho interesse|agora não)\b/i)) {
                 return { decision: 'no', confidence: 100, reason: 'Fallback manual: Palavra-chave negativa detectada' };
             }
 
