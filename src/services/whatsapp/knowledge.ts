@@ -12,18 +12,28 @@ export class KnowledgeService {
      */
     static async buildContext(userId: string, campaignId: string | null): Promise<{ context: string; items: any[] }> {
         try {
-            let query = supabase
+            // Busca todas as mídias do usuário para filtrar de forma inteligente
+            const { data: allItems } = await supabase
                 .from('ai_knowledge')
                 .select('id, name, description, media_url, media_type, campaign_id')
                 .eq('user_id', userId);
 
-            if (campaignId) {
-                query = query.or(`campaign_id.eq.${campaignId},campaign_id.is.null`);
-            } else {
-                query = query.is('campaign_id', null);
-            }
+            if (!allItems || allItems.length === 0) return { context: '', items: [] };
 
-            const { data: items } = await query;
+            let items = [];
+            if (campaignId) {
+                // Prioridade 1: Mídias da Campanha Específica
+                const campaignItems = allItems.filter(i => i.campaign_id === campaignId);
+                
+                // Se houver mídias da campanha, usamos apenas elas para evitar confusão
+                // Se não houver, usamos as mídias globais como fallback
+                items = campaignItems.length > 0 
+                    ? campaignItems 
+                    : allItems.filter(i => !i.campaign_id);
+            } else {
+                // Sem campanha: Usamos apenas mídias globais
+                items = allItems.filter(i => !i.campaign_id);
+            }
 
             if (!items || items.length === 0) return { context: '', items: [] };
 

@@ -150,19 +150,26 @@ export async function POST(req: NextRequest) {
             }
         }
 
-        // ─── LÓGICA DE STATUS ──────────────────────────────────────────────────
+        // ─── LÓGICA DE STATUS (REFORÇADA) ──────────────────────────────────────
         const subStatus = (subscription?.status || '').toLowerCase()
 
+        // Prioridade 1: Cancelamento/Estorno (Bloqueio)
         const isCanceled = 
             ['canceled', 'cancelled', 'chargeback', 'refunded', 'past_due', 'inactive'].includes(order_status.toLowerCase()) ||
-            ['canceled', 'cancelled', 'past_due'].includes(subStatus) ||
-            eventType.includes('canceled') || eventType.includes('refunded') || eventType.includes('chargeback')
+            ['canceled', 'cancelled', 'past_due', 'inactive'].includes(subStatus) ||
+            eventType.includes('canceled') || 
+            eventType.includes('refunded') || 
+            eventType.includes('chargeback') ||
+            eventType.includes('expired')
 
+        // Prioridade 2: Aprovação/Renovação (Acesso)
         const isActive = 
-            ['paid', 'completed', 'active', 'pago', 'aprovado', 'approved'].includes(order_status.toLowerCase()) ||
-            ['active'].includes(subStatus) ||
-            ['order_approved', 'payment_approved'].includes(eventType) || 
-            eventType.includes('renewed')
+            !isCanceled && (
+                ['paid', 'completed', 'active', 'pago', 'aprovado', 'approved'].includes(order_status.toLowerCase()) ||
+                ['active'].includes(subStatus) ||
+                ['order_approved', 'payment_approved'].includes(eventType) || 
+                eventType.includes('renewed')
+            )
 
         const isPending = 
             ['waiting_payment', 'pending'].includes(order_status.toLowerCase()) || 
@@ -179,17 +186,22 @@ export async function POST(req: NextRequest) {
 
         const finalStatus = isCanceled ? 'canceled' : (isActive ? 'active' : 'inactive')
         
-        // GRACE PERIOD (Carência centralizada)
-        const nextPayment = subscription?.next_payment || subscription?.customer_access?.access_until
+        // Se for cancelado, forçamos a expiração para o passado para garantir bloqueio
         let trialEndsAt = null
-        if (nextPayment) {
-            const date = new Date(nextPayment)
-            date.setHours(date.getHours() + SUBSCRIPTION_CONSTANTS.GRACE_PERIOD_HOURS)
-            trialEndsAt = date.toISOString()
-        } else if (isActive) {
-            const d = new Date()
-            d.setDate(d.getDate() + 30 + SUBSCRIPTION_CONSTANTS.GRACE_PERIOD_DAYS)
-            trialEndsAt = d.toISOString()
+        if (isCanceled) {
+            trialEndsAt = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString() // Ontem
+        } else {
+            // GRACE PERIOD (Carência centralizada)
+            const nextPayment = subscription?.next_payment || subscription?.customer_access?.access_until
+            if (nextPayment) {
+                const date = new Date(nextPayment)
+                date.setHours(date.getHours() + SUBSCRIPTION_CONSTANTS.GRACE_PERIOD_HOURS)
+                trialEndsAt = date.toISOString()
+            } else if (isActive) {
+                const d = new Date()
+                d.setDate(d.getDate() + 30 + SUBSCRIPTION_CONSTANTS.GRACE_PERIOD_DAYS)
+                trialEndsAt = d.toISOString()
+            }
         }
 
         if (existingUser) {

@@ -14,7 +14,6 @@ export class CampaignService {
             .from('campaigns')
             .select('*')
             .eq('user_id', userId)
-            .eq('instance_id', instanceId)
             .eq('is_active', true);
 
         if (!campaigns || campaigns.length === 0) return null;
@@ -67,7 +66,6 @@ export class CampaignService {
             .from('campaigns')
             .select('id, name, trigger_phrase')
             .eq('user_id', userId)
-            .eq('instance_id', instanceId)
             .eq('is_active', true);
 
         if (!campaigns || campaigns.length === 0) {

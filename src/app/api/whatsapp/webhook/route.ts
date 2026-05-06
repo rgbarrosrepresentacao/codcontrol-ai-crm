@@ -183,39 +183,37 @@ async function processWebhook(body: any) {
         let campaignPrompt = '';
         let intentResult = null;
 
-        // Só tenta detectar nova campanha se não estiver travado OU se for uma troca explícita
-        if (!isLocked) {
-            intentResult = await CampaignService.detectWithAI(
-                profile.id, 
-                instance.id, 
-                textMessage, 
-                profile.openai_api_key, 
-                contact.origin_source || ''
-            );
+        // ── PASSO 7: Detecção de Campanha (Engine V2) ──────────────────
+        // Agora a IA sempre tenta detectar a intenção, permitindo trocar de produto se o cliente mudar de assunto
+        intentResult = await CampaignService.detectWithAI(profile.id, instance.id, textMessage, profile.openai_api_key, contact.origin);
 
-            // 1. Log da decisão (Fase 1)
+        if (intentResult && intentResult.confidence_score >= 85 && intentResult.campaign_id) {
+            const isDifferentCampaign = intentResult.campaign_id !== contact.active_campaign_id;
+            
+            // Se detectou um produto diferente com alta confiança, fazemos a troca de contexto
+            if (isDifferentCampaign) {
+                console.log(`[WEBHOOK] 🔄 Troca de Contexto Detectada: ${contact.active_campaign_id} -> ${intentResult.campaign_id} (${intentResult.confidence_score}%)`);
+                campaignId = intentResult.campaign_id;
+                await supabase.from('contacts').update({ 
+                    active_campaign_id: campaignId, 
+                    campaign_lock: true 
+                }).eq('id', contact.id);
+            } else {
+                campaignId = intentResult.campaign_id;
+            }
+
+            // Log da inteligência para auditoria
             await supabase.from('campaign_intelligence_logs').insert({
                 user_id: profile.id,
                 contact_id: contact.id,
                 message: textMessage,
                 detected_campaign_id: intentResult.campaign_id,
                 confidence_score: intentResult.confidence_score,
-                reason: intentResult.reason,
-                origin_source: contact.origin_source
+                reason: intentResult.reason
             });
-
-            // 2. Regra de Decisão Baseada em Score
-            if (intentResult.confidence_score >= 85 && intentResult.campaign_id) {
-                // Ativação Automática e Trava
-                campaignId = intentResult.campaign_id;
-                await supabase.from('contacts').update({ 
-                    active_campaign_id: campaignId,
-                    campaign_lock: true // Trava o contexto para evitar trocas erradas
-                }).eq('id', contact.id);
-            } else if (intentResult.confidence_score >= 60 && intentResult.confidence_score < 85 && intentResult.campaign_id) {
-                // Ambiguidade: Não troca a persona, mas a IA deve perguntar se é sobre esse produto
-                console.log(`[Engine V2] ⚠️ Score ambíguo (${intentResult.confidence_score}). Mantendo neutro.`);
-            }
+        } else if (intentResult && intentResult.confidence_score >= 60 && intentResult.confidence_score < 85) {
+            // Ambiguidade: Não troca a persona, mas a IA receberá a instrução de perguntar
+            console.log(`[Engine V2] ⚠️ Score ambíguo (${intentResult.confidence_score}%). Mantendo contexto atual.`);
         }
 
         // ── PASSO 8.1: Carregar Persona da Campanha (Fase 1) ────────────
@@ -511,13 +509,13 @@ async function processWebhook(body: any) {
         const { item: mediaItem, cleanReply } = KnowledgeService.detectMediaTrigger(reply, knowledgeItems);
         reply = cleanReply;
 
-        // ── PASSO 11: Envio Humanizado ─────────────────────────────────
-        const typingTime = Math.min(Math.max(reply.length * 50, 2000), 10000);
+        // ── PASSO 11: Envio Humanizado (Fase 4 - Fragmentação) ──────────
         const canSendAudio = !!(aiConfig.audio_enabled && wantsAudio);
-        let finalType = 'text';
-
+        
         if (canSendAudio) {
+            // No áudio, enviamos o bloco inteiro para gerar um único arquivo de voz
             try {
+                const typingTime = Math.min(Math.max(reply.length * 50, 2000), 10000);
                 const hasLink = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi.test(reply);
                 if (hasLink) {
                     await MessageService.send(instanceName, remoteJid, reply);
@@ -527,23 +525,59 @@ async function processWebhook(body: any) {
                 await new Promise(r => setTimeout(r, Math.max(typingTime - 3000, 1500)));
                 const audioB64 = await generateSpeech(cleanTextForAudio(reply), aiConfig.voice_id || 'nova', profile.openai_api_key);
                 await evolutionApi.sendWhatsAppAudio(instanceName, remoteJid, audioB64);
-                finalType = 'audio';
-            } catch {
+                
+                await supabase.from('messages').insert({ 
+                    user_id: profile.id, 
+                    conversation_id: conversationId, 
+                    instance_id: instance.id, 
+                    contact_id: contact.id, 
+                    from_me: true, 
+                    content: reply, 
+                    type: 'audio', 
+                    status: 'sent', 
+                    ai_generated: true 
+                });
+            } catch (err) {
+                console.error('[WEBHOOK] Audio error, fallback to text:', err);
                 await MessageService.send(instanceName, remoteJid, reply);
+                await supabase.from('messages').insert({ user_id: profile.id, conversation_id: conversationId, instance_id: instance.id, contact_id: contact.id, from_me: true, content: reply, type: 'text', status: 'sent', ai_generated: true });
             }
         } else {
-            await evolutionApi.sendPresence(instanceName, remoteJid, 'composing');
-            await new Promise(r => setTimeout(r, typingTime));
-            await MessageService.send(instanceName, remoteJid, reply);
+            // No texto, fragmentamos para parecer humano
+            const messageBlocks = reply.split('\n\n').filter(block => block.trim().length > 0);
+            
+            for (const [index, block] of messageBlocks.entries()) {
+                const chunkTypingTime = Math.min(Math.max(block.length * 40, 1500), 6000);
+                
+                await evolutionApi.sendPresence(instanceName, remoteJid, 'composing');
+                await new Promise(r => setTimeout(r, chunkTypingTime));
+                
+                await MessageService.send(instanceName, remoteJid, block.trim());
+                
+                // Salva cada fragmento no banco
+                await supabase.from('messages').insert({ 
+                    user_id: profile.id, 
+                    conversation_id: conversationId, 
+                    instance_id: instance.id, 
+                    contact_id: contact.id, 
+                    from_me: true, 
+                    content: block.trim(), 
+                    type: 'text', 
+                    status: 'sent', 
+                    ai_generated: true 
+                });
+
+                // Pequeno intervalo entre mensagens se houver mais de uma
+                if (index < messageBlocks.length - 1) {
+                    await new Promise(r => setTimeout(r, 800));
+                }
+            }
         }
 
-        // ── PASSO 11.1: Enviar Mídia se detectado (NOVO) ──────────────
+        // ── PASSO 11.1: Enviar Mídia se detectado (Fase 4) ──────────────
         if (mediaItem) {
             await KnowledgeService.sendMedia(instanceName, remoteJid, mediaItem, profile.id, instance.id, conversationId, contact.id);
         }
-
-        // ── PASSO 12: Salvar e Classificar ─────────────────────────────
-        await supabase.from('messages').insert({ user_id: profile.id, conversation_id: conversationId, instance_id: instance.id, contact_id: contact.id, from_me: true, content: reply, type: finalType, status: 'sent', ai_generated: true });
         
         const newTag = await AIService.classifyContact(formattedHistory, profile.openai_api_key);
         if (newTag) {

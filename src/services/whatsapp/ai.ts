@@ -112,15 +112,33 @@ export class AIService {
         funnelContext: string = ''
     ): Promise<string | null> {
         try {
-            // Se houver um prompt de campanha, ele substitui ou reforça o global
-            const systemInstructions = campaignPrompt 
-                ? `${campaignPrompt}\n\nREGRAS GERAIS: ${aiConfig.system_prompt}`
-                : aiConfig.system_prompt;
-
             // Prepara o contexto do funil se existir
             const funnelInfo = funnelContext 
-                ? `\nCONTEXTO DO FUNIL DE VENDAS (HISTÓRICO RECENTE):\n${funnelContext}\nInstrução: O cliente acabou de passar por este fluxo automatizado. Use essas informações para continuar o atendimento sem repetir o que já foi dito e focando no fechamento.`
+                ? `\nCONTEXTO DO FUNIL DE VENDAS (HISTÓRICO RECENTE):\n${funnelContext}\nInstrução: O cliente acabou de passar por este fluxo automatizado. Use essas informações para continuar o atendimento sem repetir o que já foi dito.`
                 : '';
+
+            // ── MONTAGEM DA HIERARQUIA DO PROMPT (FASE 3) ──────────────────
+            const systemContent = `
+Você é ${aiConfig.bot_name}.
+
+REGRAS GERAIS E CONDUTA:
+${aiConfig.system_prompt}
+
+${funnelInfo}
+
+CONHECIMENTO E MÍDIAS DISPONÍVEIS:
+${knowledgeContext}
+
+CONTEXTO DA CAMPANHA E PRODUTO:
+${campaignPrompt || 'Nenhuma campanha específica ativa no momento. Siga as regras gerais de atendimento.'}
+
+INSTRUÇÃO DE VENDA DO PRODUTO ATUAL (PRIORIDADE MÁXIMA):
+${leadContext}
+- Responda de forma natural, humana e empática.
+- Use emojis de forma moderada e estratégica.
+- ANTI-ALUCINAÇÃO: Se o cliente perguntar algo desconhecido ou se houver erro de entendimento, peça esclarecimentos educadamente. Não invente informações.
+- FOCO EM CONVERSÃO: Se o cliente demonstrar interesse, dúvida sobre preço ou intenção de compra, direcione o diálogo para o fechamento da venda de forma decidida.
+`.trim();
 
             const response = await fetch('https://api.openai.com/v1/chat/completions', {
                 method: 'POST',
@@ -128,26 +146,10 @@ export class AIService {
                 body: JSON.stringify({
                     model: 'gpt-4o-mini',
                     messages: [
-                        {
-                            role: 'system',
-                            content: `Você é ${aiConfig.bot_name}. ${systemInstructions}.
-                            ${funnelInfo}
-                            
-                            CONHECIMENTO ADICIONAL:
-                            ${knowledgeContext}
-                            
-                            CONTEXTO DO LEAD:
-                            ${leadContext}
-                            
-                            REGRAS DE CONDUTA:
-                            - Responda de forma natural e humana.
-                            - Use emojis moderadamente.
-                            - ANTI-ALUCINAÇÃO: Se o cliente perguntar sobre algo que você não conhece ou termos que pareçam erro de áudio (ex: HCI), não invente. Peça desculpas por não ter entendido bem e peça para ele repetir ou esclarecer se a dúvida é sobre o produto que estão conversando ou sobre o atendimento.
-                            - Se o cliente quiser comprar, direcione para o fechamento.`
-                        },
+                        { role: 'system', content: systemContent },
                         ...messages
                     ],
-                    temperature: 0.7,
+                    temperature: 0.6, // Reduzido levemente para maior consistência
                     max_tokens: 500
                 })
             });
