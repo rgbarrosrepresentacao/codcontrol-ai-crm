@@ -479,8 +479,6 @@ async function processWebhook(body: any) {
         // ── PASSO 10: Resposta da IA ────────────────────────────────────
         if (GuardService.shouldPauseAI(contact.ai_tag)) return;
         if (!profile.openai_api_key) return;
-
-        const { data: aiConfig } = await supabase.from('ai_configurations').select('*').eq('user_id', profile.id).order('created_at', { ascending: false }).limit(1).maybeSingle();
         if (!aiConfig) return;
 
         // ── PASSO 10.1: Knowledge Base (Filtro por Produto) ────────────
