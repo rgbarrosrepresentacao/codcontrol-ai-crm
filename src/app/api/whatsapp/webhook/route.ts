@@ -177,46 +177,51 @@ async function processWebhook(body: any) {
             type: isAudioMessage ? 'audio' : 'text'
         });
 
-        // ── PASSO 8: Product Intent Engine V2 (Detecção e Trava) ────────
-        const isLocked = contact.campaign_lock ?? false;
+        // ── PASSO 8: Multi-Product Maestro Engine (Fase 4 - Elite) ──────────
         let campaignId = contact.active_campaign_id;
         let campaignPrompt = '';
+        let catalogueContext = '';
         let intentResult = null;
 
-        // ── PASSO 7: Detecção de Campanha (Engine V2) ──────────────────
-        // Agora a IA sempre tenta detectar a intenção, permitindo trocar de produto se o cliente mudar de assunto
-        intentResult = await CampaignService.detectWithAI(profile.id, instance.id, textMessage, profile.openai_api_key, contact.origin);
+        // 1. Carrega Catálogo Mental (Se houver campanhas)
+        catalogueContext = await CampaignService.getCatalogueSummary(profile.id);
+        const isMultiProductMode = catalogueContext.length > 0;
 
-        if (intentResult && intentResult.confidence_score >= 85 && intentResult.campaign_id) {
-            const isDifferentCampaign = intentResult.campaign_id !== contact.active_campaign_id;
+        // 2. Orquestração de Intenção
+        if (isMultiProductMode) {
+            intentResult = await CampaignService.detectWithAI(profile.id, instance.id, textMessage, profile.openai_api_key, contact.origin);
             
-            // Se detectou um produto diferente com alta confiança, fazemos a troca de contexto
-            if (isDifferentCampaign) {
-                console.log(`[WEBHOOK] 🔄 Troca de Contexto Detectada: ${contact.active_campaign_id} -> ${intentResult.campaign_id} (${intentResult.confidence_score}%)`);
+            // SE score >= 85: Troca e trava definitiva de produto
+            if (intentResult && intentResult.confidence_score >= 85 && intentResult.campaign_id) {
+                const isDifferentCampaign = intentResult.campaign_id !== contact.active_campaign_id;
                 campaignId = intentResult.campaign_id;
-                await supabase.from('contacts').update({ 
-                    active_campaign_id: campaignId, 
-                    campaign_lock: true 
-                }).eq('id', contact.id);
-            } else {
+                
+                if (isDifferentCampaign) {
+                    console.log(`[MAESTRO] 🔄 Troca de Contexto Confirmada: ${contact.active_campaign_id} -> ${intentResult.campaign_id} (${intentResult.confidence_score}%)`);
+                    await supabase.from('contacts').update({ 
+                        active_campaign_id: campaignId, 
+                        campaign_lock: true 
+                    }).eq('id', contact.id);
+                }
+
+                // Log para auditoria
+                await supabase.from('campaign_intelligence_logs').insert({
+                    user_id: profile.id,
+                    contact_id: contact.id,
+                    message: textMessage,
+                    detected_campaign_id: intentResult.campaign_id,
+                    confidence_score: intentResult.confidence_score,
+                    reason: intentResult.reason
+                });
+            } 
+            // SE score >= 60: Carregamos o manual para esta resposta, mas NÃO travamos no banco (Ambíguo)
+            else if (intentResult && intentResult.confidence_score >= 60 && intentResult.campaign_id) {
+                console.log(`[MAESTRO] ⚠️ Contexto temporário sugerido (${intentResult.confidence_score}%): ${intentResult.campaign_name}`);
                 campaignId = intentResult.campaign_id;
             }
-
-            // Log da inteligência para auditoria
-            await supabase.from('campaign_intelligence_logs').insert({
-                user_id: profile.id,
-                contact_id: contact.id,
-                message: textMessage,
-                detected_campaign_id: intentResult.campaign_id,
-                confidence_score: intentResult.confidence_score,
-                reason: intentResult.reason
-            });
-        } else if (intentResult && intentResult.confidence_score >= 60 && intentResult.confidence_score < 85) {
-            // Ambiguidade: Não troca a persona, mas a IA receberá a instrução de perguntar
-            console.log(`[Engine V2] ⚠️ Score ambíguo (${intentResult.confidence_score}%). Mantendo contexto atual.`);
         }
 
-        // ── PASSO 8.1: Carregar Persona da Campanha (Fase 1) ────────────
+        // 3. Carregamento do Manual de Vendas Ativo
         if (campaignId) {
             const { data: campData } = await supabase.from('campaigns').select('system_prompt').eq('id', campaignId).maybeSingle();
             if (campData) campaignPrompt = campData.system_prompt;
@@ -500,7 +505,16 @@ async function processWebhook(body: any) {
             funnelSummary = await FunnelService.getFunnelSummary(contact.current_funnel_id, contact.id) || '';
         }
 
-        let reply = await AIService.generateResponse(formattedHistory, aiConfig, profile.openai_api_key, knowledgeContext, customLeadContext, campaignPrompt, funnelSummary);
+        let reply = await AIService.generateResponse(
+            formattedHistory, 
+            aiConfig, 
+            profile.openai_api_key, 
+            knowledgeContext, 
+            customLeadContext, 
+            campaignPrompt, 
+            funnelSummary,
+            catalogueContext
+        );
         if (!reply) return;
 
         // ── PASSO 10.2: Processar Gatilhos de Mídia (NOVO) ────────────

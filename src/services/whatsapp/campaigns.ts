@@ -7,6 +7,21 @@ const supabase = createClient(
 
 export class CampaignService {
     /**
+     * Gera um resumo textual de todos os produtos disponíveis
+     */
+    static async getCatalogueSummary(userId: string): Promise<string> {
+        const { data: campaigns } = await supabase
+            .from('campaigns')
+            .select('name, trigger_phrase')
+            .eq('user_id', userId)
+            .eq('is_active', true);
+
+        if (!campaigns || campaigns.length === 0) return '';
+
+        return campaigns.map(c => `- ${c.name}: Gatilho: ${c.trigger_phrase}`).join('\n');
+    }
+
+    /**
      * Detecta a campanha ativa baseada na mensagem
      */
     static async detect(userId: string, instanceId: string, textMessage: string): Promise<string | null> {

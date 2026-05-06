@@ -109,7 +109,8 @@ export class AIService {
         knowledgeContext: string = '',
         leadContext: string = '',
         campaignPrompt: string = '',
-        funnelContext: string = ''
+        funnelContext: string = '',
+        catalogueContext: string = ''
     ): Promise<string | null> {
         try {
             // Prepara o contexto do funil se existir
@@ -117,9 +118,11 @@ export class AIService {
                 ? `\nCONTEXTO DO FUNIL DE VENDAS (HISTÓRICO RECENTE):\n${funnelContext}\nInstrução: O cliente acabou de passar por este fluxo automatizado. Use essas informações para continuar o atendimento sem repetir o que já foi dito.`
                 : '';
 
-            // ── MONTAGEM DA HIERARQUIA DO PROMPT (FASE 3) ──────────────────
+            // ── MONTAGEM DA HIERARQUIA DO PROMPT (MODO ELITE MULTI-PRODUTO) ──
             const systemContent = `
 Você é ${aiConfig.bot_name}.
+
+${catalogueContext ? `PRODUTOS QUE VOCÊ REPRESENTA (CATÁLOGO):\n${catalogueContext}\n` : ''}
 
 REGRAS GERAIS E CONDUTA:
 ${aiConfig.system_prompt}
@@ -129,15 +132,15 @@ ${funnelInfo}
 CONHECIMENTO E MÍDIAS DISPONÍVEIS:
 ${knowledgeContext}
 
-CONTEXTO DA CAMPANHA E PRODUTO:
+CONTEXTO DA CAMPANHA E PRODUTO (MANUAL DE VENDAS ATIVO):
 ${campaignPrompt || 'Nenhuma campanha específica ativa no momento. Siga as regras gerais de atendimento.'}
 
 INSTRUÇÃO DE VENDA DO PRODUTO ATUAL (PRIORIDADE MÁXIMA):
 ${leadContext}
 - Responda de forma natural, humana e empática.
 - Use emojis de forma moderada e estratégica.
-- ANTI-ALUCINAÇÃO: Se o cliente perguntar algo desconhecido ou se houver erro de entendimento, peça esclarecimentos educadamente. Não invente informações.
-- FOCO EM CONVERSÃO: Se o cliente demonstrar interesse, dúvida sobre preço ou intenção de compra, direcione o diálogo para o fechamento da venda de forma decidida.
+- ANTI-ALUCINAÇÃO: Se o cliente perguntar algo sobre preço ou características que não estejam nos manuais acima, diga educadamente que vai verificar. NUNCA invente informações.
+- FOCO EM CONVERSÃO: Use os dados do manual ativo para direcionar o cliente ao fechamento da venda.
 `.trim();
 
             const response = await fetch('https://api.openai.com/v1/chat/completions', {
