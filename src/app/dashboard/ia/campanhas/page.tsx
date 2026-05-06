@@ -118,13 +118,22 @@ export default function CampaignsPage() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('Tem certeza?')) return
+    if (!confirm('Tem certeza? Isso removerá as configurações deste produto.')) return
+    
     try {
-      await supabase.from('campaigns').delete().eq('id', id)
+      const { error } = await supabase.from('campaigns').delete().eq('id', id)
+      
+      if (error) {
+        console.error('Erro ao excluir no banco:', error)
+        toast.error(`Erro ao excluir: ${error.message}`)
+        return
+      }
+
       setCampaigns(campaigns.filter(c => c.id !== id))
-      toast.success('Campanha excluída')
+      toast.success('Campanha excluída com sucesso')
     } catch (error) {
-      toast.error('Erro ao excluir')
+      console.error('Erro catch handleDelete:', error)
+      toast.error('Erro inesperado ao excluir')
     }
   }
 
