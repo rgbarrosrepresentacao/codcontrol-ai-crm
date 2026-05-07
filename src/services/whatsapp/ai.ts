@@ -110,12 +110,24 @@ export class AIService {
         leadContext: string = '',
         campaignPrompt: string = '',
         funnelContext: string = '',
-        catalogueContext: string = ''
+        catalogueContext: string = '',
+        leadIntelligence: any = null
     ): Promise<string | null> {
         try {
             // Prepara o contexto do funil se existir
             const funnelInfo = funnelContext 
                 ? `\nCONTEXTO DO FUNIL DE VENDAS (HISTÓRICO RECENTE):\n${funnelContext}\nInstrução: O cliente acabou de passar por este fluxo automatizado. Use essas informações para continuar o atendimento sem repetir o que já foi dito.`
+                : '';
+
+            // Prepara a Memória Estratégica se existir
+            const memoryInfo = leadIntelligence && Object.keys(leadIntelligence).length > 0
+                ? `\n[MEMÓRIA ESTRATÉGICA DO LEAD]\n` +
+                  `- Interesse: ${leadIntelligence.main_interest || 'A descobrir'}\n` +
+                  `- Dor: ${leadIntelligence.main_pain || 'A descobrir'}\n` +
+                  `- Objeção: ${leadIntelligence.main_objection || 'Nenhuma detectada'}\n` +
+                  `- Estágio: ${leadIntelligence.buying_stage || 'frio'}\n` +
+                  `- Próxima melhor ação: ${leadIntelligence.next_best_action || 'Qualificar'}\n` +
+                  `- Última oferta: ${leadIntelligence.last_offer || 'Nenhuma'}\n`
                 : '';
 
             // ── MONTAGEM DA HIERARQUIA DO PROMPT (MODO ELITE MULTI-PRODUTO) ──
@@ -128,6 +140,8 @@ REGRAS GERAIS E CONDUTA:
 ${aiConfig.system_prompt}
 
 ${funnelInfo}
+
+${memoryInfo}
 
 CONHECIMENTO E MÍDIAS DISPONÍVEIS:
 ${knowledgeContext}
@@ -152,7 +166,7 @@ ${leadContext}
                         { role: 'system', content: systemContent },
                         ...messages
                     ],
-                    temperature: 0.6, // Reduzido levemente para maior consistência
+                    temperature: 0.6,
                     max_tokens: 500
                 })
             });
@@ -163,6 +177,54 @@ ${leadContext}
         } catch (err) {
             console.error('[AIService] Error generating response:', err);
             return null;
+        }
+    }
+
+    /**
+     * Analisa a conversa para atualizar a inteligência estratégica do lead
+     */
+    static async analyzeIntelligence(messages: any[], openaiKey: string, currentIntelligence: any = {}): Promise<any> {
+        try {
+            const conversationText = messages.slice(-10).map(m => `${m.role === 'assistant' ? 'IA' : 'Cliente'}: ${m.content}`).join('\n');
+            
+            const response = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openaiKey}` },
+                body: JSON.stringify({
+                    model: 'gpt-4o-mini',
+                    messages: [
+                        {
+                            role: 'system',
+                            content: `Você é um analista estratégico de vendas. Sua tarefa é extrair a "alma" da conversa para ajudar a IA a vender melhor.
+                            
+                            DADOS ATUAIS (Mantenha se não houver mudança):
+                            ${JSON.stringify(currentIntelligence)}
+
+                            REGRAS DE EXTRAÇÃO:
+                            - lead_summary: Um resumo curto do momento do lead.
+                            - main_interest: O que ele realmente quer?
+                            - main_pain: Qual o problema que ele quer resolver?
+                            - main_objection: O que está impedindo a compra? (preço, prazo, medo, etc)
+                            - buying_stage: frio (curioso), morno (tem interesse), quente (pediu link/preço), comprador (fechou), perdido (recusou), precisa_humano.
+                            - next_best_action: O que a IA deve fazer agora? (quebrar objeção, mandar link, mandar prova social, etc).
+                            - last_offer: Qual foi o último preço ou condição oferecida.
+                            
+                            Retorne APENAS o JSON puro com todos os campos atualizados.`
+                        },
+                        { role: 'user', content: `Analise as últimas interações e atualize a inteligência estratégica:\n\n${conversationText}` }
+                    ],
+                    temperature: 0,
+                    response_format: { type: 'json_object' }
+                })
+            });
+
+            if (!response.ok) return currentIntelligence;
+            const data = await response.json();
+            const content = data.choices?.[0]?.message?.content;
+            return content ? JSON.parse(content) : currentIntelligence;
+        } catch (err) {
+            console.error('[AIService] Intelligence analysis error:', err);
+            return currentIntelligence;
         }
     }
     /**

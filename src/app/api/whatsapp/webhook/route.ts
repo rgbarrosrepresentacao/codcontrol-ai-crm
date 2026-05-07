@@ -489,7 +489,7 @@ async function processWebhook(body: any) {
         // ── PASSO 10.1: Knowledge Base (Filtro por Produto) ────────────
         const { context: knowledgeContext, items: knowledgeItems } = await KnowledgeService.buildContext(profile.id, campaignId);
 
-        const { data: history } = await supabase.from('messages').select('content, from_me').eq('conversation_id', conversationId).order('created_at', { ascending: false }).limit(20);
+        const { data: history } = await supabase.from('messages').select('content, from_me').eq('conversation_id', conversationId).order('created_at', { ascending: false }).limit(50);
         const formattedHistory = (history || []).reverse().map(m => ({ role: m.from_me ? 'assistant' : 'user', content: m.content }));
 
         // Se o score for ambíguo (60-85), injetamos uma regra de confirmação
@@ -513,7 +513,8 @@ async function processWebhook(body: any) {
             customLeadContext, 
             campaignPrompt, 
             funnelSummary,
-            catalogueContext
+            catalogueContext,
+            contact.lead_intelligence // Injeta a Memória Estratégica
         );
         if (!reply) return;
 
@@ -594,6 +595,22 @@ async function processWebhook(body: any) {
         const newTag = await AIService.classifyContact(formattedHistory, profile.openai_api_key);
         if (newTag) {
             await supabase.from('contacts').update({ ai_tag: newTag }).eq('id', contact.id);
+
+            // ── PASSO 11.2: Memória Estratégica (NOVO) ─────────────────
+            // Atualiza a inteligência do lead apenas em mensagens relevantes (venda/objeção/preço)
+            const RELEVANCE_REGEX = /(valor|preço|quanto|custo|frete|prazo|entrega|comprar|link|pix|cartão|boleto|caro|desconto|garantia|golpe|mentira|funciona)/i;
+            if (RELEVANCE_REGEX.test(textMessage) || RELEVANCE_REGEX.test(reply)) {
+                console.log(`[STRATEGIC MEMORY] 🧠 Analisando relevância para ${phone}...`);
+                const updatedIntelligence = await AIService.analyzeIntelligence(
+                    [...formattedHistory, { role: 'assistant', content: reply }],
+                    profile.openai_api_key,
+                    contact.lead_intelligence
+                );
+                if (updatedIntelligence) {
+                    await supabase.from('contacts').update({ lead_intelligence: updatedIntelligence }).eq('id', contact.id);
+                    console.log(`[STRATEGIC MEMORY] ✅ Inteligência atualizada para ${phone}`);
+                }
+            }
 
             // ── PASSO 12.1: Notificação de Venda (NOVO) ─────────────────
             if (newTag === 'FECHADO' && profile.sale_notifications_enabled && profile.notification_whatsapp) {
