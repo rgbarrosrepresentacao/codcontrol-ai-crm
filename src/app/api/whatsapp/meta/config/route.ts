@@ -4,7 +4,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
-import { encrypt } from '@/lib/crypto'
+import { encrypt, decrypt } from '@/lib/crypto'
 import { MetaProvider } from '@/services/whatsapp/MetaProvider'
 
 export async function POST(request: NextRequest) {
@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, message: 'Configuração salva com sucesso!' })
 }
 
-// GET: Retorna config atual (sem o token)
+// GET: Retorna config atual (descriptografando o token para conferência do admin)
 export async function GET() {
     const supabase = await createSupabaseServerClient()
 
@@ -96,13 +96,23 @@ export async function GET() {
 
     const { data: instance } = await supabase
         .from('whatsapp_instances')
-        .select('id, meta_config, meta_status, meta_last_error, meta_last_webhook_at, updated_at')
+        .select('id, meta_config, meta_status, meta_last_error, meta_last_webhook_at, updated_at, meta_access_token_encrypted')
         .eq('provider_type', 'META')
         .eq('user_id', user.id)
         .single()
 
     if (!instance) {
         return NextResponse.json({ configured: false })
+    }
+
+    // Tenta descriptografar o token para exibir na UI
+    let accessToken = null
+    if (instance.meta_access_token_encrypted) {
+        try {
+            accessToken = decrypt(instance.meta_access_token_encrypted)
+        } catch (err) {
+            console.error('[CONFIG_GET] Erro ao descriptografar token:', err)
+        }
     }
 
     return NextResponse.json({
@@ -112,6 +122,7 @@ export async function GET() {
         meta_last_error:      instance.meta_last_error,
         meta_last_webhook_at: instance.meta_last_webhook_at,
         updated_at:           instance.updated_at,
-        has_token:            true, // token existe mas não é retornado por segurança
+        access_token:         accessToken,
+        has_token:            !!accessToken,
     })
 }

@@ -57,6 +57,7 @@ export default function MetaApiOficialPage() {
                     phone_number_id: data.meta_config.phone_number_id || '',
                     business_id:    data.meta_config.business_id || '',
                     verify_token:   data.meta_config.verify_token || '',
+                    access_token:   data.access_token || '',
                 }))
             }
         } catch {
