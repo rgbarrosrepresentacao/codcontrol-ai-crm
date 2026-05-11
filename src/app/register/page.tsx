@@ -315,7 +315,7 @@ function RegisterForm() {
                     </button>
 
                     <p className="text-xs text-muted-foreground text-center">
-                        Ao criar uma conta, você concorda com nossos <span className="text-primary">Termos de Uso</span>.
+                        Ao criar uma conta, você concorda com nossos <Link href="/termos-de-uso" className="text-primary hover:underline font-bold">Termos de Uso</Link>.
                     </p>
                 </form>
 

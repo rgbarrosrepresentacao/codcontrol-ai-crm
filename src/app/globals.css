@@ -184,5 +184,77 @@
 
 /* Layout Hacks */
 .container-7xl {
-  @apply max-w-7xl mx-auto px-6 md:px-12;
+  max-width: 80rem; /* 7xl equivalent */
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1.5rem;
+  padding-right: 1.5rem;
+}
+
+@media (min-width: 768px) {
+  .container-7xl {
+    padding-left: 3rem;
+    padding-right: 3rem;
+  }
+}
+
+/* Premium Legal Typography (Legal Design) */
+.legal-prose {
+  position: relative;
+}
+
+.legal-prose h2 {
+  font-size: 1.5rem;
+  font-weight: 900;
+  margin-top: 3rem;
+  margin-bottom: 1.5rem;
+  color: hsl(var(--foreground));
+  border-bottom: 1px solid hsla(0, 0%, 100%, 0.05);
+  padding-bottom: 0.5rem;
+  letter-spacing: -0.02em;
+}
+
+.legal-prose h3 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-top: 2rem;
+  margin-bottom: 1rem;
+  color: hsla(var(--foreground), 0.9);
+}
+
+.legal-prose p {
+  margin-bottom: 1.5rem;
+  line-height: 1.8;
+  color: hsla(var(--foreground), 0.7);
+}
+
+.legal-prose ul {
+  margin-bottom: 2rem;
+  padding-left: 0;
+  list-style: none;
+}
+
+.legal-prose li {
+  position: relative;
+  padding-left: 1.5rem;
+  margin-bottom: 0.75rem;
+  color: hsla(var(--foreground), 0.7);
+}
+
+.legal-prose li::before {
+  content: "•";
+  position: absolute;
+  left: 0;
+  color: hsl(var(--primary));
+  font-weight: 900;
+  font-size: 1.25rem;
+}
+
+.legal-prose strong {
+  color: hsl(var(--foreground));
+  font-weight: 700;
+}
+
+.legal-prose section {
+  animation: slide-up 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
