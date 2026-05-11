@@ -492,18 +492,21 @@ async function processWebhook(body: any) {
         console.log(`[DEBOUNCE] ⏳ Aguardando ${waitTime/1000}s para ver se ${phone} termina de digitar...`);
         await new Promise(r => setTimeout(r, waitTime));
 
-        // Re-consulta o contato para ver se chegou algo novo nesse intervalo
-        const { data: latestContact } = await supabase
+        // Re-consulta e "tranca" o processamento para evitar duplicidade
+        // Se conseguirmos atualizar o last_message_id para 'HANDLED_' + id, somos os únicos processando.
+        const { data: lockResult, error: lockError } = await supabase
             .from('contacts')
-            .select('last_message_id')
+            .update({ last_message_id: `HANDLED_${key.id}` })
             .eq('id', contact.id)
+            .eq('last_message_id', key.id)
+            .select('id')
             .single();
 
-        if (latestContact && latestContact.last_message_id !== key.id) {
-            console.log(`[DEBOUNCE] ⏩ Nova mensagem detectada (${latestContact.last_message_id}). Cancelando resposta obsoleta de ${key.id}.`);
+        if (lockError || !lockResult) {
+            console.log(`[DEBOUNCE] ⏩ Mensagem ${key.id} já está sendo processada ou foi superada. Abortando duplicata.`);
             return;
         }
-        console.log(`[DEBOUNCE] ✅ Nenhuma mensagem nova. Gerando resposta da IA para ${phone}...`);
+        console.log(`[DEBOUNCE] ✅ Trava adquirida para ${key.id}. Gerando resposta da IA...`);
 
         // ── PASSO 10.1: Knowledge Base (Filtro por Produto) ────────────
         const { context: knowledgeContext, items: knowledgeItems } = await KnowledgeService.buildContext(profile.id, campaignId);
