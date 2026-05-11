@@ -1,4 +1,4 @@
-export type AiTag = 'NOVO_LEAD' | 'EM_ATENDIMENTO' | 'QUALIFICADO' | 'INTERESSADO' | 'PROPOSTA_ENVIADA' | 'AGUARDANDO_RESPOSTA' | 'FECHADO' | 'PERDIDO';
+export type AiTag = 'NOVO_LEAD' | 'EM_ATENDIMENTO' | 'QUALIFICADO' | 'INTERESSADO' | 'PROPOSTA_ENVIADA' | 'AGUARDANDO_RESPOSTA' | 'FECHADO' | 'PERDIDO' | 'FRIO' | 'MORNO' | 'QUENTE' | 'COMPRADOR' | 'LEAD_QUALIFICADO';
 
 export class AIService {
     /**
@@ -53,7 +53,7 @@ export class AIService {
                     messages: [
                         {
                             role: 'system',
-                            content: `Você é um classificador de leads. Responda APENAS com uma dessas palavras: NOVO_LEAD, EM_ATENDIMENTO, QUALIFICADO, INTERESSADO, PROPOSTA_ENVIADA, AGUARDANDO_RESPOSTA, FECHADO, PERDIDO.`
+                            content: `Você é um classificador de leads estratégico. Responda APENAS com uma dessas palavras: FRIO, MORNO, QUENTE, COMPRADOR, LEAD_QUALIFICADO, NOVO_LEAD, EM_ATENDIMENTO, QUALIFICADO, INTERESSADO, PROPOSTA_ENVIADA, AGUARDANDO_RESPOSTA, FECHADO, PERDIDO.`
                         },
                         { role: 'user', content: `Classifique esta conversa:\n\n${conversationText}` }
                     ],
@@ -197,19 +197,19 @@ ${leadContext}
                             role: 'system',
                             content: `Você é um analista estratégico de vendas. Sua tarefa é extrair a "alma" da conversa para ajudar a IA a vender melhor.
                             
-                            DADOS ATUAIS (Mantenha se não houver mudança):
+                            DADOS ATUAIS:
                             ${JSON.stringify(currentIntelligence)}
 
-                            REGRAS DE EXTRAÇÃO:
+                            REGRAS DE EXTRAÇÃO (JSON):
                             - lead_summary: Um resumo curto do momento do lead.
                             - main_interest: O que ele realmente quer?
                             - main_pain: Qual o problema que ele quer resolver?
-                            - main_objection: O que está impedindo a compra? (preço, prazo, medo, etc)
-                            - buying_stage: frio (curioso), morno (tem interesse), quente (pediu link/preço), comprador (fechou), perdido (recusou), precisa_humano.
-                            - next_best_action: O que a IA deve fazer agora? (quebrar objeção, mandar link, mandar prova social, etc).
-                            - last_offer: Qual foi o último preço ou condição oferecida.
+                            - main_objection: O que está impedindo a compra?
+                            - buying_stage: OBRIGATORIAMENTE um destes: [frio, morno, quente, comprador, perdido, precisa_humano]. NUNCA use outros termos.
+                            - next_best_action: O que a IA deve fazer agora?
+                            - last_offer: Último preço ou condição oferecida.
                             
-                            Retorne APENAS o JSON puro com todos os campos atualizados.`
+                            Retorne APENAS o JSON puro.`
                         },
                         { role: 'user', content: `Analise as últimas interações e atualize a inteligência estratégica:\n\n${conversationText}` }
                     ],
@@ -221,7 +221,21 @@ ${leadContext}
             if (!response.ok) return currentIntelligence;
             const data = await response.json();
             const content = data.choices?.[0]?.message?.content;
-            return content ? JSON.parse(content) : currentIntelligence;
+            if (!content) return currentIntelligence;
+
+            const intelligence = JSON.parse(content);
+
+            // Validação e Normalização Rígida de Estágio (Ponto 1)
+            const validStages = ['frio', 'morno', 'quente', 'comprador', 'perdido', 'precisa_humano'];
+            if (!validStages.includes(intelligence.buying_stage)) {
+                console.log(`[AI] Normalizando estágio inválido: ${intelligence.buying_stage}`);
+                // Mapeamento simples para casos comuns ou fallback para 'morno'
+                if (intelligence.buying_stage?.toLowerCase().includes('consider')) intelligence.buying_stage = 'morno';
+                else if (intelligence.buying_stage?.toLowerCase().includes('interessado')) intelligence.buying_stage = 'quente';
+                else intelligence.buying_stage = intelligence.buying_stage ? 'morno' : (currentIntelligence.buying_stage || 'frio');
+            }
+
+            return intelligence;
         } catch (err) {
             console.error('[AIService] Intelligence analysis error:', err);
             return currentIntelligence;
@@ -300,7 +314,6 @@ ${leadContext}
             if (lastUserMsg.match(/\b(atendente|humano|pessoa|suporte|falar com alguém)\b/i)) {
                 return { decision: 'human', confidence: 100, reason: 'Fallback manual: Pedido de humano detectado' };
             }
-
             return { decision: 'unclear', confidence: 0, reason: 'Erro na avaliação e sem palavras-chave claras' };
         }
     }

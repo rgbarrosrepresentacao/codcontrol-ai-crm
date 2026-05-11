@@ -486,16 +486,39 @@ async function processWebhook(body: any) {
         if (!profile.openai_api_key) return;
         if (!aiConfig) return;
 
+        // ── PASSO 10.0: Mecanismo de Debounce (Espera Humanizada) ────────
+        // Evita respostas múltiplas para mensagens picadas
+        const waitTime = 12000; // 12 segundos
+        console.log(`[DEBOUNCE] ⏳ Aguardando ${waitTime/1000}s para ver se ${phone} termina de digitar...`);
+        await new Promise(r => setTimeout(r, waitTime));
+
+        // Re-consulta o contato para ver se chegou algo novo nesse intervalo
+        const { data: latestContact } = await supabase
+            .from('contacts')
+            .select('last_message_id')
+            .eq('id', contact.id)
+            .single();
+
+        if (latestContact && latestContact.last_message_id !== key.id) {
+            console.log(`[DEBOUNCE] ⏩ Nova mensagem detectada (${latestContact.last_message_id}). Cancelando resposta obsoleta de ${key.id}.`);
+            return;
+        }
+        console.log(`[DEBOUNCE] ✅ Nenhuma mensagem nova. Gerando resposta da IA para ${phone}...`);
+
         // ── PASSO 10.1: Knowledge Base (Filtro por Produto) ────────────
         const { context: knowledgeContext, items: knowledgeItems } = await KnowledgeService.buildContext(profile.id, campaignId);
 
         const { data: history } = await supabase.from('messages').select('content, from_me').eq('conversation_id', conversationId).order('created_at', { ascending: false }).limit(50);
         const formattedHistory = (history || []).reverse().map(m => ({ role: m.from_me ? 'assistant' : 'user', content: m.content }));
 
+        // Injeta Data e Hora Atual para Profissionalismo (Ponto 2)
+        const currentDate = new Date();
+        const dateTimeContext = `\n[CONTEXTO TEMPORAL]\nData/Hora Atual: ${currentDate.toLocaleDateString('pt-BR')} ${currentDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}\nDia da Semana: ${currentDate.toLocaleDateString('pt-BR', { weekday: 'long' })}\n`;
+
         // Se o score for ambíguo (60-85), injetamos uma regra de confirmação
-        let customLeadContext = '';
+        let customLeadContext = dateTimeContext;
         if (intentResult && intentResult.confidence_score >= 60 && intentResult.confidence_score < 85) {
-            customLeadContext = `IMPORTANTE: O cliente parece interessado no produto "${intentResult.campaign_name}", mas não temos certeza total (Score: ${intentResult.confidence_score}%). 
+            customLeadContext += `\nIMPORTANTE: O cliente parece interessado no produto "${intentResult.campaign_name}", mas não temos certeza total (Score: ${intentResult.confidence_score}%). 
             Em vez de assumir que ele quer comprar, faça uma pergunta educada confirmando se ele gostaria de saber mais sobre o "${intentResult.campaign_name}".`;
         }
 
@@ -612,8 +635,8 @@ async function processWebhook(body: any) {
                 }
             }
 
-            // ── PASSO 12.1: Notificação de Venda (NOVO) ─────────────────
-            if (newTag === 'FECHADO' && profile.sale_notifications_enabled && profile.notification_whatsapp) {
+            // ── PASSO 12.1: Notificação de Venda (Sincronizado) ─────────
+            if (newTag === 'COMPRADOR' && profile.sale_notifications_enabled && profile.notification_whatsapp) {
                 const orderData = await AIService.extractOrderData([...formattedHistory, { role: 'assistant', content: reply }], profile.openai_api_key);
                 if (orderData) {
                     await NotificationService.sendSaleNotification(instanceName, orderData, phone, profile.notification_whatsapp);
