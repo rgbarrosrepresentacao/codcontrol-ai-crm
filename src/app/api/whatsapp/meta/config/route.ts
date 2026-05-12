@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
         .single()
 
     if (existing) {
-        await supabase
+        const { error: updateError } = await supabase
             .from('whatsapp_instances')
             .update({
                 meta_config: metaConfig,
@@ -61,17 +61,28 @@ export async function POST(request: NextRequest) {
                 updated_at: new Date().toISOString(),
             })
             .eq('id', existing.id)
+        
+        if (updateError) {
+            console.error('[CONFIG_POST] Erro ao atualizar:', updateError)
+            return NextResponse.json({ error: `Erro ao atualizar banco: ${updateError.message}` }, { status: 500 })
+        }
     } else {
-        await supabase
+        const { error: insertError } = await supabase
             .from('whatsapp_instances')
             .insert({
                 user_id: user.id,
                 provider_type: 'META',
+                instance_name: `meta_${user.id.substring(0, 8)}`,
+                display_name: 'WhatsApp API Oficial',
                 meta_config: metaConfig,
                 meta_access_token_encrypted: encryptedToken,
                 meta_status: 'disconnected',
-                name: 'WhatsApp API Oficial',
             })
+        
+        if (insertError) {
+            console.error('[CONFIG_POST] Erro ao inserir:', insertError)
+            return NextResponse.json({ error: `Erro ao inserir no banco: ${insertError.message}` }, { status: 500 })
+        }
     }
 
     return NextResponse.json({ success: true, message: 'Configuração salva com sucesso!' })
