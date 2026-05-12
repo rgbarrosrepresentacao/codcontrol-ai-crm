@@ -16,27 +16,30 @@ export async function GET(request: NextRequest) {
     const token     = searchParams.get('hub.verify_token')
     const challenge = searchParams.get('hub.challenge')
 
-    if (mode !== 'subscribe' || !token || !challenge) {
-        return NextResponse.json({ error: 'Parâmetros inválidos' }, { status: 400 })
+    if (mode === 'subscribe' && token && challenge) {
+        // Busca a instância que tem este verify_token configurado
+        const supabase = await createSupabaseServerClient()
+        const { data: instances } = await supabase
+            .from('whatsapp_instances')
+            .select('meta_config')
+            .eq('provider_type', 'META')
+
+        // Verifica se algum dos registros tem o token que a Meta enviou
+        const isValid = instances?.some(inst => (inst.meta_config as any)?.verify_token === token)
+
+        if (isValid) {
+            console.log(`[Meta Webhook] Validação bem-sucedida para o token: ${token}`)
+            // Retorna APENAS o challenge como texto puro (exigência da Meta)
+            return new Response(challenge, { 
+                status: 200,
+                headers: { 'Content-Type': 'text/plain' }
+            })
+        }
+        
+        console.warn(`[Meta Webhook] Token de verificação não confere: ${token}`)
     }
 
-    // Busca a instância que tem este verify_token configurado
-    const supabase = await createSupabaseServerClient()
-    const { data: instance } = await supabase
-        .from('whatsapp_instances')
-        .select('id, meta_config')
-        .eq('provider_type', 'META')
-        .single()
-
-    const verifyToken = (instance?.meta_config as any)?.verify_token
-
-    if (!verifyToken || token !== verifyToken) {
-        console.warn('[Meta Webhook] Verify token inválido:', token)
-        return NextResponse.json({ error: 'Token inválido' }, { status: 403 })
-    }
-
-    console.log('[Meta Webhook] Webhook validado com sucesso!')
-    return new NextResponse(challenge, { status: 200 })
+    return new Response('Forbidden', { status: 403 })
 }
 
 // ─── POST: Recebimento de Mensagens ──────────────────────────────────────────
