@@ -2,12 +2,14 @@
  * Webhook da API Oficial da Meta — WhatsApp API Oficial (Admin Only)
  *
  * GET  → Validação do webhook (hub.verify_token + hub.challenge)
- * POST → Recebimento de mensagens normalizadas e passagem para o motor de IA atual
+ * POST → Recebimento de mensagens normalizadas e passagem para o motor de IA
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createHmac } from 'crypto'
 import { createClient } from '@supabase/supabase-js'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
+import { decrypt } from '@/lib/crypto'
+import { processWebhook } from '@/app/api/whatsapp/webhook/route'
 
 // ─── GET: Validação do Webhook pela Meta ──────────────────────────────────────
 export async function GET(request: NextRequest) {
@@ -20,7 +22,6 @@ export async function GET(request: NextRequest) {
     console.log(`[Meta Webhook] Recebendo validação: mode=${mode}, token=${token}`)
 
     if (mode === 'subscribe' && token && challenge) {
-        // Usamos o cliente administrativo para ignorar RLS na validação do token
         const supabase = createClient(
             process.env.NEXT_PUBLIC_SUPABASE_URL!,
             process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -36,7 +37,6 @@ export async function GET(request: NextRequest) {
             return new Response('Internal Error', { status: 500 })
         }
 
-        // Verifica se algum dos registros tem o token que a Meta enviou
         const isValid = instances?.some(inst => (inst.meta_config as any)?.verify_token === token)
 
         if (isValid) {
@@ -56,18 +56,7 @@ export async function GET(request: NextRequest) {
 // ─── POST: Recebimento de Mensagens ──────────────────────────────────────────
 export async function POST(request: NextRequest) {
     const rawBody = await request.text()
-
-    // 1. Validação de segurança: X-Hub-Signature-256
     const signature = request.headers.get('x-hub-signature-256')
-    const appSecret = process.env.META_APP_SECRET
-
-    if (appSecret && signature) {
-        const expectedSig = 'sha256=' + createHmac('sha256', appSecret).update(rawBody).digest('hex')
-        if (signature !== expectedSig) {
-            console.error('[Meta Webhook] Assinatura inválida! Possível spoofing.')
-            return NextResponse.json({ error: 'Assinatura inválida' }, { status: 401 })
-        }
-    }
 
     let payload: any
     try {
@@ -76,13 +65,55 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Payload inválido' }, { status: 400 })
     }
 
-    // 2. Normalização do payload da Meta para o formato padrão do sistema
+    // 1. Identifica a instância pelo WABA ID para buscar o App Secret
+    const wabaId = payload?.entry?.[0]?.id
+    
+    if (!wabaId) {
+        console.error('[Meta Webhook] WABA ID não encontrado no payload')
+        return NextResponse.json({ error: 'WABA ID missing' }, { status: 400 })
+    }
+
+    // Usamos o cliente administrativo para buscar o Secret
+    const supabaseAdmin = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
+
+    const { data: instance, error: dbError } = await supabaseAdmin
+        .from('whatsapp_instances')
+        .select('instance_name, meta_app_secret_encrypted')
+        .eq('provider_type', 'META')
+        .filter('meta_config->waba_id', 'eq', wabaId)
+        .maybeSingle()
+
+    if (dbError || !instance || !instance.meta_app_secret_encrypted) {
+        console.error(`[Meta Webhook] Instância ou Secret não encontrado para WABA: ${wabaId}`)
+        return NextResponse.json({ error: 'Instance not configured' }, { status: 404 })
+    }
+
+    // 2. Validação de segurança dinâmica: X-Hub-Signature-256
+    try {
+        const appSecret = decrypt(instance.meta_app_secret_encrypted)
+        
+        if (signature) {
+            const expectedSig = 'sha256=' + createHmac('sha256', appSecret).update(rawBody).digest('hex')
+            if (signature !== expectedSig) {
+                console.error('[Meta Webhook] Assinatura inválida! Possível spoofing.')
+                return NextResponse.json({ error: 'Assinatura inválida' }, { status: 401 })
+            }
+        }
+    } catch (decryptError) {
+        console.error('[Meta Webhook] Erro ao descriptografar App Secret:', decryptError)
+        return NextResponse.json({ error: 'Internal security error' }, { status: 500 })
+    }
+
+    // 3. Normaliza e encaminha para o motor de IA
     try {
         const entry   = payload?.entry?.[0]
         const changes = entry?.changes?.[0]
         const value   = changes?.value
 
-        // Atualiza meta_last_webhook_at na instância
+        // Atualiza meta_last_webhook_at
         const supabase = await createSupabaseServerClient()
         const phoneNumberId = value?.metadata?.phone_number_id
         if (phoneNumberId) {
@@ -93,33 +124,63 @@ export async function POST(request: NextRequest) {
                 .contains('meta_config', { phone_number_id: phoneNumberId })
         }
 
-        // Processa apenas mensagens (ignora status de leitura etc.)
+        // Ignora eventos que não são mensagens (status de leitura, etc.)
         const messages = value?.messages
         if (!messages || messages.length === 0) {
-            return NextResponse.json({ status: 'ok' })
+            return NextResponse.json({ status: 'ok', reason: 'no_messages' })
         }
 
+        // Processa cada mensagem recebida
         for (const message of messages) {
-            // Normaliza para o formato padrão do motor de IA
-            const normalizedMessage = {
-                provider:    'META' as const,
-                remoteJid:   `${message.from}@s.whatsapp.net`,
-                messageId:   message.id,
-                text:        message.text?.body || message.interactive?.button_reply?.title || '',
-                timestamp:   Number(message.timestamp),
-                pushName:    value?.contacts?.[0]?.profile?.name || message.from,
-                phoneNumberId,
+            // Ignora mensagens enviadas pelo próprio número (eco)
+            if (message.type === 'reaction' || message.type === 'status') continue
+
+            // Extrai o texto da mensagem (texto, botão interativo, etc.)
+            const textContent = message.text?.body
+                || message.interactive?.button_reply?.title
+                || message.interactive?.list_reply?.title
+                || ''
+
+            if (!textContent) {
+                console.log(`[Meta Webhook] Mensagem sem texto (tipo: ${message.type}). Ignorando.`)
+                continue
             }
 
-            // Log para auditoria
-            console.log('[Meta Webhook] Mensagem normalizada:', {
-                from:    normalizedMessage.remoteJid,
-                text:    normalizedMessage.text?.slice(0, 60),
-                msgId:   normalizedMessage.messageId,
+            const remoteJid   = `${message.from}@s.whatsapp.net`
+            const pushName    = value?.contacts?.[0]?.profile?.name || message.from
+            const messageId   = message.id
+
+            console.log('[Meta Webhook] 📩 Mensagem recebida:', {
+                from:   remoteJid,
+                text:   textContent.slice(0, 60),
+                msgId:  messageId,
             })
 
-            // Fase 6: Integração com o motor de IA (ativada após validação manual)
-            // await processMetaMessage(normalizedMessage)
+            // ──────────────────────────────────────────────────────────────────
+            // BRIDGE: Monta corpo sintético no formato Evolution e chama o motor
+            // de IA principal. Isso reutiliza 100% da lógica de funis, IA,
+            // base de conhecimento e envio híbrido — sem duplicar nada.
+            // ──────────────────────────────────────────────────────────────────
+            const syntheticBody = {
+                event:    'messages.upsert',
+                instance: instance.instance_name,
+                data: {
+                    key: {
+                        fromMe:    false,
+                        remoteJid: remoteJid,
+                        id:        messageId,
+                    },
+                    message: {
+                        conversation: textContent,
+                    },
+                    pushName: pushName,
+                },
+            }
+
+            // Dispara em background para responder 200 OK imediatamente à Meta
+            processWebhook(syntheticBody).catch(err =>
+                console.error('[Meta Webhook] Erro no motor de IA:', err)
+            )
         }
 
         return NextResponse.json({ status: 'ok' })

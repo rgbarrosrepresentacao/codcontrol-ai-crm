@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
     }
 }
 
-async function processWebhook(body: any) {
+export async function processWebhook(body: any) {
     const messageData = body.data?.message;
     const key = body.data?.key;
     if (!key || key.fromMe || !messageData) return;
@@ -307,7 +307,7 @@ async function processWebhook(body: any) {
                         }).eq('id', contact.id);
 
                         // Inicia o funil em segundo plano para não travar o webhook
-                        FunnelService.execute(targetFunnel.id, startNode.id, instanceName, remoteJid, contact.id, profile.id)
+                        FunnelService.execute(targetFunnel.id, startNode.id, instance.id, remoteJid, contact.id, profile.id)
                             .catch(err => console.error('[WEBHOOK] Error executing funnel:', err));
                         
                         funnelJustStarted = true;
@@ -396,7 +396,7 @@ async function processWebhook(body: any) {
 
                     if (handle === 'yes' || handle === 'no') {
                         // Avança pelo caminho correto da condição
-                        FunnelService.execute(contact.current_funnel_id, currentNodeId, instanceName, remoteJid, contact.id, profile.id, handle)
+                        FunnelService.execute(contact.current_funnel_id, currentNodeId, instance.id, remoteJid, contact.id, profile.id, handle)
                             .catch(err => console.error('[WEBHOOK] Erro ao retomar condição:', err));
                         return NextResponse.json({ received: true, funnel: 'resumed_condition', handle });
                     }
@@ -422,7 +422,7 @@ async function processWebhook(body: any) {
                             console.error('[WEBHOOK] Error recording advance log:', logErr);
                         }
 
-                        FunnelService.execute(contact.current_funnel_id, nextNodeId, instanceName, remoteJid, contact.id, profile.id)
+                        FunnelService.execute(contact.current_funnel_id, nextNodeId, instance.id, remoteJid, contact.id, profile.id)
                             .catch(err => console.error('[WEBHOOK] Erro ao avançar funil:', err));
                         return NextResponse.json({ received: true, funnel: 'advanced_next' });
                     } else {
@@ -468,7 +468,7 @@ async function processWebhook(body: any) {
                         current_funnel_id: defFunnel.id
                     }).eq('id', contact.id);
 
-                    FunnelService.execute(defFunnel.id, startNode.id, instanceName, remoteJid, contact.id, profile.id)
+                    FunnelService.execute(defFunnel.id, startNode.id, instance.id, remoteJid, contact.id, profile.id)
                         .catch(err => console.error('[WEBHOOK] Error starting default funnel:', err));
                     
                     funnelJustStarted = true;
@@ -557,13 +557,13 @@ async function processWebhook(body: any) {
                 const typingTime = Math.min(Math.max(reply.length * 50, 2000), 10000);
                 const hasLink = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi.test(reply);
                 if (hasLink) {
-                    await MessageService.send(instanceName, remoteJid, reply);
+                    await MessageService.send(instance.id, remoteJid, reply);
                     await new Promise(r => setTimeout(r, 1500));
                 }
                 await evolutionApi.sendPresence(instanceName, remoteJid, 'recording');
                 await new Promise(r => setTimeout(r, Math.max(typingTime - 3000, 1500)));
                 const audioB64 = await generateSpeech(cleanTextForAudio(reply), aiConfig.voice_id || 'nova', profile.openai_api_key);
-                await evolutionApi.sendWhatsAppAudio(instanceName, remoteJid, audioB64);
+                await MessageService.sendAudio(instance.id, remoteJid, audioB64);
                 
                 await supabase.from('messages').insert({ 
                     user_id: profile.id, 
@@ -578,7 +578,7 @@ async function processWebhook(body: any) {
                 });
             } catch (err) {
                 console.error('[WEBHOOK] Audio error, fallback to text:', err);
-                await MessageService.send(instanceName, remoteJid, reply);
+                await MessageService.send(instance.id, remoteJid, reply);
                 await supabase.from('messages').insert({ user_id: profile.id, conversation_id: conversationId, instance_id: instance.id, contact_id: contact.id, from_me: true, content: reply, type: 'text', status: 'sent', ai_generated: true });
             }
         } else {
@@ -591,7 +591,7 @@ async function processWebhook(body: any) {
                 await evolutionApi.sendPresence(instanceName, remoteJid, 'composing');
                 await new Promise(r => setTimeout(r, chunkTypingTime));
                 
-                await MessageService.send(instanceName, remoteJid, block.trim());
+                await MessageService.send(instance.id, remoteJid, block.trim());
                 
                 // Salva cada fragmento no banco
                 await supabase.from('messages').insert({ 
@@ -615,7 +615,7 @@ async function processWebhook(body: any) {
 
         // ── PASSO 11.1: Enviar Mídia se detectado (Fase 4) ──────────────
         if (mediaItem) {
-            await KnowledgeService.sendMedia(instanceName, remoteJid, mediaItem, profile.id, instance.id, conversationId, contact.id);
+            await KnowledgeService.sendMedia(instance.id, remoteJid, mediaItem, profile.id, conversationId, contact.id);
         }
         
         const newTag = await AIService.classifyContact(formattedHistory, profile.openai_api_key);
@@ -645,7 +645,7 @@ async function processWebhook(body: any) {
                     await NotificationService.sendSaleNotification(instanceName, orderData, phone, profile.notification_whatsapp);
                     
                     const closingMsg = await AIService.generateClosingMessage(formattedHistory, aiConfig, profile.openai_api_key);
-                    await MessageService.send(instanceName, remoteJid, closingMsg);
+                    await MessageService.send(instance.id, remoteJid, closingMsg);
                 }
             }
         }

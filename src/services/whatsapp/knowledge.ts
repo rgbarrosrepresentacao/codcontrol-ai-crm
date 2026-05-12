@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { MessageService } from './messages';
 import { evolutionApi } from '@/lib/evolution';
 
 const supabase = createClient(
@@ -66,14 +67,13 @@ ${items.map(k => `- ID:${k.id} | Tipo:${k.media_type} | Nome:"${k.name}" | Descr
     }
 
     /**
-     * Envia a mídia via Evolution API e salva no banco
+     * Envia a mídia via MessageService (Híbrido) e salva no banco
      */
     static async sendMedia(
-        instanceName: string,
+        instanceId: string,
         remoteJid: string,
         item: any,
         userId: string,
-        instanceId: string,
         conversationId: string,
         contactId: string
     ) {
@@ -82,7 +82,7 @@ ${items.map(k => `- ID:${k.id} | Tipo:${k.media_type} | Nome:"${k.name}" | Descr
             await new Promise(r => setTimeout(r, 1500));
             
             const mType = item.media_type as 'image' | 'video' | 'document' | 'audio';
-            await evolutionApi.sendMedia(instanceName, remoteJid, item.media_url, mType);
+            await MessageService.sendMedia(instanceId, remoteJid, item.media_url, mType);
             
             console.log(`[Knowledge] ✅ Mídia enviada: ${item.name}`);
 

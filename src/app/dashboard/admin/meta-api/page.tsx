@@ -19,6 +19,7 @@ interface MetaConfigData {
         phone_number_id: string
         business_id?: string
         verify_token: string
+        app_secret?: string
     }
     updated_at?: string
 }
@@ -30,12 +31,10 @@ export default function MetaApiOficialPage() {
     const [testing, setTesting] = useState(false)
     const [showToken, setShowToken] = useState(false)
 
-    const [form, setForm] = useState({
-        waba_id: '',
-        phone_number_id: '',
         business_id: '',
         verify_token: '',
         access_token: '',
+        app_secret: '',
     })
 
     const webhookUrl = typeof window !== 'undefined'
@@ -58,6 +57,7 @@ export default function MetaApiOficialPage() {
                     business_id:    data.meta_config.business_id || '',
                     verify_token:   data.meta_config.verify_token || '',
                     access_token:   data.access_token || '',
+                    app_secret:     data.app_secret || '',
                 }))
             }
         } catch {
@@ -68,8 +68,8 @@ export default function MetaApiOficialPage() {
     }
 
     async function handleSave() {
-        if (!form.waba_id || !form.phone_number_id || !form.verify_token || !form.access_token) {
-            toast.error('Preencha todos os campos obrigatórios (WABA ID, Phone ID, Verify Token e Access Token)')
+        if (!form.waba_id || !form.phone_number_id || !form.verify_token || !form.access_token || !form.app_secret) {
+            toast.error('Preencha todos os campos obrigatórios (WABA ID, Phone ID, Verify Token, Access Token e App Secret)')
             return
         }
         setSaving(true)
@@ -82,7 +82,7 @@ export default function MetaApiOficialPage() {
             const data = await res.json()
             if (res.ok) {
                 toast.success('✅ Configuração salva com sucesso!')
-                setForm(prev => ({ ...prev, access_token: '' }))
+                setForm(prev => ({ ...prev, access_token: '', app_secret: '' }))
                 await fetchConfig()
             } else {
                 toast.error(data.error || 'Erro ao salvar')
@@ -316,6 +316,31 @@ export default function MetaApiOficialPage() {
                     <p className="text-[10px] text-muted-foreground">
                         Criptografado com AES-256. Nunca exposto após salvo.
                     </p>
+                </div>
+
+                {/* App Secret — campo full width */}
+                <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground">
+                        Meta App Secret <span className="text-red-400">*</span>
+                        {config?.meta_config?.app_secret && (
+                            <span className="ml-2 text-emerald-400 text-[10px]">✅ Secret salvo (deixe em branco para manter)</span>
+                        )}
+                    </label>
+                    <div className="relative">
+                        <input
+                            type={showToken ? 'text' : 'password'}
+                            value={form.app_secret}
+                            onChange={e => setForm(p => ({ ...p, app_secret: e.target.value }))}
+                            placeholder={config?.meta_config?.app_secret ? '••••••••••••••••••••••• (manter atual)' : 'Cole o Segredo do Aplicativo da Meta aqui'}
+                            className="w-full px-3 py-2.5 pr-10 rounded-lg bg-background border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary transition-colors font-mono"
+                        />
+                        <button
+                            onClick={() => setShowToken(p => !p)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        >
+                            {showToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                    </div>
                 </div>
 
                 {/* Botões */}

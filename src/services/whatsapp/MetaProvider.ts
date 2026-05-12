@@ -31,9 +31,52 @@ export class MetaProvider {
     }
 
     /**
+     * Envia mídia (imagem, vídeo, áudio, documento) via URL externa.
+     */
+    async sendMedia(to: string, url: string, type: 'image' | 'video' | 'audio' | 'document', caption?: string): Promise<MetaSendResult> {
+        try {
+            const endpoint = `${GRAPH_API_BASE}/${this.phoneNumberId}/messages`
+            
+            const mediaObject: any = { link: url }
+            if (caption && (type === 'image' || type === 'video' || type === 'document')) {
+                mediaObject.caption = caption
+            }
+
+            const body = {
+                messaging_product: 'whatsapp',
+                recipient_type: 'individual',
+                to: to.replace(/\D/g, ''),
+                type: type,
+                [type]: mediaObject
+            }
+
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${this.accessToken}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(body),
+            })
+
+            const data = await response.json()
+
+            if (!response.ok) {
+                const errorMsg = data?.error?.message || `Erro ao enviar ${type}`
+                console.error(`[MetaProvider] Erro no envio de ${type}:`, errorMsg)
+                return { success: false, error: errorMsg }
+            }
+
+            return { success: true, message_id: data?.messages?.[0]?.id }
+        } catch (error) {
+            const msg = error instanceof Error ? error.message : 'Erro interno'
+            console.error(`[MetaProvider] Exceção no envio de ${type}:`, msg)
+            return { success: false, error: msg }
+        }
+    }
+
+    /**
      * Envia mensagem de texto simples via Graph API.
-     * @param to Número no formato internacional, ex: 5511999999999
-     * @param text Texto a ser enviado
      */
     async sendText(to: string, text: string): Promise<MetaSendResult> {
         try {
@@ -41,7 +84,7 @@ export class MetaProvider {
             const body = {
                 messaging_product: 'whatsapp',
                 recipient_type: 'individual',
-                to: to.replace(/\D/g, ''), // remove caracteres não numéricos
+                to: to.replace(/\D/g, ''),
                 type: 'text',
                 text: { preview_url: false, body: text },
             }
@@ -58,24 +101,18 @@ export class MetaProvider {
             const data = await response.json()
 
             if (!response.ok) {
-                const errorMsg = data?.error?.message || 'Erro desconhecido da Meta API'
-                console.error('[MetaProvider] Erro no envio:', errorMsg)
+                const errorMsg = data?.error?.message || 'Erro de texto da Meta API'
                 return { success: false, error: errorMsg }
             }
 
-            const messageId = data?.messages?.[0]?.id
-            console.log('[MetaProvider] Mensagem enviada:', messageId)
-            return { success: true, message_id: messageId }
+            return { success: true, message_id: data?.messages?.[0]?.id }
         } catch (error) {
-            const msg = error instanceof Error ? error.message : 'Erro interno'
-            console.error('[MetaProvider] Exceção:', msg)
-            return { success: false, error: msg }
+            return { success: false, error: error instanceof Error ? error.message : 'Erro interno' }
         }
     }
 
     /**
      * Valida o token e Phone Number ID consultando o endpoint de detalhes.
-     * Usado na tela de configuração para confirmar que as credenciais são válidas.
      */
     async validateCredentials(): Promise<{ valid: boolean; error?: string; phone?: string }> {
         try {

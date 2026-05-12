@@ -26,18 +26,20 @@ export async function POST(request: NextRequest) {
 
     // 2. Leitura do corpo
     const body = await request.json()
-    const { waba_id, phone_number_id, business_id, verify_token, access_token } = body
+    const { waba_id, phone_number_id, business_id, verify_token, access_token, app_secret } = body
 
-    if (!waba_id || !phone_number_id || !verify_token || !access_token) {
-        return NextResponse.json({ error: 'Campos obrigatórios: waba_id, phone_number_id, verify_token, access_token' }, { status: 400 })
+    if (!waba_id || !phone_number_id || !verify_token || !access_token || !app_secret) {
+        return NextResponse.json({ error: 'Campos obrigatórios: waba_id, phone_number_id, verify_token, access_token, app_secret' }, { status: 400 })
     }
 
-    // 3. Criptografa o token antes de salvar
+    // 3. Criptografa dados sensíveis antes de salvar
     let encryptedToken: string
+    let encryptedSecret: string
     try {
         encryptedToken = encrypt(access_token)
+        encryptedSecret = encrypt(app_secret)
     } catch (err) {
-        return NextResponse.json({ error: 'Erro ao criptografar token. Verifique ENCRYPTION_KEY no .env' }, { status: 500 })
+        return NextResponse.json({ error: 'Erro ao criptografar dados. Verifique ENCRYPTION_KEY no .env' }, { status: 500 })
     }
 
     // 4. Salva ou atualiza a instância Meta do admin
@@ -56,6 +58,7 @@ export async function POST(request: NextRequest) {
             .update({
                 meta_config: metaConfig,
                 meta_access_token_encrypted: encryptedToken,
+                meta_app_secret_encrypted: encryptedSecret,
                 meta_status: 'disconnected',
                 meta_last_error: null,
                 updated_at: new Date().toISOString(),
@@ -76,6 +79,7 @@ export async function POST(request: NextRequest) {
                 display_name: 'WhatsApp API Oficial',
                 meta_config: metaConfig,
                 meta_access_token_encrypted: encryptedToken,
+                meta_app_secret_encrypted: encryptedSecret,
                 meta_status: 'disconnected',
             })
         
@@ -107,7 +111,7 @@ export async function GET() {
 
     const { data: instance } = await supabase
         .from('whatsapp_instances')
-        .select('id, meta_config, meta_status, meta_last_error, meta_last_webhook_at, updated_at, meta_access_token_encrypted')
+        .select('id, meta_config, meta_status, meta_last_error, meta_last_webhook_at, updated_at, meta_access_token_encrypted, meta_app_secret_encrypted')
         .eq('provider_type', 'META')
         .eq('user_id', user.id)
         .single()
@@ -116,14 +120,18 @@ export async function GET() {
         return NextResponse.json({ configured: false })
     }
 
-    // Tenta descriptografar o token para exibir na UI
+    // Tenta descriptografar dados sensíveis para exibir na UI
     let accessToken = null
-    if (instance.meta_access_token_encrypted) {
-        try {
+    let appSecret = null
+    try {
+        if (instance.meta_access_token_encrypted) {
             accessToken = decrypt(instance.meta_access_token_encrypted)
-        } catch (err) {
-            console.error('[CONFIG_GET] Erro ao descriptografar token:', err)
         }
+        if (instance.meta_app_secret_encrypted) {
+            appSecret = decrypt(instance.meta_app_secret_encrypted)
+        }
+    } catch (err) {
+        console.error('[CONFIG_GET] Erro ao descriptografar dados:', err)
     }
 
     return NextResponse.json({
@@ -134,6 +142,7 @@ export async function GET() {
         meta_last_webhook_at: instance.meta_last_webhook_at,
         updated_at:           instance.updated_at,
         access_token:         accessToken,
+        app_secret:           appSecret,
         has_token:            !!accessToken,
     })
 }
