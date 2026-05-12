@@ -31,6 +31,9 @@ export default function MetaApiOficialPage() {
     const [testing, setTesting] = useState(false)
     const [showToken, setShowToken] = useState(false)
 
+    const [form, setForm] = useState({
+        waba_id: '',
+        phone_number_id: '',
         business_id: '',
         verify_token: '',
         access_token: '',
