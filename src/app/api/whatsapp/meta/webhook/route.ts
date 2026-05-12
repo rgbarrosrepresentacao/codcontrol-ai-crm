@@ -6,6 +6,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createHmac } from 'crypto'
+import { createClient } from '@supabase/supabase-js'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 
 // ─── GET: Validação do Webhook pela Meta ──────────────────────────────────────
@@ -16,27 +17,37 @@ export async function GET(request: NextRequest) {
     const token     = searchParams.get('hub.verify_token')
     const challenge = searchParams.get('hub.challenge')
 
+    console.log(`[Meta Webhook] Recebendo validação: mode=${mode}, token=${token}`)
+
     if (mode === 'subscribe' && token && challenge) {
-        // Busca a instância que tem este verify_token configurado
-        const supabase = await createSupabaseServerClient()
-        const { data: instances } = await supabase
+        // Usamos o cliente administrativo para ignorar RLS na validação do token
+        const supabase = createClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.SUPABASE_SERVICE_ROLE_KEY!
+        )
+        
+        const { data: instances, error } = await supabase
             .from('whatsapp_instances')
             .select('meta_config')
             .eq('provider_type', 'META')
+
+        if (error) {
+            console.error('[Meta Webhook] Erro ao buscar instâncias no DB:', error)
+            return new Response('Internal Error', { status: 500 })
+        }
 
         // Verifica se algum dos registros tem o token que a Meta enviou
         const isValid = instances?.some(inst => (inst.meta_config as any)?.verify_token === token)
 
         if (isValid) {
             console.log(`[Meta Webhook] Validação bem-sucedida para o token: ${token}`)
-            // Retorna APENAS o challenge como texto puro (exigência da Meta)
             return new Response(challenge, { 
                 status: 200,
                 headers: { 'Content-Type': 'text/plain' }
             })
         }
         
-        console.warn(`[Meta Webhook] Token de verificação não confere: ${token}`)
+        console.warn(`[Meta Webhook] Token de verificação não encontrado ou inválido: ${token}`)
     }
 
     return new Response('Forbidden', { status: 403 })
