@@ -66,9 +66,11 @@ export async function processWebhook(body: any) {
         // ── PASSO 1: Identificar Instância ──────────────────────────────
         const { data: instance, error: instanceErr } = await supabase
             .from('whatsapp_instances')
-            .select('id, user_id')
+            .select('id, user_id, provider_type')
             .eq('instance_name', instanceName)
             .single();
+
+        const isMetaProvider = instance?.provider_type === 'META';
 
         if (instanceErr || !instance) {
             console.log(`[Webhook Debug] Instance not found: ${instanceName}`);
@@ -560,8 +562,13 @@ export async function processWebhook(body: any) {
                     await MessageService.send(instance.id, remoteJid, reply);
                     await new Promise(r => setTimeout(r, 1500));
                 }
-                await evolutionApi.sendPresence(instanceName, remoteJid, 'recording');
-                await new Promise(r => setTimeout(r, Math.max(typingTime - 3000, 1500)));
+                if (!isMetaProvider) {
+                    // C1: Evolution usa presence 'recording'. Meta usa delay puro (não suporta sendPresence).
+                    await evolutionApi.sendPresence(instanceName, remoteJid, 'recording');
+                    await new Promise(r => setTimeout(r, Math.max(typingTime - 3000, 1500)));
+                } else {
+                    await new Promise(r => setTimeout(r, Math.max(typingTime - 1000, 2000)));
+                }
                 const audioB64 = await generateSpeech(cleanTextForAudio(reply), aiConfig.voice_id || 'nova', profile.openai_api_key);
                 await MessageService.sendAudio(instance.id, remoteJid, audioB64);
                 
@@ -588,7 +595,10 @@ export async function processWebhook(body: any) {
             for (const [index, block] of messageBlocks.entries()) {
                 const chunkTypingTime = Math.min(Math.max(block.length * 40, 1500), 6000);
                 
-                await evolutionApi.sendPresence(instanceName, remoteJid, 'composing');
+                if (!isMetaProvider) {
+                    // C1: Evolution usa presence 'composing'. Meta usa delay puro humanizado.
+                    await evolutionApi.sendPresence(instanceName, remoteJid, 'composing');
+                }
                 await new Promise(r => setTimeout(r, chunkTypingTime));
                 
                 await MessageService.send(instance.id, remoteJid, block.trim());

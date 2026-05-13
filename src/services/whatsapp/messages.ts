@@ -116,8 +116,10 @@ export class MessageService {
 
     /**
      * Envia mensagem via provedor correto (Evolution ou Meta)
+     * C3: Falhas de envio agora são tratadas explicitamente com log e marcação do contato.
+     * C2 básico: Erro 131047 (janela 24h fechada) é identificado e registrado separadamente.
      */
-    static async send(instanceId: string, remoteJid: string, text: string) {
+    static async send(instanceId: string, remoteJid: string, text: string, contactId?: string) {
         // Busca info da instância para saber o provedor
         const { data: instance, error } = await supabase
             .from('whatsapp_instances')
@@ -133,8 +135,30 @@ export class MessageService {
         if (instance.provider_type === 'META') {
             const provider = new MetaProvider(instance.meta_config as any, instance.meta_access_token_encrypted || '');
             const result = await provider.sendText(remoteJid, text);
+
             if (!result.success) {
-                console.error('[MessageService.send] Erro no envio via Meta:', result.error);
+                // C2 básico: Detectar erro de janela de 24h da Meta
+                const is24hWindowClosed = result.error?.includes('131047') || result.error?.includes('24') || false;
+
+                if (is24hWindowClosed) {
+                    console.error(`[MessageService.send] ⛔ [META 131047] Janela de 24h fechada para ${remoteJid}. Mensagem NÃO enviada. Template necessário.`);
+                } else {
+                    console.error(`[MessageService.send] ❌ [META] Falha ao enviar para ${remoteJid}:`, result.error);
+                }
+
+                // C3: Marcar contato como "atenção necessária" se tivermos o contactId
+                if (contactId) {
+                    await supabase
+                        .from('contacts')
+                        .update({
+                            ai_tag: 'ATENCAO',
+                            notes: is24hWindowClosed
+                                ? `[${new Date().toLocaleString('pt-BR')}] ⛔ Meta: Janela 24h fechada. Requer template para retomada.`
+                                : `[${new Date().toLocaleString('pt-BR')}] ❌ Meta: Falha de envio — ${result.error}`
+                        })
+                        .eq('id', contactId);
+                    console.warn(`[MessageService.send] 🏷️ Contato ${contactId} marcado como ATENCAO.`);
+                }
             }
         } else {
             // Evolution API usa o nome da instância
@@ -142,3 +166,4 @@ export class MessageService {
         }
     }
 }
+

@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
 
     const { data: instance, error: dbError } = await supabaseAdmin
         .from('whatsapp_instances')
-        .select('instance_name, meta_app_secret_encrypted')
+        .select('instance_name, meta_app_secret_encrypted, meta_access_token_encrypted')
         .eq('provider_type', 'META')
         .filter('meta_config->>waba_id', 'eq', wabaId)
         .maybeSingle()
@@ -132,14 +132,99 @@ export async function POST(request: NextRequest) {
 
         // Processa cada mensagem recebida
         for (const message of messages) {
-            // Ignora mensagens enviadas pelo próprio número (eco)
+            // Ignora reações e status
             if (message.type === 'reaction' || message.type === 'status') continue
 
-            // Extrai o texto da mensagem (texto, botão interativo, etc.)
-            const textContent = message.text?.body
-                || message.interactive?.button_reply?.title
-                || message.interactive?.list_reply?.title
-                || ''
+            let textContent = ''
+
+            // ── C4: Suporte a Áudio recebido pela Meta ────────────────────
+            if (message.type === 'audio' || message.type === 'voice') {
+                const mediaId = message.audio?.id || message.voice?.id
+                console.log(`[Meta Webhook] 🎙️ Áudio recebido (media_id: ${mediaId}). Transcrevendo...`)
+
+                if (mediaId && instance.meta_access_token_encrypted) {
+                    try {
+                        const accessToken = decrypt(instance.meta_access_token_encrypted)
+
+                        // Passo 1: Obter URL temporária do arquivo de áudio
+                        const mediaInfoRes = await fetch(
+                            `https://graph.facebook.com/v20.0/${mediaId}`,
+                            { headers: { 'Authorization': `Bearer ${accessToken}` } }
+                        )
+                        const mediaInfo = await mediaInfoRes.json()
+
+                        if (!mediaInfoRes.ok || !mediaInfo.url) {
+                            console.error('[Meta Webhook] ❌ Falha ao obter URL de mídia:', mediaInfo?.error?.message)
+                            continue
+                        }
+
+                        // Passo 2: Baixar o arquivo de áudio usando o token
+                        const audioRes = await fetch(mediaInfo.url, {
+                            headers: { 'Authorization': `Bearer ${accessToken}` }
+                        })
+
+                        if (!audioRes.ok) {
+                            console.error('[Meta Webhook] ❌ Falha ao baixar áudio da Meta')
+                            continue
+                        }
+
+                        const audioBuffer = await audioRes.arrayBuffer()
+                        const audioBlob = new Blob([audioBuffer], { type: mediaInfo.mime_type || 'audio/ogg' })
+
+                        // Passo 3: Transcrever com Whisper via OpenAI
+                        // Busca a chave da OpenAI do usuário dono da instância
+                        const { data: instData } = await supabaseAdmin
+                            .from('whatsapp_instances')
+                            .select('user_id')
+                            .eq('instance_name', instance.instance_name)
+                            .single()
+
+                        let openaiKey = process.env.OPENAI_API_KEY || ''
+                        if (instData?.user_id) {
+                            const { data: profileData } = await supabaseAdmin
+                                .from('profiles')
+                                .select('openai_api_key')
+                                .eq('id', instData.user_id)
+                                .single()
+                            if (profileData?.openai_api_key) openaiKey = profileData.openai_api_key
+                        }
+
+                        const formData = new FormData()
+                        formData.append('file', audioBlob, `audio.${mediaInfo.mime_type?.split('/')[1] || 'ogg'}`)
+                        formData.append('model', 'whisper-1')
+                        formData.append('language', 'pt')
+
+                        const whisperRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+                            method: 'POST',
+                            headers: { 'Authorization': `Bearer ${openaiKey}` },
+                            body: formData,
+                        })
+
+                        const whisperData = await whisperRes.json()
+
+                        if (!whisperRes.ok || !whisperData.text) {
+                            console.error('[Meta Webhook] ❌ Falha na transcrição Whisper:', whisperData?.error?.message)
+                            continue
+                        }
+
+                        textContent = whisperData.text.trim()
+                        console.log(`[Meta Webhook] 🎙️ Transcrição: "${textContent.slice(0, 80)}"`)
+
+                    } catch (audioErr) {
+                        console.error('[Meta Webhook] ❌ Exceção ao processar áudio:', audioErr)
+                        continue
+                    }
+                } else {
+                    console.warn('[Meta Webhook] ⚠️ Áudio sem media_id ou sem token configurado. Ignorando.')
+                    continue
+                }
+            } else {
+                // Extrai o texto da mensagem (texto, botão interativo, etc.)
+                textContent = message.text?.body
+                    || message.interactive?.button_reply?.title
+                    || message.interactive?.list_reply?.title
+                    || ''
+            }
 
             if (!textContent) {
                 console.log(`[Meta Webhook] Mensagem sem texto (tipo: ${message.type}). Ignorando.`)
@@ -190,3 +275,4 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: msg }, { status: 500 })
     }
 }
+
