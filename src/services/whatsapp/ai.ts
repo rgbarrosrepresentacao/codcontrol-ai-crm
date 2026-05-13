@@ -146,6 +146,21 @@ ${memoryInfo}
 CONHECIMENTO E MÍDIAS DISPONÍVEIS:
 ${knowledgeContext}
 
+${knowledgeContext ? `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️ REGRA OBRIGATÓRIA DE ENVIO DE MÍDIA ⚠️
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Você TEM ACESSO a arquivos reais (imagens e vídeos) listados acima.
+QUANDO o cliente pedir para VER uma imagem, foto, vídeo ou resultado, você DEVE:
+1. Escrever sua resposta normalmente.
+2. Ao FINAL da mensagem, adicionar EXATAMENTE o comando: [SEND_MEDIA:ID_DO_ARQUIVO]
+   Exemplo: "Claro! Veja aqui o resultado incrível 🤩 [SEND_MEDIA:abc-123]"
+3. Substituir ID_DO_ARQUIVO pelo ID correto da mídia listada acima.
+4. Esta regra se aplica a TODOS os tipos: imagem, vídeo, documento.
+5. NUNCA diga "não tenho vídeo" ou "não posso enviar" se houver um vídeo na lista acima.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+` : ''}
+
 CONTEXTO DA CAMPANHA E PRODUTO (MANUAL DE VENDAS ATIVO):
 ${campaignPrompt || 'Nenhuma campanha específica ativa no momento. Siga as regras gerais de atendimento.'}
 
