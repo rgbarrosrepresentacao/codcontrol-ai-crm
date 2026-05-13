@@ -1,9 +1,10 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
 import { Smartphone, Plus, QrCode, Trash2, RefreshCw, CheckCircle2, Loader2, Wifi, WifiOff, X } from 'lucide-react'
-import { generateInstanceName } from '@/lib/utils'
+import { generateInstanceName, cn } from '@/lib/utils'
 import Image from 'next/image'
 
 interface Instance {
@@ -15,9 +16,11 @@ interface Instance {
     webhook_configured: boolean
     messages_received: number
     messages_sent: number
+    provider_type?: 'EVOLUTION' | 'META'
 }
 
 export default function WhatsAppPage() {
+    const router = useRouter()
     const [instances, setInstances] = useState<Instance[]>([])
     const [loading, setLoading] = useState(true)
     const [creating, setCreating] = useState(false)
@@ -25,6 +28,7 @@ export default function WhatsAppPage() {
     const [showCreate, setShowCreate] = useState(false)
     const [qrModal, setQrModal] = useState<{ instance: string; qr: string } | null>(null)
     const [checkingStatus, setCheckingStatus] = useState<string | null>(null)
+    const [connectionType, setConnectionType] = useState<'evolution' | 'meta'>('evolution')
 
     const fetchInstances = useCallback(async () => {
         const { data: { user } } = await supabase.auth.getUser()
@@ -37,6 +41,12 @@ export default function WhatsAppPage() {
     useEffect(() => { fetchInstances() }, [fetchInstances])
 
     const createInstance = async () => {
+        if (connectionType === 'meta') {
+            setShowCreate(false)
+            router.push('/dashboard/admin/meta-api')
+            return
+        }
+
         if (!displayName.trim()) { toast.error('Digite um nome para a instância'); return }
         setCreating(true)
         try {
@@ -175,29 +185,83 @@ export default function WhatsAppPage() {
                             <button onClick={() => setShowCreate(false)} className="text-muted-foreground hover:text-foreground"><X className="w-5 h-5" /></button>
                         </div>
                         <div className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-foreground mb-1.5">Nome da instância</label>
-                                <input
-                                    value={displayName}
-                                    onChange={(e) => setDisplayName(e.target.value)}
-                                    placeholder="Ex: Atendimento, Vendas, Suporte..."
-                                    className="w-full bg-input border border-border rounded-lg px-4 py-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all text-sm"
-                                    onKeyDown={(e) => e.key === 'Enter' && createInstance()}
-                                />
+                            <div className="grid grid-cols-2 gap-3">
+                                <button
+                                    onClick={() => setConnectionType('evolution')}
+                                    className={cn(
+                                        "flex flex-col items-center gap-2 p-3 rounded-xl border transition-all text-center",
+                                        connectionType === 'evolution' 
+                                            ? "bg-primary/10 border-primary text-primary" 
+                                            : "bg-secondary/50 border-border text-muted-foreground hover:border-primary/30"
+                                    )}
+                                >
+                                    <QrCode className="w-5 h-5" />
+                                    <div className="flex flex-col">
+                                        <span className="text-xs font-bold">QR Code</span>
+                                        <span className="text-[10px] opacity-70">Evolution API</span>
+                                    </div>
+                                </button>
+                                <button
+                                    onClick={() => setConnectionType('meta')}
+                                    className={cn(
+                                        "flex flex-col items-center gap-2 p-3 rounded-xl border transition-all text-center",
+                                        connectionType === 'meta' 
+                                            ? "bg-emerald-500/10 border-emerald-500 text-emerald-400" 
+                                            : "bg-secondary/50 border-border text-muted-foreground hover:border-emerald-500/30"
+                                    )}
+                                >
+                                    <CheckCircle2 className="w-5 h-5" />
+                                    <div className="flex flex-col">
+                                        <span className="text-xs font-bold">API Oficial</span>
+                                        <span className="text-[10px] opacity-70">Meta Business</span>
+                                    </div>
+                                </button>
                             </div>
-                            <div className="bg-primary/10 border border-primary/20 rounded-lg p-3 text-sm text-muted-foreground">
-                                <p className="text-primary font-medium mb-1">Como funciona:</p>
-                                <ol className="list-decimal list-inside space-y-0.5 text-xs">
-                                    <li>Crie a instância</li>
-                                    <li>Escaneie o QR Code com seu WhatsApp</li>
-                                    <li>A IA começa a responder automaticamente</li>
-                                </ol>
-                            </div>
+
+                            {connectionType === 'evolution' ? (
+                                <div>
+                                    <label className="block text-sm font-medium text-foreground mb-1.5">Nome da instância</label>
+                                    <input
+                                        value={displayName}
+                                        onChange={(e) => setDisplayName(e.target.value)}
+                                        placeholder="Ex: Atendimento, Vendas..."
+                                        className="w-full bg-input border border-border rounded-lg px-4 py-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all text-sm"
+                                        onKeyDown={(e) => e.key === 'Enter' && createInstance()}
+                                    />
+                                    <div className="mt-3 bg-primary/10 border border-primary/20 rounded-lg p-3 text-xs text-muted-foreground">
+                                        <p className="text-primary font-medium mb-1">Passo a passo:</p>
+                                        <ol className="list-decimal list-inside space-y-0.5">
+                                            <li>Crie a instância e aguarde o QR</li>
+                                            <li>Escaneie com seu celular físico</li>
+                                            <li>Pronto! IA ativa no seu número</li>
+                                        </ol>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3 text-xs text-muted-foreground">
+                                    <p className="text-emerald-400 font-medium mb-1">Vantagens da API Oficial:</p>
+                                    <ul className="list-disc list-inside space-y-0.5">
+                                        <li>Conexão 100% estável (sem queda)</li>
+                                        <li>Permitido pela Meta (Oficial)</li>
+                                        <li>Sem risco de banimento por conexão</li>
+                                        <li>Suporte a múltiplos números</li>
+                                    </ul>
+                                    <p className="mt-2 opacity-70 italic">* Requer conta de desenvolvedor Facebook.</p>
+                                </div>
+                            )}
+
                             <div className="flex gap-3">
                                 <button onClick={() => setShowCreate(false)} className="flex-1 border border-border text-foreground font-medium py-2.5 rounded-lg hover:bg-secondary transition-colors text-sm">Cancelar</button>
-                                <button onClick={createInstance} disabled={creating} className="flex-1 gradient-primary text-black font-semibold py-2.5 rounded-lg hover:opacity-90 transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-60">
+                                <button 
+                                    onClick={createInstance} 
+                                    disabled={creating} 
+                                    className={cn(
+                                        "flex-1 font-semibold py-2.5 rounded-lg hover:opacity-90 transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-60",
+                                        connectionType === 'meta' ? "bg-emerald-500 text-white" : "gradient-primary text-black"
+                                    )}
+                                >
                                     {creating && <Loader2 className="w-4 h-4 animate-spin" />}
-                                    {creating ? 'Criando...' : 'Criar e conectar'}
+                                    {connectionType === 'meta' ? 'Ir para Configuração' : (creating ? 'Criando...' : 'Criar e conectar')}
                                 </button>
                             </div>
                         </div>
@@ -259,22 +323,26 @@ export default function WhatsAppPage() {
             ) : (
                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {instances.map((inst) => {
-                        const s = statusConfig[inst.status] || statusConfig.disconnected
+                        const isMeta = inst.provider_type === 'META'
+                        const s = isMeta 
+                            ? { label: 'API Oficial', color: 'text-emerald-400', icon: <CheckCircle2 className="w-4 h-4 text-emerald-400" /> }
+                            : (statusConfig[inst.status] || statusConfig.disconnected)
+                        
                         return (
                             <div key={inst.id} className="gradient-card border border-border rounded-xl p-5 hover:border-primary/30 transition-all">
                                 {/* Header */}
                                 <div className="flex items-start justify-between mb-4">
                                     <div className="flex items-center gap-3">
-                                        <div className={`w-10 h-10 rounded-full gradient-primary flex items-center justify-center text-black font-bold text-sm`}>
+                                        <div className={`w-10 h-10 rounded-full ${isMeta ? 'bg-emerald-500' : 'gradient-primary'} flex items-center justify-center text-black font-bold text-sm`}>
                                             {(inst.display_name || inst.instance_name).slice(0, 2).toUpperCase()}
                                         </div>
                                         <div>
                                             <div className="font-semibold text-foreground text-sm">{inst.display_name || inst.instance_name}</div>
-                                            <div className="text-xs text-muted-foreground">{inst.phone_number || 'Sem número'}</div>
+                                            <div className="text-xs text-muted-foreground">{inst.phone_number || (isMeta ? 'WhatsApp Business' : 'Sem número')}</div>
                                         </div>
                                     </div>
                                     <div className={`flex items-center gap-1.5 text-xs font-medium ${s.color}`}>
-                                        <div className={`w-1.5 h-1.5 rounded-full status-${inst.status}`} />
+                                        <div className={`w-1.5 h-1.5 rounded-full ${isMeta ? 'bg-emerald-400' : `status-${inst.status}`}`} />
                                         {s.label}
                                     </div>
                                 </div>
@@ -292,14 +360,22 @@ export default function WhatsAppPage() {
                                 </div>
 
                                 {/* Webhook badge */}
-                                <div className="flex items-center gap-1.5 mb-4">
-                                    <div className={`w-1.5 h-1.5 rounded-full ${inst.webhook_configured ? 'bg-emerald-400' : 'bg-muted-foreground'}`} />
-                                    <span className="text-xs text-muted-foreground">{inst.webhook_configured ? 'Webhook configurado' : 'Webhook não configurado'}</span>
-                                </div>
+                                {!isMeta && (
+                                    <div className="flex items-center gap-1.5 mb-4">
+                                        <div className={`w-1.5 h-1.5 rounded-full ${inst.webhook_configured ? 'bg-emerald-400' : 'bg-muted-foreground'}`} />
+                                        <span className="text-xs text-muted-foreground">{inst.webhook_configured ? 'Webhook configurado' : 'Webhook não configurado'}</span>
+                                    </div>
+                                )}
+                                {isMeta && (
+                                    <div className="flex items-center gap-1.5 mb-4">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                        <span className="text-xs text-muted-foreground">Conexão Oficial Estável</span>
+                                    </div>
+                                )}
 
                                 {/* Actions */}
                                 <div className="flex gap-2">
-                                    {inst.status !== 'connected' && (
+                                    {!isMeta && inst.status !== 'connected' && (
                                         <button
                                             onClick={() => showQrCode(inst.instance_name)}
                                             className="flex-1 gradient-primary text-black font-medium py-2 rounded-lg text-xs hover:opacity-90 transition-all flex items-center justify-center gap-1.5"
@@ -307,14 +383,24 @@ export default function WhatsAppPage() {
                                             <QrCode className="w-3.5 h-3.5" />QR Code
                                         </button>
                                     )}
-                                    <button
-                                        onClick={() => checkStatus(inst.instance_name, inst.id)}
-                                        disabled={checkingStatus === inst.id}
-                                        className="flex-1 border border-border text-foreground font-medium py-2 rounded-lg text-xs hover:bg-secondary transition-colors flex items-center justify-center gap-1.5 disabled:opacity-60"
-                                    >
-                                        {checkingStatus === inst.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-                                        Status
-                                    </button>
+                                    {isMeta ? (
+                                        <button
+                                            onClick={() => window.location.href = '/dashboard/admin/meta-api'}
+                                            className="flex-1 border border-border text-foreground font-medium py-2 rounded-lg text-xs hover:bg-secondary transition-colors flex items-center justify-center gap-1.5"
+                                        >
+                                            <RefreshCw className="w-3.5 h-3.5" />
+                                            Configurar
+                                        </button>
+                                    ) : (
+                                        <button
+                                            onClick={() => checkStatus(inst.instance_name, inst.id)}
+                                            disabled={checkingStatus === inst.id}
+                                            className="flex-1 border border-border text-foreground font-medium py-2 rounded-lg text-xs hover:bg-secondary transition-colors flex items-center justify-center gap-1.5 disabled:opacity-60"
+                                        >
+                                            {checkingStatus === inst.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                                            Status
+                                        </button>
+                                    )}
                                     <button
                                         onClick={() => deleteInstance(inst.instance_name, inst.id)}
                                         className="p-2 border border-border text-muted-foreground hover:text-destructive hover:border-destructive/50 rounded-lg transition-colors"
