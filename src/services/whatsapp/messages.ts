@@ -104,10 +104,29 @@ export class MessageService {
         }
 
         if (instance.provider_type === 'META') {
-            const provider = new MetaProvider(instance.meta_config as any, instance.meta_access_token_encrypted || '');
-            const result = await provider.sendMedia(remoteJid, url, type, caption);
-            if (!result.success) {
-                console.error(`[MessageService.sendMedia] Erro no envio via Meta (${type}):`, result.error);
+            // Validações defensivas para evitar falhas silenciosas
+            const metaConfig = instance.meta_config as any;
+            if (!metaConfig || !metaConfig.phone_number_id) {
+                console.error(`[MessageService.sendMedia] ❌ META: meta_config ausente ou sem phone_number_id para instância ${instanceId}`);
+                return;
+            }
+            if (!instance.meta_access_token_encrypted) {
+                console.error(`[MessageService.sendMedia] ❌ META: meta_access_token_encrypted ausente para instância ${instanceId}`);
+                return;
+            }
+
+            console.log(`[MessageService.sendMedia] 📤 META: Enviando ${type} para ${remoteJid} | URL: ${url.slice(0, 80)}...`);
+            
+            try {
+                const provider = new MetaProvider(metaConfig, instance.meta_access_token_encrypted);
+                const result = await provider.sendMedia(remoteJid, url, type, caption);
+                if (!result.success) {
+                    console.error(`[MessageService.sendMedia] ❌ META: Erro no envio de ${type}:`, result.error);
+                } else {
+                    console.log(`[MessageService.sendMedia] ✅ META: ${type} enviado com sucesso. ID: ${result.message_id}`);
+                }
+            } catch (decryptErr) {
+                console.error(`[MessageService.sendMedia] ❌ META: Erro ao descriptografar token:`, decryptErr);
             }
         } else {
             await evolutionApi.sendMedia(instance.instance_name, remoteJid, url, type, caption);
