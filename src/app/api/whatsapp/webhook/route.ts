@@ -24,6 +24,13 @@ const supabase = createClient(
 function cleanTextForAudio(text: string): string {
     const urlRegex = /(https?:\/\/[^\s]+|www\.[^\s]+|[a-zA-Z0-9-]+\.(com|net|org|io|app|bond|shop|top|site|online|me)[^\s]*)/gi;
     let clean = text.replace(urlRegex, '');
+    
+    // Normalização de Moeda para fala natural (ex: R$ 119,90 -> 119 reais e 90 centavos)
+    clean = clean.replace(/R\$\s?(\d+),(\d{2})/g, (match, reais, centavos) => {
+        const c = parseInt(centavos) > 0 ? ` e ${centavos} centavos` : '';
+        return `${reais} reais${c}`;
+    });
+
     clean = clean.replace(/[\u{1F300}-\u{1F9FF}]/gu, '');
     clean = clean.replace(/[*_~`#]/g, '');
     clean = clean.replace(/\s{2,}/g, ' ').trim();

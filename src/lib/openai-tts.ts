@@ -9,7 +9,7 @@ export async function generateSpeech(text: string, voice: string, apiKey: string
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                model: 'tts-1',
+                model: 'tts-1-hd',
                 voice: voice,
                 input: text,
                 response_format: 'opus'
