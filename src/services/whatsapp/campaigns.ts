@@ -6,14 +6,12 @@ const supabase = createClient(
 );
 
 export class CampaignService {
-    /**
-     * Gera um resumo textual de todos os produtos disponíveis
-     */
-    static async getCatalogueSummary(userId: string): Promise<string> {
+    static async getCatalogueSummary(userId: string, instanceId: string): Promise<string> {
         const { data: campaigns } = await supabase
             .from('campaigns')
             .select('name, trigger_phrase')
             .eq('user_id', userId)
+            .eq('instance_id', instanceId)
             .eq('is_active', true);
 
         if (!campaigns || campaigns.length === 0) return '';
@@ -21,14 +19,12 @@ export class CampaignService {
         return campaigns.map(c => `- ${c.name}: Gatilho: ${c.trigger_phrase}`).join('\n');
     }
 
-    /**
-     * Detecta a campanha ativa baseada na mensagem
-     */
     static async detect(userId: string, instanceId: string, textMessage: string): Promise<string | null> {
         const { data: campaigns } = await supabase
             .from('campaigns')
             .select('*')
             .eq('user_id', userId)
+            .eq('instance_id', instanceId)
             .eq('is_active', true);
 
         if (!campaigns || campaigns.length === 0) return null;
@@ -76,11 +72,12 @@ export class CampaignService {
             };
         }
 
-        // 2. Busca campanhas disponíveis
+        // 2. Busca campanhas disponíveis para esta instância
         const { data: campaigns } = await supabase
             .from('campaigns')
             .select('id, name, trigger_phrase')
             .eq('user_id', userId)
+            .eq('instance_id', instanceId)
             .eq('is_active', true);
 
         if (!campaigns || campaigns.length === 0) {

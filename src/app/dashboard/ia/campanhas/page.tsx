@@ -20,6 +20,7 @@ interface Instance {
   id: string
   instance_name: string
   display_name: string
+  provider_type?: 'EVOLUTION' | 'META'
 }
 
 export default function CampaignsPage() {
@@ -47,7 +48,7 @@ export default function CampaignsPage() {
 
       const [{ data: camps }, { data: insts }] = await Promise.all([
         supabase.from('campaigns').select('*').order('created_at', { ascending: false }),
-        supabase.from('whatsapp_instances').select('id, instance_name, display_name').eq('status', 'connected')
+        supabase.from('whatsapp_instances').select('id, instance_name, display_name, provider_type').or('status.eq.connected,provider_type.eq.META')
       ])
 
       setCampaigns(camps || [])
@@ -200,7 +201,10 @@ export default function CampaignsPage() {
                 >
                   <option value="">Selecione uma instância conectada...</option>
                   {instances.map(i => (
-                    <option key={i.id} value={i.id}>{i.display_name || i.instance_name}</option>
+                    <option key={i.id} value={i.id}>
+                      {i.provider_type === 'META' ? '🟢 API OFICIAL: ' : '📱 '} 
+                      {i.display_name || i.instance_name}
+                    </option>
                   ))}
                 </select>
               </div>

@@ -186,7 +186,7 @@ export async function processWebhook(body: any) {
         let intentResult = null;
 
         // 1. Carrega Catálogo Mental (Se houver campanhas)
-        catalogueContext = await CampaignService.getCatalogueSummary(profile.id);
+        catalogueContext = await CampaignService.getCatalogueSummary(profile.id, instance.id);
         const isMultiProductMode = catalogueContext.length > 0;
 
         // 2. Orquestração de Intenção
