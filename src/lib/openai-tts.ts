@@ -12,6 +12,7 @@ export async function generateSpeech(text: string, voice: string, apiKey: string
                 model: 'tts-1',
                 voice: voice,
                 input: text,
+                response_format: 'opus'
             })
         })
 

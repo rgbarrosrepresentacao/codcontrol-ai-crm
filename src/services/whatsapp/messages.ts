@@ -61,12 +61,12 @@ export class MessageService {
                 let audioUrl = audioData;
                 
                 if (audioData.length > 500) { // Provavelmente é Base64
-                    const fileName = `temp-audios/${Date.now()}-${Math.random().toString(36).substring(7)}.mp3`;
+                    const fileName = `temp-audios/${Date.now()}-${Math.random().toString(36).substring(7)}.ogg`;
                     const buffer = Buffer.from(audioData, 'base64');
                     
                     const { error: uploadError } = await supabase.storage
                         .from('funnel-assets')
-                        .upload(fileName, buffer, { contentType: 'audio/mpeg' });
+                        .upload(fileName, buffer, { contentType: 'audio/ogg' });
 
                     if (uploadError) throw uploadError;
 
