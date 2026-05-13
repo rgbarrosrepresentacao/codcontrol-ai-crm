@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
         .from('whatsapp_instances')
         .select('instance_name, meta_app_secret_encrypted')
         .eq('provider_type', 'META')
-        .filter('meta_config->waba_id', 'eq', wabaId)
+        .filter('meta_config->>waba_id', 'eq', wabaId)
         .maybeSingle()
 
     if (dbError || !instance || !instance.meta_app_secret_encrypted) {
