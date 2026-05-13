@@ -234,11 +234,13 @@ export async function POST(request: NextRequest) {
             const remoteJid   = `${message.from}@s.whatsapp.net`
             const pushName    = value?.contacts?.[0]?.profile?.name || message.from
             const messageId   = message.id
+            const wasAudio    = message.type === 'audio' || message.type === 'voice'
 
             console.log('[Meta Webhook] 📩 Mensagem recebida:', {
                 from:   remoteJid,
                 text:   textContent.slice(0, 60),
                 msgId:  messageId,
+                type:   message.type,
             })
 
             // ──────────────────────────────────────────────────────────────────
@@ -257,6 +259,10 @@ export async function POST(request: NextRequest) {
                     },
                     message: {
                         conversation: textContent,
+                        // ✅ FIX: Se o cliente enviou um áudio, sinaliza para o
+                        // processWebhook detectar isAudioMessage=true e responder
+                        // com áudio (pttMessage é o flag usado pela Evolution API).
+                        ...(wasAudio && { pttMessage: { url: '' } }),
                     },
                     pushName: pushName,
                 },
