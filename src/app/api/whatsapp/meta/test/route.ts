@@ -1,26 +1,28 @@
 /**
- * API: Testar credenciais da Meta API (Admin Only)
+ * API: Testar credenciais da Meta API (Plano Pro, Agência e Admin)
  * POST /api/whatsapp/meta/test
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { MetaProvider } from '@/services/whatsapp/MetaProvider'
+import { canUseMetaAPI } from '@/lib/plan-features'
 
 export async function POST(request: NextRequest) {
     const supabase = await createSupabaseServerClient()
 
-    // 1. Verificação de Admin
+    // 1. Verificação de Plano (Pro, Agência ou Admin)
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
 
     const { data: profile } = await supabase
         .from('profiles')
-        .select('is_admin')
+        .select('is_admin, plans(slug)')
         .eq('id', user.id)
         .single()
 
-    if (!profile?.is_admin) {
-        return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
+    const planSlug = (profile as any)?.plans?.slug || 'basico'
+    if (!canUseMetaAPI({ is_admin: profile?.is_admin ?? false, plan_slug: planSlug })) {
+        return NextResponse.json({ error: 'Recurso disponível apenas nos planos Pro e Agência.' }, { status: 403 })
     }
 
     // 2. Busca instância Meta do admin

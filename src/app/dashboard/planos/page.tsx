@@ -78,12 +78,25 @@ export default async function PlanosPage() {
                             </div>
 
                             {/* Key metrics - só WhatsApps */}
-                            <div className="mb-6">
+                            <div className="mb-4">
                                 <div className="bg-secondary/50 rounded-lg p-4 text-center">
                                     <div className="text-3xl font-bold text-primary">{plan.max_whatsapp}</div>
                                     <div className="text-sm text-muted-foreground mt-1">{plan.max_whatsapp === 1 ? 'WhatsApp conectado' : 'WhatsApps conectados'}</div>
                                 </div>
                             </div>
+
+                            {/* API Oficial Meta badge */}
+                            {plan.slug !== 'basico' ? (
+                                <div className="mb-4 flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                                    <span className="text-emerald-400 text-base leading-none">✓</span>
+                                    <span className="text-xs font-semibold text-emerald-400">API Oficial do WhatsApp (Meta) incluída</span>
+                                </div>
+                            ) : (
+                                <div className="mb-4 flex items-center gap-2 px-3 py-2 rounded-lg bg-secondary/30 border border-border/50">
+                                    <span className="text-muted-foreground/50 text-base leading-none">✗</span>
+                                    <span className="text-xs text-muted-foreground/50">API Oficial do WhatsApp (Meta)</span>
+                                </div>
+                            )}
 
                             <ul className="space-y-2.5 mb-8">
                                 {features.map((f: string) => (

@@ -13,11 +13,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
     const { data: profile } = await supabase
         .from('profiles')
-        .select('*, plans(name)')
+        .select('*, plans(name, slug)')
         .eq('id', user.id)
         .single()
 
     const planName     = (profile as any)?.plans?.name || 'Básico'
+    const planSlug     = (profile as any)?.plans?.slug || 'basico'
     const affiliateId  = (profile as any)?.affiliate_id || null
 
     return (
@@ -27,6 +28,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
                 userName={profile?.name || user.email?.split('@')[0]}
                 userEmail={user.email}
                 planName={planName}
+                planSlug={planSlug}
                 trialEndsAt={profile?.trial_ends_at}
                 subscriptionStatus={profile?.stripe_subscription_status}
             />

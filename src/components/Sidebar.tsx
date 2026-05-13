@@ -10,6 +10,7 @@ import {
     Filter, Truck, PlayCircle, BookOpen, Megaphone, Phone, Rocket, MessageCircleCode
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { canUseMetaAPI } from '@/lib/plan-features'
 
 const navItems = [
     { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -29,7 +30,6 @@ const navItems = [
 const adminItems = [
     { href: '/dashboard/admin', label: 'Painel Admin', icon: Shield },
     { href: '/dashboard/admin/ligacao-ia', label: 'Ligação Automática IA', icon: Phone },
-    { href: '/dashboard/admin/meta-api', label: 'WhatsApp API Oficial', icon: MessageCircleCode },
 ]
 
 interface SidebarProps {
@@ -37,11 +37,12 @@ interface SidebarProps {
     userName?: string
     userEmail?: string
     planName?: string
+    planSlug?: string | null
     trialEndsAt?: string | null
     subscriptionStatus?: string | null
 }
 
-export function Sidebar({ isAdmin, userName, userEmail, planName, trialEndsAt, subscriptionStatus }: SidebarProps) {
+export function Sidebar({ isAdmin, userName, userEmail, planName, planSlug, trialEndsAt, subscriptionStatus }: SidebarProps) {
     const pathname = usePathname()
     const router = useRouter()
     const [mobileOpen, setMobileOpen] = useState(false)
@@ -164,6 +165,30 @@ export function Sidebar({ isAdmin, userName, userEmail, planName, trialEndsAt, s
                             <span className="text-[9px] bg-amber-500/20 text-amber-500 px-1 py-0.5 rounded border border-amber-500/30 font-black ml-auto">EXCLUSIVO</span>
                         </Link>
                     </>
+                )}
+
+                {/* WhatsApp API Oficial — visível para Pro, Agência e Admin */}
+                {canUseMetaAPI({ is_admin: isAdmin ?? false, plan_slug: planSlug }) && (
+                    <div className="mt-3 pt-3 border-t border-sidebar-border">
+                        <div className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-2 px-2">Premium</div>
+                        <Link
+                            href="/dashboard/admin/meta-api"
+                            onClick={() => setMobileOpen(false)}
+                            className={cn(
+                                'sidebar-link flex items-center gap-3 px-3 py-2.5 text-sm font-bold transition-all bg-emerald-500/5 border border-emerald-500/10 rounded-xl',
+                                pathname.startsWith('/dashboard/admin/meta-api') ? 'active text-emerald-400 bg-emerald-500/10' : 'text-muted-foreground hover:text-emerald-400'
+                            )}
+                        >
+                            <div className="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center border border-emerald-500/30">
+                                <MessageCircleCode className="w-4 h-4 text-emerald-400" />
+                            </div>
+                            <div className="flex flex-col">
+                                <span>WhatsApp API Oficial</span>
+                                <span className="text-[10px] text-emerald-400/70 font-medium">Meta Cloud API</span>
+                            </div>
+                            <span className="text-[9px] bg-emerald-500/20 text-emerald-400 px-1 py-0.5 rounded border border-emerald-500/30 font-black ml-auto">PRO</span>
+                        </Link>
+                    </div>
                 )}
             </nav>
 
