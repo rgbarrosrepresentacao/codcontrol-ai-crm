@@ -15,12 +15,8 @@ import { NotificationService } from '@/services/whatsapp/notifications';
 import { evolutionApi } from '@/lib/evolution';
 import { generateSpeech } from '@/lib/openai-tts';
 
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY || ''
-);
-
 // Removido cache em memória instável, agora usamos last_message_id no banco para persistência total
+
 
 // ── Utilitário: limpa texto antes de converter em áudio ────────────────────
 function cleanTextForAudio(text: string): string {
@@ -58,6 +54,10 @@ export async function POST(req: NextRequest) {
 }
 
 export async function processWebhook(body: any) {
+    const supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+    );
     const messageData = body.data?.message;
     const key = body.data?.key;
     if (!key || key.fromMe || !messageData) return;

@@ -5,10 +5,8 @@ import { createClient } from '@supabase/supabase-js';
 
 export const dynamic = 'force-dynamic';
 
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY || ''
-);
+// Removido inicialização no topo
+
 
 /**
  * Endpoint de diagnóstico local — NÃO USAR EM PRODUÇÃO
@@ -20,6 +18,11 @@ const supabase = createClient(
  *   /api/test-funnel?action=reset    → Reseta estado do contato
  */
 export async function GET(req: NextRequest) {
+    const supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+    );
+
     // Segurança básica — só funciona em desenvolvimento
     if (process.env.NODE_ENV === 'production') {
         return NextResponse.json({ error: 'Not available in production' }, { status: 403 });

@@ -4,11 +4,6 @@ import { evolutionApi } from '@/lib/evolution'
 
 export const dynamic = 'force-dynamic'
 
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
-
 /**
  * GET /api/vapi/webhook
  * 
@@ -18,15 +13,12 @@ export async function GET() {
     return NextResponse.json({ status: 'ok', message: 'Vapi Webhook Active' })
 }
 
-/**
- * POST /api/vapi/webhook
- * 
- * Recebe os eventos da Vapi.ai durante e após uma ligação telefônica.
- * Tipos de evento: call-started, call-ended, function-call, transcript
- * 
- * Ao receber 'call-ended', extrai a transcrição e envia resumo no WhatsApp.
- */
+
 export async function POST(req: NextRequest) {
+    const supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    )
     try {
         const body = await req.json()
         const { message } = body
