@@ -124,7 +124,7 @@ export class MessageService {
             
             try {
                 const provider = new MetaProvider(metaConfig, instance.meta_access_token_encrypted);
-                const result = await provider.sendMedia(remoteJid, url, type, caption);
+                const result = await provider.sendMedia(remoteJid, { link: url }, type, caption);
                 if (!result.success) {
                     console.error(`[MessageService.sendMedia] ❌ META: Erro no envio de ${type}:`, result.error);
                 } else {
