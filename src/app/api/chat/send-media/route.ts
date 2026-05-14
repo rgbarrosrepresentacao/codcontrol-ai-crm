@@ -88,7 +88,19 @@ export async function POST(req: NextRequest) {
                     instance.meta_config as any,
                     instance.meta_access_token_encrypted
                 )
-                const result = await provider.sendMedia(contactWhatsappId, publicUrl, mediaType, caption)
+                
+                // Tenta upload direto primeiro (muito mais confiável que link)
+                const buffer = Buffer.from(await file.arrayBuffer())
+                const mediaId = await provider.uploadMedia(buffer, file.type)
+                
+                let result;
+                if (mediaId) {
+                    result = await provider.sendMedia(contactWhatsappId, { id: mediaId }, mediaType, caption)
+                } else {
+                    console.warn('[send-media] Meta Direct Upload failed, falling back to link...')
+                    result = await provider.sendMedia(contactWhatsappId, { link: publicUrl }, mediaType, caption)
+                }
+
                 if (!result.success) {
                     throw new Error(result.error || `Falha ao enviar ${mediaType} via Meta`)
                 }

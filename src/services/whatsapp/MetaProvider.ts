@@ -31,13 +31,49 @@ export class MetaProvider {
     }
 
     /**
-     * Envia mídia (imagem, vídeo, áudio, documento) via URL externa.
+     * Upload de mídia direto para os servidores da Meta.
+     * Retorna o media_id.
      */
-    async sendMedia(to: string, url: string, type: 'audio' | 'image' | 'video' | 'document', caption?: string): Promise<MetaSendResult> {
+    async uploadMedia(fileBuffer: Buffer, mimeType: string): Promise<string | null> {
+        try {
+            const url = `${GRAPH_API_BASE}/${this.phoneNumberId}/media`
+            
+            const formData = new FormData()
+            const blob = new Blob([fileBuffer], { type: mimeType })
+            formData.append('file', blob)
+            formData.append('messaging_product', 'whatsapp')
+            formData.append('type', mimeType)
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${this.accessToken}`,
+                },
+                body: formData,
+            })
+
+            const data = await response.json()
+            if (!response.ok) {
+                console.error('[MetaProvider] Erro no upload de media:', data)
+                return null
+            }
+
+            return data.id
+        } catch (error) {
+            console.error('[MetaProvider] Exceção no upload de media:', error)
+            return null
+        }
+    }
+
+    /**
+     * Envia mídia (imagem, vídeo, áudio, documento) via URL externa ou Media ID.
+     */
+    async sendMedia(to: string, media: { link?: string, id?: string }, type: 'audio' | 'image' | 'video' | 'document', caption?: string): Promise<MetaSendResult> {
         try {
             const endpoint = `${GRAPH_API_BASE}/${this.phoneNumberId}/messages`
             
-            const mediaObject: any = { link: url }
+            const mediaObject: any = media.id ? { id: media.id } : { link: media.link }
+            
             if (caption && (type === 'image' || type === 'video' || type === 'document')) {
                 mediaObject.caption = caption
             }
@@ -50,7 +86,7 @@ export class MetaProvider {
                 [type]: mediaObject
             }
 
-            console.log(`[MetaProvider] Sending ${type} to ${body.to} via link...`)
+            console.log(`[MetaProvider] Sending ${type} to ${body.to} via ${media.id ? 'ID' : 'link'}...`)
 
             const response = await fetch(endpoint, {
                 method: 'POST',
