@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { evolutionApi } from '@/lib/evolution'
 
+export const dynamic = 'force-dynamic'
+
 export const maxDuration = 300 // 5 minutes max execution time
 export const revalidate = 0 // Disable cache
 

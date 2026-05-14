@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
+export const dynamic = 'force-dynamic'
+
 import { ProcessorService } from '@/services/whatsapp/processor';
 import { GuardService } from '@/services/whatsapp/guard';
 import { ContactService } from '@/services/whatsapp/logistics';
@@ -12,6 +14,8 @@ import { KnowledgeService } from '@/services/whatsapp/knowledge';
 import { NotificationService } from '@/services/whatsapp/notifications';
 import { evolutionApi } from '@/lib/evolution';
 import { generateSpeech } from '@/lib/openai-tts';
+
+export const dynamic = 'force-dynamic'
 
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -531,6 +535,8 @@ export async function processWebhook(body: any) {
         let customLeadContext = dateTimeContext;
         if (intentResult && intentResult.confidence_score >= 60 && intentResult.confidence_score < 85) {
             customLeadContext += `\nIMPORTANTE: O cliente parece interessado no produto "${intentResult.campaign_name}", mas não temos certeza total (Score: ${intentResult.confidence_score}%). 
+
+export const dynamic = 'force-dynamic'
             Em vez de assumir que ele quer comprar, faça uma pergunta educada confirmando se ele gostaria de saber mais sobre o "${intentResult.campaign_name}".`;
         }
 
