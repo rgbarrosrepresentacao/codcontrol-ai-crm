@@ -33,7 +33,7 @@ export class MetaProvider {
     /**
      * Envia mídia (imagem, vídeo, áudio, documento) via URL externa.
      */
-    async sendMedia(to: string, url: string, type: 'image' | 'video' | 'audio' | 'document', caption?: string): Promise<MetaSendResult> {
+    async sendMedia(to: string, url: string, type: 'audio' | 'image' | 'video' | 'document', caption?: string): Promise<MetaSendResult> {
         try {
             const endpoint = `${GRAPH_API_BASE}/${this.phoneNumberId}/messages`
             
@@ -50,6 +50,8 @@ export class MetaProvider {
                 [type]: mediaObject
             }
 
+            console.log(`[MetaProvider] Sending ${type} to ${body.to} via link...`)
+
             const response = await fetch(endpoint, {
                 method: 'POST',
                 headers: {
@@ -60,10 +62,11 @@ export class MetaProvider {
             })
 
             const data = await response.json()
+            console.log(`[MetaProvider] Response for ${type}:`, JSON.stringify(data))
 
             if (!response.ok) {
                 const errorMsg = data?.error?.message || `Erro ao enviar ${type}`
-                console.error(`[MetaProvider] Erro no envio de ${type}:`, errorMsg)
+                console.error(`[MetaProvider] ❌ Erro no envio de ${type}:`, errorMsg)
                 return { success: false, error: errorMsg }
             }
 
