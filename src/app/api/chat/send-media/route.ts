@@ -51,7 +51,15 @@ export async function POST(req: NextRequest) {
 
         // 3. Upload para Supabase Storage
         const rawName = file.name || ''
-        const fileExt = (rawName.includes('.') ? rawName.split('.').pop() : null) || (mediaType === 'audio' ? 'webm' : 'bin')
+        let fileExt = (rawName.includes('.') ? rawName.split('.').pop() : null)
+        if (!fileExt || fileExt === 'blob') {
+            if (file.type.includes('audio/mp4')) fileExt = 'mp4'
+            else if (file.type.includes('audio/ogg')) fileExt = 'ogg'
+            else if (file.type.includes('audio/mpeg')) fileExt = 'mp3'
+            else if (file.type.includes('audio/webm')) fileExt = 'webm'
+            else fileExt = file.type.split('/')[1]?.split(';')[0] || (mediaType === 'audio' ? 'mp3' : 'bin')
+        }
+        
         const fileName = `${crypto.randomUUID()}.${fileExt}`
         const filePath = `${session.user.id}/${conversationId}/${fileName}`
 
@@ -90,35 +98,30 @@ export async function POST(req: NextRequest) {
                 if (mediaType === 'audio') {
                     await evolutionApi.sendPresence(instance.instance_name, contactWhatsappId, 'recording')
                     await new Promise(r => setTimeout(r, 1500))
+                    
+                    // Para áudio na Evolution, enviar via Base64 é mais garantido como Nota de Voz
+                    const buffer = Buffer.from(await file.arrayBuffer())
+                    const base64 = buffer.toString('base64')
+                    
+                    const result = await evolutionApi.sendWhatsAppAudio(
+                        instance.instance_name,
+                        contactWhatsappId,
+                        base64
+                    )
+                    messageId = result?.key?.id || ''
                 } else {
                     await evolutionApi.sendPresence(instance.instance_name, contactWhatsappId, 'composing')
                     await new Promise(r => setTimeout(r, 1000))
+                    
+                    const result = await evolutionApi.sendMedia(
+                        instance.instance_name,
+                        contactWhatsappId,
+                        publicUrl,
+                        mediaType,
+                        caption
+                    )
+                    messageId = result?.key?.id || ''
                 }
-                
-                // Na Evolution, áudio deve ser enviado com ptt: true para aparecer como gravado
-                const payload: any = {
-                    number: contactWhatsappId,
-                    media: publicUrl,
-                    mediatype: mediaType,
-                    caption: caption || '',
-                }
-                
-                if (mediaType === 'audio') {
-                    payload.ptt = true
-                }
-
-                const result = await evolutionApi.sendMedia(
-                    instance.instance_name,
-                    contactWhatsappId,
-                    publicUrl,
-                    mediaType,
-                    caption,
-                    mediaType === 'audio' // ptt
-                )
-                // Se o sendMedia da lib já faz o fetch, precisamos garantir que passamos o ptt se necessário.
-                // Vou ajustar a lib evolutionApi.sendMedia para aceitar um objeto de opções ou ptt.
-                
-                messageId = result?.key?.id || ''
             }
         } catch (error: any) {
             console.error('[send-media] Provider Error:', error.message)
