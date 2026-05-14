@@ -163,6 +163,12 @@
 }
 .animate-reveal { animation: reveal 1s ease-out forwards; }
 
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.animate-slide-in-right { animation: slideInRight 0.2s ease-out forwards; }
+
 /* Section Transports */
 .section-mask-bottom {
   mask-image: linear-gradient(to bottom, black 80%, transparent 100%);
@@ -258,3 +264,59 @@
 .legal-prose section {
   animation: slide-up 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
+
+/* ─── Chat Premium Animations ──────────────────────────────────────────────── */
+
+/* Message bubble entrance */
+@keyframes msgIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.msg-enter { animation: msgIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+
+/* Conversation item slide-in from left */
+@keyframes convSlide {
+  from { opacity: 0; transform: translateX(-12px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.conv-item-enter { animation: convSlide 0.2s ease-out forwards; }
+
+/* Typing dots animation */
+@keyframes typingDot {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30%           { transform: translateY(-6px); opacity: 1; }
+}
+.typing-dot:nth-child(1) { animation: typingDot 1.2s ease-in-out infinite; }
+.typing-dot:nth-child(2) { animation: typingDot 1.2s ease-in-out 0.2s infinite; }
+.typing-dot:nth-child(3) { animation: typingDot 1.2s ease-in-out 0.4s infinite; }
+
+/* Lead panel slide in from right */
+@keyframes panelIn {
+  from { opacity: 0; transform: translateX(24px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.panel-enter { animation: panelIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+
+/* Fade-in slide from bottom (for popups/dropdowns) */
+@keyframes fadeSlideUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-in.fade-in.slide-in-from-bottom-4,
+.animate-in.fade-in.slide-in-from-bottom-2 {
+  animation: fadeSlideUp 0.18s ease-out forwards;
+}
+.animate-in.fade-in.slide-in-from-top-2 {
+  animation: fadeSlideDown 0.18s ease-out forwards;
+}
+@keyframes fadeSlideDown {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-in.slide-in-from-right {
+  animation: panelIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.animate-in.fade-in {
+  animation: reveal 0.18s ease-out forwards;
+}
+

@@ -1,32 +1,43 @@
 'use client'
+
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useSearchParams } from 'next/navigation'
+import { Suspense } from 'react'
 import { supabase } from '@/lib/supabase'
-import {
-    Search, Send, Bot, UserCheck, Phone,
-    MessageCircle, Loader2, ChevronLeft, Mic, Image, MoreVertical,
-    Megaphone, Trash2
-} from 'lucide-react'
+import { Loader2, MessageCircle } from 'lucide-react'
 import { toast } from 'sonner'
+import MessageInput from '@/components/chat/MessageInput'
+import MessageBubble from '@/components/chat/MessageBubble'
+import ChatHeader from '@/components/chat/ChatHeader'
+import ConversationList from '@/components/chat/ConversationList'
+import LeadPanel from '@/components/chat/LeadPanel'
+import QuickRepliesManager from '@/components/chat/QuickRepliesManager'
 
-// Types
+// ─── Types ──────────────────────────────────────────────────────────────────
 
-interface Conversation {
+export interface Contact {
+    id: string
+    name: string | null
+    push_name: string | null
+    phone: string | null
+    whatsapp_id: string
+    ai_tag: string | null
+    active_campaign_id: string | null
+    status: string | null
+    notes: string | null
+    profile_picture: string | null
+    campaigns?: { name: string }
+}
+
+export interface Conversation {
     id: string
     contact_id: string
     last_message: string | null
     last_message_at: string | null
     status: string
     instance_id: string
-    contact: {
-        id: string
-        name: string | null
-        push_name: string | null
-        phone: string | null
-        whatsapp_id: string
-        ai_tag: string | null
-        active_campaign_id: string | null
-        campaigns?: { name: string }
-    }
+    unread_count: number
+    contact: Contact
 }
 
 interface Message {
@@ -37,115 +48,146 @@ interface Message {
     type: string
     created_at: string
     status: string
+    // Optional fields used in optimistic updates
+    conversation_id?: string
+    user_id?: string
+    instance_id?: string
+    contact_id?: string
 }
 
-// Helpers
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
-const aiTagConfig: Record<string, { label: string; color: string; bg: string }> = {
-    PEDIDO_FECHADO:     { label: 'Pedido Fechado',     color: 'text-emerald-400', bg: 'bg-emerald-500/15 border-emerald-500/30' },
-    POSSIVEL_COMPRADOR: { label: 'Possivel Comprador', color: 'text-orange-400',  bg: 'bg-orange-500/15 border-orange-500/30' },
-    INTERESSADO:        { label: 'Interessado',        color: 'text-blue-400',    bg: 'bg-blue-500/15 border-blue-500/30' },
-    LEAD_FRIO:          { label: 'Lead Frio',          color: 'text-slate-400',   bg: 'bg-slate-500/15 border-slate-500/30' },
-    CANCELADO:          { label: 'Cancelado',          color: 'text-red-400',     bg: 'bg-red-500/15 border-red-500/30' },
-    HUMANO:             { label: 'Atend. Humano',      color: 'text-violet-400',  bg: 'bg-violet-500/15 border-violet-500/30' },
-}
+const CONV_SELECT = `
+  id, contact_id, last_message, last_message_at, status, instance_id, unread_count,
+  contact:contacts(
+    id, name, push_name, phone, whatsapp_id, ai_tag, 
+    active_campaign_id, status, notes, last_message_at, profile_picture,
+    campaigns:campaigns(name)
+  )
+`
 
-const aiTagEmoji: Record<string, string> = {
-    PEDIDO_FECHADO: '✅',
-    POSSIVEL_COMPRADOR: '🔥',
-    INTERESSADO: '👀',
-    LEAD_FRIO: '🧊',
-    CANCELADO: '❌',
-    HUMANO: '👤',
-}
+// ─── Main component ───────────────────────────────────────────────────────────
 
-function displayName(c: Conversation['contact']) {
-    return c.name || c.push_name || c.phone || c.whatsapp_id.split('@')[0]
-}
-
-function initials(name: string) {
-    return name.slice(0, 2).toUpperCase()
-}
-
-function timeLabel(iso: string | null) {
-    if (!iso) return ''
-    const d = new Date(iso)
-    const now = new Date()
-    const isToday = d.toDateString() === now.toDateString()
-    if (isToday) return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-    return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
-}
-
-import { useSearchParams } from 'next/navigation'
-import { Suspense } from 'react'
-
-// Wrap inner component to use searchParams
 function ChatContent() {
     const searchParams = useSearchParams()
     const contactIdParam = searchParams.get('contactId')
-    
+
     const [userId, setUserId] = useState<string | null>(null)
     const [conversations, setConversations] = useState<Conversation[]>([])
     const [selected, setSelected] = useState<Conversation | null>(null)
     const [messages, setMessages] = useState<Message[]>([])
-    const [text, setText] = useState('')
     const [sending, setSending] = useState(false)
     const [loadingMsg, setLoadingMsg] = useState(false)
     const [search, setSearch] = useState('')
     const [mobileShowChat, setMobileShowChat] = useState(false)
-    const bottomRef = useRef<HTMLDivElement>(null)
+    const [leadPanelOpen, setLeadPanelOpen] = useState(false)
+    const [quickRepliesOpen, setQuickRepliesOpen] = useState(false)
+    const [autoScrollEnabled, setAutoScrollEnabled] = useState(true)
+    const [insertText, setInsertText] = useState<string | undefined>(undefined)
+    const [newMsgCount, setNewMsgCount] = useState(0)
 
-    // Get authenticated user
+    const bottomRef = useRef<HTMLDivElement>(null)
+    const messagesContainerRef = useRef<HTMLDivElement>(null)
+    const selectedRef = useRef<Conversation | null>(null)
+    selectedRef.current = selected
+
+    // ── Auth ──────────────────────────────────────────────────────────────────
+
     useEffect(() => {
         supabase.auth.getUser().then(({ data: { user } }) => {
             if (user) setUserId(user.id)
         })
     }, [])
 
-    // Load conversations
+    // ── Fetch single conversation (for realtime updates) ───────────────────
+
+    const fetchSingleConversation = useCallback(async (convId: string): Promise<Conversation | null> => {
+        const { data } = await supabase
+            .from('conversations')
+            .select(CONV_SELECT)
+            .eq('id', convId)
+            .single()
+        return data as unknown as Conversation | null
+    }, [])
+
+    // ── Load all conversations ─────────────────────────────────────────────
+
     const loadConversations = useCallback(async () => {
         if (!userId) return
         const { data } = await supabase
             .from('conversations')
-            .select(`
-                id, contact_id, last_message, last_message_at, status, instance_id,
-                contact:contacts(id, name, push_name, phone, whatsapp_id, ai_tag, active_campaign_id, campaigns:campaigns(name))
-            `)
+            .select(CONV_SELECT)
             .eq('user_id', userId)
             .order('last_message_at', { ascending: false })
-            .limit(100)
-        
-        if (data) {
-            const convs = data as unknown as Conversation[]
-            setConversations(convs)
-            
-            // Auto-select if parameter is present
-            if (contactIdParam && !selected) {
-                const found = convs.find(c => c.contact_id === contactIdParam || c.contact.id === contactIdParam)
-                if (found) {
-                    setSelected(found)
-                    setMobileShowChat(true)
-                }
-            }
+            .limit(150)
+
+        if (!data) return
+        const convs = data as unknown as Conversation[]
+        setConversations(convs)
+
+        // Auto-select from URL param
+        if (contactIdParam && !selectedRef.current) {
+            const found = convs.find(c => c.contact_id === contactIdParam || c.contact.id === contactIdParam)
+            if (found) { selectConversation(found) }
         }
-    }, [userId, contactIdParam, selected])
+    }, [userId, contactIdParam]) // eslint-disable-line
 
     useEffect(() => { loadConversations() }, [loadConversations])
 
-    // Realtime: conversation updates
+    // ── Realtime: conversations (cirúrgico) ───────────────────────────────
+
     useEffect(() => {
         if (!userId) return
-        const channel = supabase
-            .channel('chat-conversations')
-            .on('postgres_changes', {
-                event: '*', schema: 'public', table: 'conversations',
-                filter: `user_id=eq.${userId}`
-            }, () => loadConversations())
-            .subscribe()
-        return () => { supabase.removeChannel(channel) }
-    }, [userId, loadConversations])
 
-    // Load messages for selected conversation
+        const channel = supabase
+            .channel(`chat-conversations-${userId}`)
+            .on('postgres_changes', {
+                event: 'INSERT',
+                schema: 'public',
+                table: 'conversations',
+                filter: `user_id=eq.${userId}`,
+            }, async (payload) => {
+                const fresh = await fetchSingleConversation(payload.new.id as string)
+                if (fresh) {
+                    setConversations(prev => {
+                        if (prev.some(c => c.id === fresh.id)) return prev
+                        return [fresh, ...prev]
+                    })
+                }
+            })
+            .on('postgres_changes', {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'conversations',
+                filter: `user_id=eq.${userId}`,
+            }, async (payload) => {
+                const updatedId = payload.new.id as string
+                // Se é a conversa aberta, não precisamos atualizar unread (vai ser 0)
+                // Mas precisamos atualizar last_message e mover para o topo
+                const fresh = await fetchSingleConversation(updatedId)
+                if (!fresh) return
+
+                setConversations(prev => {
+                    const without = prev.filter(c => c.id !== updatedId)
+                    // Se é a conversa selecionada, zera unread localmente
+                    if (selectedRef.current?.id === updatedId) {
+                        fresh.unread_count = 0
+                    }
+                    return [fresh, ...without]
+                })
+
+                // Atualiza selected se for ela
+                if (selectedRef.current?.id === updatedId) {
+                    setSelected(prev => prev ? { ...prev, ...fresh, unread_count: 0 } : prev)
+                }
+            })
+            .subscribe()
+
+        return () => { supabase.removeChannel(channel) }
+    }, [userId, fetchSingleConversation])
+
+    // ── Load messages ─────────────────────────────────────────────────────
+
     const loadMessages = useCallback(async (convId: string) => {
         setLoadingMsg(true)
         const { data } = await supabase
@@ -153,71 +195,106 @@ function ChatContent() {
             .select('id, content, from_me, ai_generated, type, created_at, status')
             .eq('conversation_id', convId)
             .order('created_at', { ascending: true })
-            .limit(100)
+            .limit(200)
         setMessages(data || [])
         setLoadingMsg(false)
+        setNewMsgCount(0)
+        setAutoScrollEnabled(true)
     }, [])
 
     useEffect(() => {
         if (!selected) return
         loadMessages(selected.id)
-    }, [selected, loadMessages])
+    }, [selected?.id]) // eslint-disable-line
 
-    // Realtime: new incoming messages in the open conversation
+    // ── Realtime: messages ────────────────────────────────────────────────
+
     useEffect(() => {
         if (!selected) return
+
         const channel = supabase
             .channel(`chat-messages-${selected.id}`)
             .on('postgres_changes', {
-                event: 'INSERT', schema: 'public', table: 'messages',
-                filter: `conversation_id=eq.${selected.id}`
+                event: 'INSERT',
+                schema: 'public',
+                table: 'messages',
+                filter: `conversation_id=eq.${selected.id}`,
             }, payload => {
                 const newMsg = payload.new as Message
-                // Avoid adding duplicates (optimistic + real)
                 setMessages(prev => {
-                    const isAlreadyThere = prev.some(m => m.id === newMsg.id)
-                    const hasTempVersion = prev.some(
+                    if (prev.some(m => m.id === newMsg.id)) return prev
+                    // Replace temp version if exists
+                    const tempIdx = prev.findIndex(
                         m => m.id.startsWith('temp-') && m.content === newMsg.content && m.from_me === newMsg.from_me
                     )
-                    if (isAlreadyThere) return prev
-                    if (hasTempVersion) {
-                        // Replace temp with real
-                        return prev.map(m =>
-                            m.id.startsWith('temp-') && m.content === newMsg.content && m.from_me === newMsg.from_me
-                                ? newMsg
-                                : m
-                        )
+                    if (tempIdx >= 0) {
+                        const next = [...prev]
+                        next[tempIdx] = newMsg
+                        return next
+                    }
+                    // New incoming message
+                    if (!autoScrollEnabled && !newMsg.from_me) {
+                        setNewMsgCount(c => c + 1)
                     }
                     return [...prev, newMsg]
                 })
             })
             .subscribe()
+
         return () => { supabase.removeChannel(channel) }
-    }, [selected])
+    }, [selected?.id, autoScrollEnabled]) // eslint-disable-line
 
-    // Auto-scroll to bottom
+    // ── Auto-scroll ───────────────────────────────────────────────────────
+
     useEffect(() => {
-        bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-    }, [messages])
+        if (autoScrollEnabled) {
+            bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+        }
+    }, [messages, autoScrollEnabled])
 
-    // Select a conversation
-    const selectConversation = (conv: Conversation) => {
-        setSelected(conv)
-        setMessages([])
-        setText('')
-        setMobileShowChat(true)
+    function handleScroll() {
+        const el = messagesContainerRef.current
+        if (!el) return
+        const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+        setAutoScrollEnabled(isAtBottom)
+        if (isAtBottom) setNewMsgCount(0)
     }
 
-    // Send manual message with optimistic UI update
-    const sendMessage = async () => {
-        if (!text.trim() || !selected || sending) return
-        setSending(true)
-        const body = text.trim()
-        setText('')
+    function scrollToBottom() {
+        setAutoScrollEnabled(true)
+        setNewMsgCount(0)
+        bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
 
-        // Show message immediately in chat (optimistic)
+    // ── Select conversation ───────────────────────────────────────────────
+
+    function selectConversation(conv: Conversation) {
+        setSelected(conv)
+        setMessages([])
+        setMobileShowChat(true)
+        setLeadPanelOpen(false)
+        // Mark as read
+        if (conv.unread_count > 0) {
+            fetch('/api/chat/mark-read', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ conversationId: conv.id }),
+            }).catch(console.error)
+            // Optimistically zero the badge
+            setConversations(prev => prev.map(c =>
+                c.id === conv.id ? { ...c, unread_count: 0 } : c
+            ))
+        }
+    }
+
+    // ── Send message ──────────────────────────────────────────────────────
+
+    async function sendMessage(body: string) {
+        if (!selected || sending) return
+        setSending(true)
+
         const tempId = `temp-${Date.now()}`
-        const optimisticMsg: Message = {
+        const optimistic: Message = {
             id: tempId,
             content: body,
             from_me: true,
@@ -226,7 +303,8 @@ function ChatContent() {
             created_at: new Date().toISOString(),
             status: 'sending',
         }
-        setMessages(prev => [...prev, optimisticMsg])
+        setMessages(prev => [...prev, optimistic])
+        setAutoScrollEnabled(true)
 
         try {
             const res = await fetch('/api/chat/send', {
@@ -237,298 +315,299 @@ function ChatContent() {
                     instanceId: selected.instance_id,
                     contactWhatsappId: selected.contact.whatsapp_id,
                     message: body,
-                })
+                }),
             })
 
             if (!res.ok) {
-                const err = await res.json()
-                console.error('Erro ao enviar:', err)
-                // Remove optimistic message on error
                 setMessages(prev => prev.filter(m => m.id !== tempId))
+                toast.error('Falha ao enviar mensagem')
             } else {
                 const data = await res.json()
                 if (data.message) {
-                    // Replace optimistic with real DB record
                     setMessages(prev => prev.map(m => m.id === tempId ? data.message : m))
                 } else {
-                    // Mark as sent
                     setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: 'sent' } : m))
                 }
+                // Update local contact ai_tag to HUMANO
+                setSelected(prev => prev ? {
+                    ...prev,
+                    contact: { ...prev.contact, ai_tag: 'HUMANO' }
+                } : prev)
             }
-        } catch (e) {
-            console.error(e)
+        } catch {
             setMessages(prev => prev.filter(m => m.id !== tempId))
+            toast.error('Erro de conexão')
         } finally {
             setSending(false)
         }
     }
 
-    const deleteContact = async () => {
-        if (!selected) return
-        const name = displayName(selected.contact)
-        if (!confirm(`Tem certeza que deseja excluir o contato "${name}"? Isso apagará todo o histórico permanentemente.`)) return
+    async function sendMedia(file: File | Blob, type: string) {
+        if (!selected || sending) return
         
+        const tempId = 'temp-' + Date.now()
+        let mediaType: 'image' | 'video' | 'audio' | 'document' = 'document'
+        if (file.type.startsWith('image/')) mediaType = 'image'
+        else if (file.type.startsWith('video/')) {
+            // Some browsers label webm audio as video/webm
+            if (file.type.includes('webm')) mediaType = 'audio'
+            else mediaType = 'video'
+        }
+        else if (file.type.startsWith('audio/')) mediaType = 'audio'
+
+        // Optimistic Media
+        const optimistic: Message = {
+            id: tempId,
+            content: URL.createObjectURL(file), // Local preview
+            from_me: true,
+            type: mediaType,
+            created_at: new Date().toISOString(),
+            status: 'sending',
+            ai_generated: false,
+            conversation_id: selected.id,
+            user_id: '',
+            instance_id: selected.instance_id,
+            contact_id: selected.contact.id
+        }
+
+        setMessages(prev => [...prev, optimistic])
+        setSending(true)
+        setAutoScrollEnabled(true)
+
         try {
-            const { error } = await supabase.from('contacts').delete().eq('id', selected.contact.id)
-            if (!error) {
-                toast.success('Contato excluído com sucesso')
-                setSelected(null)
-                loadConversations()
+            const formData = new FormData()
+            formData.append('file', file)
+            formData.append('conversationId', selected.id)
+            formData.append('instanceId', selected.instance_id)
+            formData.append('contactWhatsappId', selected.contact.whatsapp_id)
+            formData.append('contactId', selected.contact.id)
+
+            const res = await fetch('/api/chat/send-media', {
+                method: 'POST',
+                body: formData
+            })
+
+            if (!res.ok) {
+                const data = await res.json()
+                setMessages(prev => prev.filter(m => m.id !== tempId))
+                throw new Error(data.error || 'Erro ao enviar mídia')
             } else {
-                toast.error('Erro ao excluir contato: ' + error.message)
+                const data = await res.json()
+                if (data.message) {
+                    setMessages(prev => prev.map(m => m.id === tempId ? data.message : m))
+                } else {
+                    setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: 'sent' } : m))
+                }
+                
+                // Update tag
+                setSelected(prev => prev ? {
+                    ...prev,
+                    contact: { ...prev.contact, ai_tag: 'HUMANO' }
+                } : prev)
             }
-        } catch (err) {
-            console.error(err)
+        } catch (err: any) {
+            setMessages(prev => prev.filter(m => m.id !== tempId))
+            toast.error(err.message || 'Não foi possível enviar o arquivo')
+        } finally {
+            setSending(false)
+        }
+    }
+
+    // ── Takeover ──────────────────────────────────────────────────────────
+
+    async function handleTakeover(action: 'take' | 'return') {
+        if (!selected) return
+        try {
+            const res = await fetch('/api/chat/takeover', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ contactId: selected.contact.id, action }),
+            })
+            if (!res.ok) throw new Error()
+            const newTag = action === 'take' ? 'HUMANO' : null
+            setSelected(prev => prev ? {
+                ...prev,
+                contact: { ...prev.contact, ai_tag: newTag }
+            } : prev)
+            setConversations(prev => prev.map(c =>
+                c.id === selected.id
+                    ? { ...c, contact: { ...c.contact, ai_tag: newTag } }
+                    : c
+            ))
+            toast.success(action === 'take' ? '✋ Conversa assumida — IA pausada' : '🤖 Conversa devolvida para a IA')
+        } catch {
+            toast.error('Erro ao alterar modo de atendimento')
+        }
+    }
+
+    // ── Delete ────────────────────────────────────────────────────────────
+
+    async function deleteContact() {
+        if (!selected) return
+        if (!confirm(`Excluir contato "${selected.contact.name || selected.contact.push_name || selected.contact.phone}"? Isso apagará todo o histórico.`)) return
+        const { error } = await supabase.from('contacts').delete().eq('id', selected.contact.id)
+        if (!error) {
+            toast.success('Contato excluído')
+            setSelected(null)
+            setConversations(prev => prev.filter(c => c.id !== selected.id))
+        } else {
             toast.error('Erro ao excluir contato')
         }
     }
 
-    const handleKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault()
-            sendMessage()
+    const handleContactUpdate = (updated: Partial<Contact>) => {
+        if (!selected) return
+        const newSelected = {
+            ...selected,
+            contact: { ...selected.contact, ...updated }
         }
+        setSelected(newSelected)
+        setConversations(prev => prev.map(c => c.id === selected.id ? newSelected : c))
     }
 
-    const filtered = conversations.filter(c => {
-        if (!search) return true
-        const n = displayName(c.contact).toLowerCase()
-        return n.includes(search.toLowerCase()) || (c.contact.phone || '').includes(search)
-    })
+    // ── Render ────────────────────────────────────────────────────────────
 
-    // Render
     return (
         <div className="flex h-screen bg-background overflow-hidden">
 
-            {/* Conversations sidebar */}
+            {/* ── Conversations sidebar ── */}
             <div className={`
                 flex flex-col w-full md:w-80 lg:w-96 border-r border-border bg-sidebar flex-shrink-0
                 ${mobileShowChat ? 'hidden md:flex' : 'flex'}
             `}>
-                {/* Header */}
-                <div className="px-4 pt-5 pb-3 border-b border-border">
-                    <div className="flex items-center gap-2 mb-3">
-                        <MessageCircle className="w-5 h-5 text-primary" />
-                        <h1 className="text-base font-bold text-foreground">Chat ao Vivo</h1>
-                        <span className="ml-auto text-xs text-muted-foreground">{conversations.length} conversas</span>
-                    </div>
-                    <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                        <input
-                            value={search}
-                            onChange={e => setSearch(e.target.value)}
-                            placeholder="Buscar conversa..."
-                            className="w-full bg-input border border-border rounded-lg pl-9 pr-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
-                        />
-                    </div>
-                </div>
-
-                {/* Conversation list */}
-                <div className="flex-1 overflow-y-auto">
-                    {filtered.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center h-40 gap-2 text-muted-foreground text-sm">
-                            <MessageCircle className="w-8 h-8 opacity-30" />
-                            <span>Nenhuma conversa ainda</span>
-                        </div>
-                    ) : (
-                        filtered.map(conv => {
-                            const name = displayName(conv.contact)
-                            const tag = conv.contact.ai_tag ? aiTagConfig[conv.contact.ai_tag] : null
-                            const tagEmoji = conv.contact.ai_tag ? aiTagEmoji[conv.contact.ai_tag] : null
-                            const isActive = selected?.id === conv.id
-                            return (
-                                <button
-                                    key={conv.id}
-                                    onClick={() => selectConversation(conv)}
-                                    className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-secondary/50 transition-colors text-left border-b border-border/40 ${isActive ? 'bg-primary/10 border-l-2 border-l-primary' : ''}`}
-                                >
-                                    <div className="w-11 h-11 rounded-full gradient-primary flex items-center justify-center text-black font-bold text-sm flex-shrink-0">
-                                        {initials(name)}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-center justify-between gap-1">
-                                            <span className="text-sm font-semibold text-foreground truncate">{name}</span>
-                                            <span className="text-[10px] text-muted-foreground flex-shrink-0">{timeLabel(conv.last_message_at)}</span>
-                                        </div>
-                                        <div className="flex items-center gap-1 mt-0.5">
-                                            <p className="text-xs text-muted-foreground truncate flex-1">
-                                                {conv.last_message || 'Sem mensagens'}
-                                            </p>
-                                            {tag && tagEmoji && (
-                                                <span className={`text-[9px] px-1.5 py-0.5 rounded-full border font-bold flex-shrink-0 ${tag.bg} ${tag.color}`}>
-                                                    {tagEmoji} {tag.label}
-                                                </span>
-                                            )}
-                                            {conv.contact.campaigns?.name && (
-                                                <span className="text-[9px] px-1.5 py-0.5 rounded-full border border-primary/20 bg-primary/5 text-primary/80 font-bold flex-shrink-0">
-                                                    📦 {conv.contact.campaigns.name}
-                                                </span>
-                                            )}
-                                        </div>
-                                    </div>
-                                </button>
-                            )
-                        })
-                    )}
-                </div>
+                <ConversationList
+                    conversations={conversations}
+                    selectedId={selected?.id || null}
+                    search={search}
+                    onSelect={selectConversation}
+                    onSearchChange={setSearch}
+                />
             </div>
 
-            {/* Chat area */}
+            {/* ── Chat area ── */}
             <div className={`flex flex-col flex-1 min-w-0 ${!mobileShowChat ? 'hidden md:flex' : 'flex'}`}>
                 {!selected ? (
-                    <div className="flex flex-col items-center justify-center h-full gap-4 text-muted-foreground">
-                        <div className="w-20 h-20 rounded-full gradient-primary flex items-center justify-center glow-primary">
-                            <MessageCircle className="w-10 h-10 text-white" />
+                    <div className="flex flex-col items-center justify-center h-full gap-6 text-muted-foreground px-8">
+                        <div className="relative">
+                            <div className="w-24 h-24 rounded-3xl gradient-primary flex items-center justify-center glow-primary shadow-2xl">
+                                <MessageCircle className="w-12 h-12 text-black" />
+                            </div>
+                            <div className="absolute -top-1 -right-1 w-5 h-5 bg-emerald-500 rounded-full border-2 border-background animate-pulse" />
                         </div>
-                        <div className="text-center">
-                            <h2 className="text-lg font-bold text-foreground">Selecione uma conversa</h2>
-                            <p className="text-sm mt-1">Clique em um contato a esquerda para abrir o chat</p>
+                        <div className="text-center space-y-2">
+                            <h2 className="text-xl font-bold text-foreground tracking-tight">Chat ao Vivo</h2>
+                            <p className="text-sm text-muted-foreground/80 max-w-xs leading-relaxed">
+                                Selecione uma conversa na lista para iniciar o atendimento em tempo real
+                            </p>
+                        </div>
+                        <div className="flex items-center gap-6 text-[11px] text-muted-foreground/60">
+                            <div className="flex items-center gap-1.5">
+                                <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                                <span>IA respondendo</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                                <div className="w-2 h-2 rounded-full bg-violet-500" />
+                                <span>Atendimento humano</span>
+                            </div>
                         </div>
                     </div>
                 ) : (
-                    <>
-                        {/* Chat header */}
-                        <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-sidebar flex-shrink-0">
-                            <button
-                                onClick={() => setMobileShowChat(false)}
-                                className="md:hidden p-1.5 text-muted-foreground hover:text-foreground"
-                            >
-                                <ChevronLeft className="w-5 h-5" />
-                            </button>
-                            <div className="w-10 h-10 rounded-full gradient-primary flex items-center justify-center text-black font-bold text-sm flex-shrink-0">
-                                {initials(displayName(selected.contact))}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <div className="font-semibold text-foreground text-sm">{displayName(selected.contact)}</div>
-                                <div className="text-xs text-muted-foreground flex items-center gap-1">
-                                    <Phone className="w-3 h-3" />
-                                    {selected.contact.phone || selected.contact.whatsapp_id}
-                                </div>
-                            </div>
-                            {selected.contact.ai_tag && aiTagConfig[selected.contact.ai_tag] && (
-                                <span className={`text-xs px-2.5 py-1 rounded-full border font-semibold hidden sm:inline-flex items-center gap-1 ${aiTagConfig[selected.contact.ai_tag].bg} ${aiTagConfig[selected.contact.ai_tag].color}`}>
-                                    {aiTagEmoji[selected.contact.ai_tag]} {aiTagConfig[selected.contact.ai_tag].label}
-                                </span>
-                            )}
-                            {selected.contact.campaigns?.name && (
-                                <span className="text-xs px-2.5 py-1 rounded-full border border-primary/30 bg-primary/10 text-primary font-bold hidden lg:inline-flex items-center gap-1">
-                                    <Megaphone className="w-3 h-3" /> {selected.contact.campaigns.name}
-                                </span>
-                            )}
-                            <button 
-                                onClick={deleteContact}
-                                className="p-2 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
-                                title="Excluir Contato"
-                            >
-                                <Trash2 className="w-4 h-4" />
-                            </button>
-                            <button className="p-2 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg transition-colors">
-                                <MoreVertical className="w-4 h-4" />
-                            </button>
-                        </div>
+                    <div className="flex flex-col flex-1 min-h-0">
+                        <ChatHeader
+                            contact={selected.contact}
+                            onBack={() => setMobileShowChat(false)}
+                            onTakeover={handleTakeover}
+                            onDelete={deleteContact}
+                            onToggleLeadPanel={() => setLeadPanelOpen(o => !o)}
+                            onToggleQuickReplies={() => setQuickRepliesOpen(o => !o)}
+                            leadPanelOpen={leadPanelOpen}
+                        />
 
                         {/* Messages area */}
                         <div
-                            className="flex-1 overflow-y-auto px-4 py-4 space-y-1"
-                            style={{ backgroundImage: 'radial-gradient(circle at 20% 80%, rgba(99,102,241,0.03) 0%, transparent 60%)' }}
+                            ref={messagesContainerRef}
+                            onScroll={handleScroll}
+                            className="flex-1 overflow-y-auto relative"
+                            style={{
+                                backgroundImage: [
+                                    'radial-gradient(circle at 15% 85%, rgba(99,102,241,0.04) 0%, transparent 50%)',
+                                    'radial-gradient(circle at 85% 15%, rgba(139,92,246,0.03) 0%, transparent 50%)',
+                                ].join(', '),
+                            }}
                         >
-                            {loadingMsg ? (
-                                <div className="flex items-center justify-center h-full">
-                                    <Loader2 className="w-6 h-6 animate-spin text-primary" />
-                                </div>
-                            ) : messages.length === 0 ? (
-                                <div className="flex flex-col items-center justify-center h-full gap-2 text-muted-foreground">
-                                    <MessageCircle className="w-8 h-8 opacity-30" />
-                                    <span className="text-sm">Nenhuma mensagem ainda</span>
-                                </div>
-                            ) : (
-                                messages.map((msg, idx) => {
-                                    const prevMsg = idx > 0 ? messages[idx - 1] : null
-                                    const showDate = !prevMsg || new Date(msg.created_at).toDateString() !== new Date(prevMsg.created_at).toDateString()
-                                    const isSending = msg.status === 'sending'
-                                    return (
-                                        <div key={msg.id}>
-                                            {showDate && (
-                                                <div className="flex justify-center my-3">
-                                                    <span className="text-[10px] text-muted-foreground bg-secondary/60 px-3 py-1 rounded-full">
-                                                        {new Date(msg.created_at).toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
-                                                    </span>
-                                                </div>
-                                            )}
-                                            <div className={`flex ${msg.from_me ? 'justify-end' : 'justify-start'} mb-0.5`}>
-                                                <div className={`
-                                                    max-w-[75%] px-3.5 py-2 rounded-2xl text-sm leading-relaxed relative transition-opacity
-                                                    ${isSending ? 'opacity-60' : 'opacity-100'}
-                                                    ${msg.from_me
-                                                        ? 'bg-primary text-primary-foreground rounded-br-sm'
-                                                        : 'bg-secondary/70 text-foreground rounded-bl-sm border border-border/50'
-                                                    }
-                                                `}>
-                                                    {msg.content}
-                                                    <div className={`flex items-center gap-1 mt-1 ${msg.from_me ? 'justify-end' : 'justify-start'}`}>
-                                                        <span className={`text-[10px] ${msg.from_me ? 'text-primary-foreground/60' : 'text-muted-foreground'}`}>
-                                                            {isSending ? 'enviando...' : new Date(msg.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                                                        </span>
-                                                        {msg.from_me && msg.ai_generated && !isSending && (
-                                                            <Bot className="w-3 h-3 text-primary-foreground/60" aria-label="Enviado pela IA" />
-                                                        )}
-                                                        {msg.from_me && !msg.ai_generated && !isSending && (
-                                                            <UserCheck className="w-3 h-3 text-primary-foreground/60" aria-label="Enviado por humano" />
-                                                        )}
-                                                    </div>
-                                                </div>
+                            <div className="flex flex-col py-6 px-4 md:px-8 min-h-full">
+                                {loadingMsg ? (
+                                    <div className="flex items-center justify-center flex-1 h-full py-20">
+                                        <div className="flex flex-col items-center gap-3">
+                                            <div className="relative w-10 h-10">
+                                                <Loader2 className="w-10 h-10 animate-spin text-primary/30" />
+                                                <Loader2 className="w-6 h-6 animate-spin text-primary absolute top-2 left-2" style={{ animationDirection: 'reverse', animationDuration: '0.8s' }} />
                                             </div>
+                                            <span className="text-xs text-muted-foreground">Carregando mensagens...</span>
                                         </div>
-                                    )
-                                })
+                                    </div>
+                                ) : messages.length === 0 ? (
+                                    <div className="flex flex-col items-center justify-center flex-1 h-full py-20 gap-4 text-muted-foreground">
+                                        <div className="w-16 h-16 rounded-2xl gradient-primary flex items-center justify-center shadow-lg glow-primary">
+                                            <MessageCircle className="w-8 h-8 text-black" />
+                                        </div>
+                                        <div className="text-center">
+                                            <p className="font-semibold text-foreground/70">Nenhuma mensagem ainda</p>
+                                            <p className="text-xs mt-1 text-muted-foreground/70">Envie a primeira mensagem para iniciar o atendimento</p>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    messages.map((msg, idx) => {
+                                        const prev = idx > 0 ? messages[idx - 1] : null
+                                        const showDate = !prev || new Date(msg.created_at).toDateString() !== new Date(prev.created_at).toDateString()
+                                        return <MessageBubble key={msg.id} msg={msg} showDate={showDate} prevMsg={prev} />
+                                    })
+                                )}
+                                <div ref={bottomRef} className="h-2" />
+                            </div>
+
+                            {/* New messages floating pill */}
+                            {newMsgCount > 0 && (
+                                <div className="sticky bottom-4 flex justify-center pointer-events-none">
+                                    <button
+                                        onClick={scrollToBottom}
+                                        className="pointer-events-auto flex items-center gap-2 bg-primary text-primary-foreground text-xs font-bold px-4 py-2.5 rounded-full shadow-lg shadow-primary/30 hover:opacity-90 transition-all hover:scale-105 active:scale-95"
+                                    >
+                                        <span>↓</span>
+                                        <span>{newMsgCount} nova{newMsgCount > 1 ? 's' : ''} mensagen{newMsgCount > 1 ? 's' : ''}</span>
+                                    </button>
+                                </div>
                             )}
-                            <div ref={bottomRef} />
                         </div>
 
-                        {/* Send input */}
-                        <div className="px-4 py-3 border-t border-border bg-sidebar flex-shrink-0">
-                            {selected.contact.ai_tag && ['PEDIDO_FECHADO', 'HUMANO'].includes(selected.contact.ai_tag) && (
-                                <div className="flex items-center gap-2 text-xs text-violet-400 bg-violet-500/10 border border-violet-500/20 rounded-lg px-3 py-2 mb-2">
-                                    <UserCheck className="w-3.5 h-3.5 flex-shrink-0" />
-                                    IA pausada &mdash; voce esta em atendimento humano
-                                </div>
-                            )}
-                            <div className="flex items-end gap-2">
-                                <button className="p-2.5 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-xl transition-colors flex-shrink-0">
-                                    <Image className="w-5 h-5" />
-                                </button>
-                                <button className="p-2.5 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-xl transition-colors flex-shrink-0">
-                                    <Mic className="w-5 h-5" />
-                                </button>
-                                <textarea
-                                    value={text}
-                                    onChange={e => setText(e.target.value)}
-                                    onKeyDown={handleKeyDown}
-                                    placeholder="Digite uma mensagem..."
-                                    rows={1}
-                                    className="flex-1 bg-input border border-border rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none"
-                                    style={{ minHeight: '44px', maxHeight: '120px' }}
-                                    onInput={e => {
-                                        const el = e.currentTarget
-                                        el.style.height = 'auto'
-                                        el.style.height = el.scrollHeight + 'px'
-                                    }}
-                                />
-                                <button
-                                    onClick={sendMessage}
-                                    disabled={!text.trim() || sending}
-                                    className="p-2.5 gradient-primary rounded-xl flex items-center justify-center flex-shrink-0 disabled:opacity-50 hover:opacity-90 transition-all glow-primary"
-                                >
-                                    {sending ? <Loader2 className="w-5 h-5 animate-spin text-white" /> : <Send className="w-5 h-5 text-white" />}
-                                </button>
-                            </div>
-                            <p className="text-[10px] text-muted-foreground text-center mt-1.5">
-                                Enter para enviar &middot; Shift+Enter para nova linha &middot; Mensagens humanas pausam a IA automaticamente
-                            </p>
-                        </div>
-                    </>
+                        <MessageInput
+                            onSend={sendMessage}
+                            onSendMedia={sendMedia}
+                            sending={sending}
+                            insertText={insertText}
+                        />
+                    </div>
                 )}
             </div>
+
+            {/* ── Lead Panel ── */}
+            {selected && leadPanelOpen && (
+                <LeadPanel
+                    contact={selected.contact}
+                    onClose={() => setLeadPanelOpen(false)}
+                    onUpdate={handleContactUpdate}
+                    onInsertSnippet={(text) => {
+                        setInsertText(text)
+                        // Reset after a tick so the effect re-triggers on next use
+                        setTimeout(() => setInsertText(undefined), 100)
+                    }}
+                />
+            )}
+
+            {/* ── Quick Replies Manager ── */}
+            {quickRepliesOpen && (
+                <QuickRepliesManager onClose={() => setQuickRepliesOpen(false)} />
+            )}
         </div>
     )
 }
@@ -544,4 +623,3 @@ export default function ChatPage() {
         </Suspense>
     )
 }
-
