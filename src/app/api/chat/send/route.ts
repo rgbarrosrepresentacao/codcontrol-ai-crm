@@ -52,7 +52,6 @@ export async function POST(req: NextRequest) {
         if (instance.provider_type === 'META') {
             const { MetaProvider } = await import('@/services/whatsapp/MetaProvider')
 
-export const dynamic = 'force-dynamic'
             const provider = new MetaProvider(
                 instance.meta_config as any,
                 instance.meta_access_token_encrypted

@@ -15,8 +15,6 @@ import { NotificationService } from '@/services/whatsapp/notifications';
 import { evolutionApi } from '@/lib/evolution';
 import { generateSpeech } from '@/lib/openai-tts';
 
-export const dynamic = 'force-dynamic'
-
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY || ''
