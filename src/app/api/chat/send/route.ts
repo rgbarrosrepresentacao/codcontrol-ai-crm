@@ -21,10 +21,10 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Parâmetros inválidos' }, { status: 400 })
         }
 
-        // Busca o nome da instância pelo ID
+        // Busca a instância
         const { data: instance, error: instanceErr } = await supabaseAdmin
             .from('whatsapp_instances')
-            .select('instance_name')
+            .select('*')
             .eq('id', instanceId)
             .eq('user_id', user.id)
             .single()
@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Instância não encontrada' }, { status: 404 })
         }
 
-        // Busca o contact_id vinculado a essa conversa
+        // Busca a conversa
         const { data: conversation } = await supabaseAdmin
             .from('conversations')
             .select('contact_id')
@@ -45,10 +45,28 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Conversa não encontrada' }, { status: 404 })
         }
 
-        // 1. Envia a mensagem pelo WhatsApp via Evolution API
-        await evolutionApi.sendPresence(instance.instance_name, contactWhatsappId, 'composing')
-        await new Promise(resolve => setTimeout(resolve, 800))
-        await evolutionApi.sendTextMessage(instance.instance_name, contactWhatsappId, message.trim())
+        // 1. Busca o provedor e envia
+        let messageId = ''
+        if (instance.provider_type === 'META') {
+            const { MetaProvider } = await import('@/services/whatsapp/MetaProvider')
+            const provider = new MetaProvider(
+                instance.meta_config as any,
+                instance.meta_access_token_encrypted
+            )
+            const result = await provider.sendText(contactWhatsappId, message.trim())
+            if (!result.success) {
+                return NextResponse.json({ error: result.error || 'Falha ao enviar via Meta API' }, { status: 500 })
+            }
+            messageId = result.message_id || ''
+        } else {
+            // Provedor Evolution (padrão)
+            await evolutionApi.sendPresence(instance.instance_name, contactWhatsappId, 'composing')
+            await new Promise(resolve => setTimeout(resolve, 800))
+            const result = await evolutionApi.sendTextMessage(instance.instance_name, contactWhatsappId, message.trim())
+            messageId = result?.key?.id || ''
+        }
+
+        // 2. Salva a mensagem no banco de dados (marcada como humana, nao da IA)
 
         // 2. Salva a mensagem no banco de dados (marcada como humana, nao da IA)
         const { data: insertedMsg, error: insertError } = await supabaseAdmin.from('messages').insert({

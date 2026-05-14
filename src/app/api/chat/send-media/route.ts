@@ -74,44 +74,65 @@ export async function POST(req: NextRequest) {
 
         // 4. Envia via Provedor
         let messageId = ''
-        if (instance.provider_type === 'META') {
-            const provider = new MetaProvider(
-                instance.meta_config as any,
-                instance.meta_access_token_encrypted
-            )
-            const result = await provider.sendMedia(contactWhatsappId, publicUrl, mediaType, caption)
-            if (!result.success) {
-                return NextResponse.json({ error: result.error }, { status: 500 })
-            }
-            messageId = result.message_id || ''
-        } else {
-            // Provedor Evolution (padrão)
-            if (mediaType === 'audio') {
-                await evolutionApi.sendPresence(instance.instance_name, contactWhatsappId, 'recording')
-                await new Promise(r => setTimeout(r, 2000))
+        try {
+            if (instance.provider_type === 'META') {
+                const provider = new MetaProvider(
+                    instance.meta_config as any,
+                    instance.meta_access_token_encrypted
+                )
+                const result = await provider.sendMedia(contactWhatsappId, publicUrl, mediaType, caption)
+                if (!result.success) {
+                    throw new Error(result.error || `Falha ao enviar ${mediaType} via Meta`)
+                }
+                messageId = result.message_id || ''
             } else {
-                await evolutionApi.sendPresence(instance.instance_name, contactWhatsappId, 'composing')
-                await new Promise(r => setTimeout(r, 1000))
+                // Provedor Evolution (padrão)
+                if (mediaType === 'audio') {
+                    await evolutionApi.sendPresence(instance.instance_name, contactWhatsappId, 'recording')
+                    await new Promise(r => setTimeout(r, 1500))
+                } else {
+                    await evolutionApi.sendPresence(instance.instance_name, contactWhatsappId, 'composing')
+                    await new Promise(r => setTimeout(r, 1000))
+                }
+                
+                // Na Evolution, áudio deve ser enviado com ptt: true para aparecer como gravado
+                const payload: any = {
+                    number: contactWhatsappId,
+                    media: publicUrl,
+                    mediatype: mediaType,
+                    caption: caption || '',
+                }
+                
+                if (mediaType === 'audio') {
+                    payload.ptt = true
+                }
+
+                const result = await evolutionApi.sendMedia(
+                    instance.instance_name,
+                    contactWhatsappId,
+                    publicUrl,
+                    mediaType,
+                    caption,
+                    mediaType === 'audio' // ptt
+                )
+                // Se o sendMedia da lib já faz o fetch, precisamos garantir que passamos o ptt se necessário.
+                // Vou ajustar a lib evolutionApi.sendMedia para aceitar um objeto de opções ou ptt.
+                
+                messageId = result?.key?.id || ''
             }
-            
-            const result = await evolutionApi.sendMedia(
-                instance.instance_name,
-                contactWhatsappId,
-                publicUrl,
-                mediaType,
-                caption
-            )
-            messageId = result?.key?.id || ''
+        } catch (error: any) {
+            console.error('[send-media] Provider Error:', error.message)
+            return NextResponse.json({ error: error.message || 'Falha ao enviar via provedor' }, { status: 500 })
         }
 
-        // 5. Salva no Banco de Dados
+        // 5. Salva no Banco de Dados (SÓ SE CHEGOU AQUI)
         const { data: insertedMsg, error: insertError } = await supabaseAdmin
             .from('messages')
             .insert({
                 user_id: session.user.id,
                 conversation_id: conversationId,
                 instance_id: instanceId,
-                contact_id: formData.get('contactId') || null, // Se vier no form
+                contact_id: formData.get('contactId') || null,
                 from_me: true,
                 content: publicUrl,
                 type: mediaType,

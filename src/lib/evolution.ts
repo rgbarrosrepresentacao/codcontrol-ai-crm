@@ -133,14 +133,18 @@ export const evolutionApi = {
         return res.json()
     },
 
-    async sendMedia(instanceName: string, to: string, mediaUrl: string, mediaType: 'audio' | 'video' | 'image' | 'document', caption?: string) {
-        // Monta payload limpo — sem 'quoted: null' que causa rejeição em algumas versões
+    async sendMedia(instanceName: string, to: string, mediaUrl: string, mediaType: 'audio' | 'video' | 'image' | 'document', caption?: string, ptt: boolean = false) {
+        // Monta payload limpo
         const payload: any = {
             number: to,
             media: mediaUrl,
             mediatype: mediaType,
             caption: caption || '',
         };
+
+        if (mediaType === 'audio' && ptt) {
+            payload.ptt = true;
+        }
 
         console.log(`[EVOLUTION_API] sendMedia → ${instanceName} | type=${mediaType} | to=${to}`);
         console.log(`[EVOLUTION_API] URL: ${mediaUrl.substring(0, 80)}...`);

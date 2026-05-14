@@ -253,9 +253,18 @@ function ChatContent() {
                 setMessages(prev => {
                     if (prev.some(m => m.id === newMsg.id)) return prev
                     // Replace temp version if exists
-                    const tempIdx = prev.findIndex(
-                        m => m.id.startsWith('temp-') && m.content === newMsg.content && m.from_me === newMsg.from_me
-                    )
+                    const tempIdx = prev.findIndex(m => {
+                        if (!m.id.startsWith('temp-')) return false
+                        if (m.type !== newMsg.type) return false
+                        if (m.from_me !== newMsg.from_me) return false
+                        
+                        // Para texto, o conteúdo deve bater
+                        if (m.type === 'text') return m.content === newMsg.content
+                        
+                        // Para mídia (audio, image, etc), o conteúdo muda de blob: local para URL remota.
+                        // Então confiamos no tipo + from_me + proximidade temporal (já garantida pelo real-time)
+                        return true
+                    })
                     if (tempIdx >= 0) {
                         const next = [...prev]
                         next[tempIdx] = newMsg
