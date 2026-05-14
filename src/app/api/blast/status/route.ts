@@ -1,6 +1,6 @@
 export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin as adminSupabase } from '@/lib/supabase-admin'
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 
 async function requireAdmin() {
@@ -19,6 +19,8 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     const campaign_id = searchParams.get('campaign_id')
     if (!campaign_id) return NextResponse.json({ error: 'campaign_id obrigatório' }, { status: 400 })
+    
+    const adminSupabase = getSupabaseAdmin()
 
     const { data: campaign } = await adminSupabase
         .from('blast_campaigns')

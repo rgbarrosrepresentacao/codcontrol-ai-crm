@@ -1,17 +1,13 @@
-import { createClient } from '@supabase/supabase-js';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { MessageService } from './messages';
 import { evolutionApi } from '@/lib/evolution';
-
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY || ''
-);
 
 export class KnowledgeService {
     /**
      * Busca mídias cadastradas e monta o contexto para a IA
      */
     static async buildContext(userId: string, campaignId: string | null): Promise<{ context: string; items: any[] }> {
+        const supabase = getSupabaseAdmin();
         try {
             // Busca todas as mídias do usuário para filtrar de forma inteligente
             const { data: allItems } = await supabase
@@ -77,6 +73,7 @@ ${items.map(k => `- ID:${k.id} | Tipo:${k.media_type} | Nome:"${k.name}" | Descr
         conversationId: string,
         contactId: string
     ) {
+        const supabase = getSupabaseAdmin();
         try {
             // Pequeno delay para parecer que a vendedora está buscando o arquivo
             await new Promise(r => setTimeout(r, 1500));

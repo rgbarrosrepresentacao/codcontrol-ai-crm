@@ -7,10 +7,10 @@ export const dynamic = 'force-dynamic'
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { createHmac } from 'crypto'
-import { createClient } from '@supabase/supabase-js'
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { decrypt } from '@/lib/crypto'
-import { processWebhook } from '@/app/api/whatsapp/webhook/route'
+import { processWebhook } from '@/services/whatsapp/orchestrator'
 
 // ─── GET: Validação do Webhook pela Meta ──────────────────────────────────────
 export async function GET(request: NextRequest) {
@@ -23,10 +23,7 @@ export async function GET(request: NextRequest) {
     console.log(`[Meta Webhook] Recebendo validação: mode=${mode}, token=${token}`)
 
     if (mode === 'subscribe' && token && challenge) {
-        const supabase = createClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL!,
-            process.env.SUPABASE_SERVICE_ROLE_KEY!
-        )
+        const supabase = getSupabaseAdmin()
         
         const { data: instances, error } = await supabase
             .from('whatsapp_instances')
@@ -75,10 +72,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Usamos o cliente administrativo para buscar o Secret
-    const supabaseAdmin = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
+    const supabaseAdmin = getSupabaseAdmin()
 
     const { data: instance, error: dbError } = await supabaseAdmin
         .from('whatsapp_instances')

@@ -1,17 +1,14 @@
 export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
 import { evolutionApi } from '@/lib/evolution'
-import { createClient } from '@supabase/supabase-js'
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 export async function DELETE(req: NextRequest) {
     const instance = req.nextUrl.searchParams.get('instance')
     if (!instance) return NextResponse.json({ error: 'Instance required' }, { status: 400 })
     
     // Usamos o Service Role para poder limpar os dados vinculados e a instância sem restrições de RLS/FK
-    const supabaseAdmin = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    )
+    const supabaseAdmin = getSupabaseAdmin()
 
     try {
         // 1. Busca a instância para ter certeza que ela existe e pegar o ID interno

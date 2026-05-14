@@ -1,7 +1,7 @@
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 import AdminPanel from './AdminPanel'
-import { supabaseAdmin } from '@/lib/supabase-admin'
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 export default async function AdminPage() {
     const supabase = await createSupabaseServerClient()
@@ -12,12 +12,13 @@ export default async function AdminPage() {
     if (!profile?.is_admin) redirect('/dashboard')
 
     try {
+        const adminSupabase = getSupabaseAdmin()
         const [usersRes, instancesRes, plansRes, announcementsRes, materialsRes] = await Promise.all([
-            supabaseAdmin.from('profiles').select('*, plans(name)').order('created_at', { ascending: false }),
-            supabaseAdmin.from('whatsapp_instances').select('id, status'),
-            supabaseAdmin.from('plans').select('*'),
-            supabaseAdmin.from('announcements').select('*').order('created_at', { ascending: false }),
-            supabaseAdmin.from('academy_materials').select('*').order('created_at', { ascending: false })
+            adminSupabase.from('profiles').select('*, plans(name)').order('created_at', { ascending: false }),
+            adminSupabase.from('whatsapp_instances').select('id, status'),
+            adminSupabase.from('plans').select('*'),
+            adminSupabase.from('announcements').select('*').order('created_at', { ascending: false }),
+            adminSupabase.from('academy_materials').select('*').order('created_at', { ascending: false })
         ])
 
         if (usersRes.error) throw usersRes.error

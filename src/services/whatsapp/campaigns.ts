@@ -1,12 +1,9 @@
-import { createClient } from '@supabase/supabase-js';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY || ''
-);
 
 export class CampaignService {
     static async getCatalogueSummary(userId: string, instanceId: string): Promise<string> {
+        const supabase = getSupabaseAdmin();
         const { data: campaigns } = await supabase
             .from('campaigns')
             .select('name, trigger_phrase')
@@ -20,6 +17,7 @@ export class CampaignService {
     }
 
     static async detect(userId: string, instanceId: string, textMessage: string): Promise<string | null> {
+        const supabase = getSupabaseAdmin();
         const { data: campaigns } = await supabase
             .from('campaigns')
             .select('*')
@@ -60,6 +58,7 @@ export class CampaignService {
         confidence_score: number, 
         reason: string 
     }> {
+        const supabase = getSupabaseAdmin();
         // 1. Tenta a detecção rápida por texto (Score 100 se bater exato)
         const fastId = await this.detect(userId, instanceId, textMessage);
         if (fastId) {

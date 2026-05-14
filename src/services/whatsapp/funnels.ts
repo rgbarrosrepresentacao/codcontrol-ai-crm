@@ -1,11 +1,7 @@
-import { createClient } from '@supabase/supabase-js';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { MessageService } from './messages';
 import { evolutionApi } from '@/lib/evolution';
 
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY || ''
-);
 
 export class FunnelService {
     /**
@@ -20,6 +16,7 @@ export class FunnelService {
         userId: string,
         useHandle: string = 'default'
     ): Promise<void> {
+        const supabase = getSupabaseAdmin();
         let currentNodeId: string | null = startNodeId;
         let handle = useHandle;
 
@@ -149,6 +146,7 @@ export class FunnelService {
      * Encontra o ID do próximo nó
      */
     static async getNextNodeId(funnelId: string, currentNodeId: string, handle: string = 'default'): Promise<string | null> {
+        const supabase = getSupabaseAdmin();
         const { data: edges } = await supabase
             .from('funnel_edges')
             .select('target_node_id, source_handle')
@@ -207,6 +205,7 @@ export class FunnelService {
      * Resumo comercial para a IA
      */
     static async getFunnelSummary(funnelId: string, contactId: string): Promise<string | null> {
+        const supabase = getSupabaseAdmin();
         try {
             const { data: logs } = await supabase
                 .from('funnel_execution_logs')

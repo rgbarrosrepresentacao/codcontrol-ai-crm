@@ -1,6 +1,6 @@
 export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin as adminSupabase } from '@/lib/supabase-admin'
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 
 // ─── Utilitários ─────────────────────────────────────────────────────────────
@@ -34,6 +34,8 @@ function pickVariant(variants: { text: string }[]): string {
 export async function GET(req: NextRequest) {
     const user = await requireAdmin()
     if (!user) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
+
+    const adminSupabase = getSupabaseAdmin()
 
     const { data: campaigns, error } = await adminSupabase
         .from('blast_campaigns')
@@ -77,6 +79,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Delay mínimo: 15s. Delay máximo deve ser maior que o mínimo.' }, { status: 400 })
     }
 
+    const adminSupabase = getSupabaseAdmin()
+
     const { data: campaign, error } = await adminSupabase
         .from('blast_campaigns')
         .insert({
@@ -110,6 +114,8 @@ export async function DELETE(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     const id = searchParams.get('id')
     if (!id) return NextResponse.json({ error: 'ID obrigatório' }, { status: 400 })
+
+    const adminSupabase = getSupabaseAdmin()
 
     // Só permite deletar drafts ou campanhas concluídas
     const { data: campaign } = await adminSupabase

@@ -1,25 +1,19 @@
 'use server'
 
-import { createClient } from '@supabase/supabase-js'
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { revalidatePath } from 'next/cache'
 import { kiwify } from '@/lib/kiwify'
 import { sendEmail, buildEmailTemplate, BulkEmailResult } from '@/lib/mail'
 
 export async function toggleUserStatusAction(userId: string, isActive: boolean) {
-    const adminSupabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
+    const adminSupabase = getSupabaseAdmin()
     const { error } = await adminSupabase.from('profiles').update({ is_active: !isActive }).eq('id', userId)
     if (error) throw new Error(error.message)
     return true
 }
 
 export async function deleteUserAction(userId: string) {
-    const adminSupabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
+    const adminSupabase = getSupabaseAdmin()
     
     // Tenta deletar do Auth (isolará do sistema de login)
     const { error: authError } = await adminSupabase.auth.admin.deleteUser(userId)
@@ -35,10 +29,7 @@ export async function deleteUserAction(userId: string) {
 
 
 export async function saveAnnouncementAction(title: string, content: string, type: string) {
-    const adminSupabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
+    const adminSupabase = getSupabaseAdmin()
     
     const { error } = await adminSupabase.from('announcements').insert({
         title,
@@ -53,10 +44,7 @@ export async function saveAnnouncementAction(title: string, content: string, typ
 }
 
 export async function deleteAnnouncementAction(id: string) {
-    const adminSupabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
+    const adminSupabase = getSupabaseAdmin()
     
     const { error } = await adminSupabase.from('announcements').delete().eq('id', id)
     if (error) throw new Error(error.message)
@@ -65,10 +53,7 @@ export async function deleteAnnouncementAction(id: string) {
 }
 
 export async function saveMaterialAction(title: string, type: string, link: string) {
-    const adminSupabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
+    const adminSupabase = getSupabaseAdmin()
     
     const { error } = await adminSupabase.from('academy_materials').insert({
         title,
@@ -83,10 +68,7 @@ export async function saveMaterialAction(title: string, type: string, link: stri
 }
 
 export async function deleteMaterialAction(id: string) {
-    const adminSupabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
+    const adminSupabase = getSupabaseAdmin()
     
     const { error } = await adminSupabase.from('academy_materials').delete().eq('id', id)
     if (error) throw new Error(error.message)
@@ -187,10 +169,7 @@ export async function sendMarketingEmailAction(
         }
 
         // 3. Cliente admin do Supabase (service role)
-        const adminSupabase = createClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL!,
-            process.env.SUPABASE_SERVICE_ROLE_KEY!
-        )
+        const adminSupabase = getSupabaseAdmin()
 
         // 4. Buscar usuários conforme público selecionado
         const { data: allUsers, error } = await adminSupabase

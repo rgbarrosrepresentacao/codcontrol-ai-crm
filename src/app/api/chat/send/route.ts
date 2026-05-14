@@ -1,15 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { evolutionApi } from '@/lib/evolution'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 
 export const dynamic = 'force-dynamic'
 
 export async function POST(req: NextRequest) {
-    const supabaseAdmin = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    )
+    const supabaseAdmin = getSupabaseAdmin()
     try {
         // Verifica autenticação
         const supabase = await createSupabaseServerClient()

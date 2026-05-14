@@ -1,6 +1,6 @@
 export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin as adminSupabase } from '@/lib/supabase-admin'
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 
 async function requireAdmin() {
@@ -35,6 +35,8 @@ export async function POST(req: NextRequest) {
 
     if (!campaign_id) return NextResponse.json({ error: 'campaign_id obrigatório' }, { status: 400 })
     if (!contacts || contacts.length === 0) return NextResponse.json({ error: 'Lista de contatos vazia' }, { status: 400 })
+
+    const adminSupabase = getSupabaseAdmin()
 
     // Verifica que a campanha pertence ao admin
     const supabase = await createSupabaseServerClient()
@@ -171,6 +173,8 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     const campaign_id = searchParams.get('campaign_id')
     if (!campaign_id) return NextResponse.json({ error: 'campaign_id obrigatório' }, { status: 400 })
+
+    const adminSupabase = getSupabaseAdmin()
 
     const { data: contacts, error } = await adminSupabase
         .from('blast_contacts')

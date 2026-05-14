@@ -1,6 +1,6 @@
 export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin as supabase } from '@/lib/supabase-admin'
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { evolutionApi } from '@/lib/evolution'
 
 export const maxDuration = 300
@@ -21,6 +21,8 @@ export async function GET(req: NextRequest) {
     }
 
     console.log('[BLAST_CRON] 🚀 Iniciando processamento da fila de disparo...')
+
+    const supabase = getSupabaseAdmin()
 
     try {
         // 1. Busca itens prontos para envio de campanhas ATIVAS

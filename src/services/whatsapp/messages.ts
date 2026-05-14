@@ -1,11 +1,6 @@
-import { createClient } from '@supabase/supabase-js';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { evolutionApi } from '@/lib/evolution';
 import { MetaProvider } from './MetaProvider';
-
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY || ''
-);
 
 export class MessageService {
     /**
@@ -22,6 +17,7 @@ export class MessageService {
         type: 'text' | 'audio' | 'image' | 'video' | 'document';
         ai_generated?: boolean;
     }) {
+        const supabase = getSupabaseAdmin();
         await supabase.from('messages').insert({
             ...data,
             status: data.from_me ? 'sent' : 'delivered'
@@ -48,6 +44,7 @@ export class MessageService {
      * Envia áudio (Base64 ou URL) via provedor correto
      */
     static async sendAudio(instanceId: string, remoteJid: string, audioData: string) {
+        const supabase = getSupabaseAdmin();
         const { data: instance, error } = await supabase
             .from('whatsapp_instances')
             .select('instance_name, provider_type, meta_config, meta_access_token_encrypted')
@@ -97,6 +94,7 @@ export class MessageService {
      * Envia mídia via provedor correto
      */
     static async sendMedia(instanceId: string, remoteJid: string, url: string, type: 'image' | 'video' | 'audio' | 'document', caption?: string) {
+        const supabase = getSupabaseAdmin();
         const { data: instance, error } = await supabase
             .from('whatsapp_instances')
             .select('instance_name, provider_type, meta_config, meta_access_token_encrypted')
@@ -144,6 +142,7 @@ export class MessageService {
      * C2 básico: Erro 131047 (janela 24h fechada) é identificado e registrado separadamente.
      */
     static async send(instanceId: string, remoteJid: string, text: string, contactId?: string) {
+        const supabase = getSupabaseAdmin();
         // Busca info da instância para saber o provedor
         const { data: instance, error } = await supabase
             .from('whatsapp_instances')
