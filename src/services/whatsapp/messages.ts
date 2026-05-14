@@ -37,6 +37,11 @@ export class MessageService {
             last_message: data.content,
             last_message_at: new Date().toISOString()
         }).eq('id', data.conversation_id);
+
+        // Se a mensagem for do contato, incrementa contador de não lidas
+        if (!data.from_me) {
+            await supabase.rpc('increment_unread_count', { conv_id: data.conversation_id });
+        }
     }
 
     /**

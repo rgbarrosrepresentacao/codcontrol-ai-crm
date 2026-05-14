@@ -162,21 +162,17 @@ function ChatContent() {
                 filter: `user_id=eq.${userId}`,
             }, async (payload) => {
                 const updatedId = payload.new.id as string
-                // Se é a conversa aberta, não precisamos atualizar unread (vai ser 0)
-                // Mas precisamos atualizar last_message e mover para o topo
                 const fresh = await fetchSingleConversation(updatedId)
                 if (!fresh) return
 
                 setConversations(prev => {
                     const without = prev.filter(c => c.id !== updatedId)
-                    // Se é a conversa selecionada, zera unread localmente
                     if (selectedRef.current?.id === updatedId) {
                         fresh.unread_count = 0
                     }
                     return [fresh, ...without]
                 })
 
-                // Atualiza selected se for ela
                 if (selectedRef.current?.id === updatedId) {
                     setSelected(prev => prev ? { ...prev, ...fresh, unread_count: 0 } : prev)
                 }
@@ -185,6 +181,39 @@ function ChatContent() {
 
         return () => { supabase.removeChannel(channel) }
     }, [userId, fetchSingleConversation])
+
+    // ── Realtime: contacts ────────────────────────────────────────────────
+
+    useEffect(() => {
+        if (!userId) return
+
+        const channel = supabase
+            .channel(`chat-contacts-${userId}`)
+            .on('postgres_changes', {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'contacts',
+                filter: `user_id=eq.${userId}`,
+            }, (payload) => {
+                const updatedContact = payload.new as Contact
+                
+                setConversations(prev => prev.map(conv => 
+                    conv.contact_id === updatedContact.id 
+                        ? { ...conv, contact: { ...conv.contact, ...updatedContact } }
+                        : conv
+                ))
+
+                if (selectedRef.current?.contact_id === updatedContact.id) {
+                    setSelected(prev => {
+                        if (!prev) return prev
+                        return { ...prev, contact: { ...prev.contact, ...updatedContact } }
+                    })
+                }
+            })
+            .subscribe()
+
+        return () => { supabase.removeChannel(channel) }
+    }, [userId])
 
     // ── Load messages ─────────────────────────────────────────────────────
 
