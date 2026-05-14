@@ -26,7 +26,7 @@ const supabase = createClient(
 function cleanTextForAudio(text: string): string {
     const urlRegex = /(https?:\/\/[^\s]+|www\.[^\s]+|[a-zA-Z0-9-]+\.(com|net|org|io|app|bond|shop|top|site|online|me)[^\s]*)/gi;
     let clean = text.replace(urlRegex, '');
-    
+
     // Normalização de Moeda para fala natural (ex: R$ 119,90 -> 119 reais e 90 centavos)
     clean = clean.replace(/R\$\s?(\d+),(\d{2})/g, (match, reais, centavos) => {
         const c = parseInt(centavos) > 0 ? ` e ${centavos} centavos` : '';
@@ -91,7 +91,7 @@ export async function processWebhook(body: any) {
         if (OPT_OUT_REGEX.test(rawText.trim())) {
             const phone = remoteJid.replace(/\D/g, '');
             const normalizedPhone = phone.startsWith('55') ? phone : '55' + phone;
-            
+
             await supabase
                 .from('blast_contacts')
                 .update({ opted_out: true, opted_out_at: new Date().toISOString() })
@@ -201,17 +201,17 @@ export async function processWebhook(body: any) {
         // 2. Orquestração de Intenção
         if (isMultiProductMode) {
             intentResult = await CampaignService.detectWithAI(profile.id, instance.id, textMessage, profile.openai_api_key, contact.origin);
-            
+
             // SE score >= 85: Troca e trava definitiva de produto
             if (intentResult && intentResult.confidence_score >= 85 && intentResult.campaign_id) {
                 const isDifferentCampaign = intentResult.campaign_id !== contact.active_campaign_id;
                 campaignId = intentResult.campaign_id;
-                
+
                 if (isDifferentCampaign) {
                     console.log(`[MAESTRO] 🔄 Troca de Contexto Confirmada: ${contact.active_campaign_id} -> ${intentResult.campaign_id} (${intentResult.confidence_score}%)`);
-                    await supabase.from('contacts').update({ 
-                        active_campaign_id: campaignId, 
-                        campaign_lock: true 
+                    await supabase.from('contacts').update({
+                        active_campaign_id: campaignId,
+                        campaign_lock: true
                     }).eq('id', contact.id);
                 }
 
@@ -224,7 +224,7 @@ export async function processWebhook(body: any) {
                     confidence_score: intentResult.confidence_score,
                     reason: intentResult.reason
                 });
-            } 
+            }
             // SE score >= 60: Carregamos o manual para esta resposta, mas NÃO travamos no banco (Ambíguo)
             else if (intentResult && intentResult.confidence_score >= 60 && intentResult.campaign_id) {
                 console.log(`[MAESTRO] ⚠️ Contexto temporário sugerido (${intentResult.confidence_score}%): ${intentResult.campaign_name}`);
@@ -270,7 +270,7 @@ export async function processWebhook(body: any) {
         // PROTEÇÃO: Nunca reinicia se o funil já foi finalizado
         if (!funnelIsLocked && intentResult && intentResult.confidence_score >= 90 && (funnelStatus !== 'EM_ANDAMENTO' || intentResult.confidence_score >= 98)) {
             console.log(`[WEBHOOK] 🎯 Campanha detectada: "${intentResult.campaign_id}". Tentando iniciar funil correspondente.`);
-            
+
             // Busca a campanha para pegar o nome
             const { data: campaign } = await supabase
                 .from('campaigns')
@@ -311,7 +311,7 @@ export async function processWebhook(body: any) {
 
                     if (startNode) {
                         console.log(`[WEBHOOK] 🔥 Disparando Funil: ${targetFunnel.name} (${targetFunnel.id})`);
-                        await supabase.from('contacts').update({ 
+                        await supabase.from('contacts').update({
                             is_funnel_active: true,
                             funnel_status: 'EM_ANDAMENTO',
                             current_funnel_id: targetFunnel.id
@@ -320,7 +320,7 @@ export async function processWebhook(body: any) {
                         // Inicia o funil em segundo plano para não travar o webhook
                         FunnelService.execute(targetFunnel.id, startNode.id, instance.id, remoteJid, contact.id, profile.id)
                             .catch(err => console.error('[WEBHOOK] Error executing funnel:', err));
-                        
+
                         funnelJustStarted = true;
                     }
                 }
@@ -330,7 +330,7 @@ export async function processWebhook(body: any) {
         // 2. Fluxo de Retomada (Lead Respondeu uma Pergunta)
         if (funnelStatus === 'PAUSADO' && !funnelJustStarted) {
             console.log(`[WEBHOOK] 🔄 Retomando funil para ${phone}. Nó pausado: ${contact.funnel_current_node_id}`);
-            
+
             const currentNodeId = contact.funnel_current_node_id;
             if (currentNodeId && contact.current_funnel_id) {
                 const { data: pausedNode } = await supabase
@@ -343,9 +343,9 @@ export async function processWebhook(body: any) {
                     // ANTES: passava textMessage bruto como handle (nunca batia com 'yes'/'no')
                     // AGORA: usa IA para converter a resposta do usuário em 'yes', 'no' ou 'unclear'
                     console.log(`[WEBHOOK] 🤖 Nó CONDITION pausado. Avaliando resposta com IA...`);
-                    
+
                     let handle = 'default';
-                    
+
                     if (profile.openai_api_key) {
                         const conditionLabel = pausedNode.node_data?.condition_label || 'O cliente demonstrou interesse?';
                         const evaluation = await AIService.evaluateCondition(
@@ -382,7 +382,7 @@ export async function processWebhook(body: any) {
                         } else {
                             // Resposta ambígua — verifica quantas vezes consecutivas isso aconteceu
                             console.log(`[WEBHOOK] ⚠️ Resposta ambígua (${evaluation.decision} / ${evaluation.confidence}%). Deixando IA responder.`);
-                            
+
                             // CORREÇÃO BUG #2: Conta tentativas ambíguas consecutivas no log
                             const { count: ambiguousCount } = await supabase
                                 .from('funnel_execution_logs')
@@ -417,7 +417,7 @@ export async function processWebhook(body: any) {
                     // Nó era 'text' com wait_for_reply=true — usuário respondeu, avançamos para o PRÓXIMO nó
                     const nextNodeId = await FunnelService.getNextNodeId(contact.current_funnel_id, currentNodeId);
                     console.log(`[WEBHOOK] ▶️ Avançando do nó "${pausedNode?.node_type}" para: ${nextNodeId || 'FIM'}`);
-                    
+
                     if (nextNodeId) {
                         // Grava log de avanço simples
                         try {
@@ -467,13 +467,13 @@ export async function processWebhook(body: any) {
         // PROTEÇÃO: Nunca inicia se o funil já foi finalizado
         if (!funnelIsLocked && !isFunnelActive && (funnelStatus === 'INATIVO') && !funnelJustStarted) {
             const { data: defFunnel } = await supabase.from('funnels').select('*').eq('user_id', profile.id).eq('is_default', true).eq('is_active', true).maybeSingle();
-            
+
             if (defFunnel) {
                 const { data: startNode } = await supabase.from('funnel_steps').select('id').eq('funnel_id', defFunnel.id).eq('node_type', 'start').maybeSingle();
-                
+
                 if (startNode) {
                     console.log(`[WEBHOOK] 🚀 Iniciando Funil Default para novo contato: ${phone}`);
-                    await supabase.from('contacts').update({ 
+                    await supabase.from('contacts').update({
                         is_funnel_active: true,
                         funnel_status: 'EM_ANDAMENTO',
                         current_funnel_id: defFunnel.id
@@ -481,7 +481,7 @@ export async function processWebhook(body: any) {
 
                     FunnelService.execute(defFunnel.id, startNode.id, instance.id, remoteJid, contact.id, profile.id)
                         .catch(err => console.error('[WEBHOOK] Error starting default funnel:', err));
-                    
+
                     funnelJustStarted = true;
                 }
             }
@@ -500,7 +500,7 @@ export async function processWebhook(body: any) {
         // ── PASSO 10.0: Mecanismo de Debounce (Espera Humanizada) ────────
         // Evita respostas múltiplas para mensagens picadas
         const waitTime = 12000; // 12 segundos
-        console.log(`[DEBOUNCE] ⏳ Aguardando ${waitTime/1000}s para ver se ${phone} termina de digitar...`);
+        console.log(`[DEBOUNCE] ⏳ Aguardando ${waitTime / 1000}s para ver se ${phone} termina de digitar...`);
         await new Promise(r => setTimeout(r, waitTime));
 
         // Re-consulta e "tranca" o processamento para evitar duplicidade
@@ -533,8 +533,6 @@ export async function processWebhook(body: any) {
         let customLeadContext = dateTimeContext;
         if (intentResult && intentResult.confidence_score >= 60 && intentResult.confidence_score < 85) {
             customLeadContext += `\nIMPORTANTE: O cliente parece interessado no produto "${intentResult.campaign_name}", mas não temos certeza total (Score: ${intentResult.confidence_score}%). 
-
-export const dynamic = 'force-dynamic'
             Em vez de assumir que ele quer comprar, faça uma pergunta educada confirmando se ele gostaria de saber mais sobre o "${intentResult.campaign_name}".`;
         }
 
@@ -545,12 +543,12 @@ export const dynamic = 'force-dynamic'
         }
 
         let reply = await AIService.generateResponse(
-            formattedHistory, 
-            aiConfig, 
-            profile.openai_api_key, 
-            knowledgeContext, 
-            customLeadContext, 
-            campaignPrompt, 
+            formattedHistory,
+            aiConfig,
+            profile.openai_api_key,
+            knowledgeContext,
+            customLeadContext,
+            campaignPrompt,
             funnelSummary,
             catalogueContext,
             contact.lead_intelligence // Injeta a Memória Estratégica
@@ -563,7 +561,7 @@ export const dynamic = 'force-dynamic'
 
         // ── PASSO 11: Envio Humanizado (Fase 4 - Fragmentação) ──────────
         const canSendAudio = !!(aiConfig.audio_enabled && wantsAudio);
-        
+
         if (canSendAudio) {
             // No áudio, enviamos o bloco inteiro para gerar um único arquivo de voz
             try {
@@ -582,17 +580,17 @@ export const dynamic = 'force-dynamic'
                 }
                 const audioB64 = await generateSpeech(cleanTextForAudio(reply), aiConfig.voice_id || 'nova', profile.openai_api_key);
                 await MessageService.sendAudio(instance.id, remoteJid, audioB64);
-                
-                await supabase.from('messages').insert({ 
-                    user_id: profile.id, 
-                    conversation_id: conversationId, 
-                    instance_id: instance.id, 
-                    contact_id: contact.id, 
-                    from_me: true, 
-                    content: reply, 
-                    type: 'audio', 
-                    status: 'sent', 
-                    ai_generated: true 
+
+                await supabase.from('messages').insert({
+                    user_id: profile.id,
+                    conversation_id: conversationId,
+                    instance_id: instance.id,
+                    contact_id: contact.id,
+                    from_me: true,
+                    content: reply,
+                    type: 'audio',
+                    status: 'sent',
+                    ai_generated: true
                 });
             } catch (err) {
                 console.error('[WEBHOOK] Audio error, fallback to text:', err);
@@ -602,29 +600,29 @@ export const dynamic = 'force-dynamic'
         } else {
             // No texto, fragmentamos para parecer humano
             const messageBlocks = reply.split('\n\n').filter(block => block.trim().length > 0);
-            
+
             for (const [index, block] of messageBlocks.entries()) {
                 const chunkTypingTime = Math.min(Math.max(block.length * 40, 1500), 6000);
-                
+
                 if (!isMetaProvider) {
                     // C1: Evolution usa presence 'composing'. Meta usa delay puro humanizado.
                     await evolutionApi.sendPresence(instanceName, remoteJid, 'composing');
                 }
                 await new Promise(r => setTimeout(r, chunkTypingTime));
-                
+
                 await MessageService.send(instance.id, remoteJid, block.trim());
-                
+
                 // Salva cada fragmento no banco
-                await supabase.from('messages').insert({ 
-                    user_id: profile.id, 
-                    conversation_id: conversationId, 
-                    instance_id: instance.id, 
-                    contact_id: contact.id, 
-                    from_me: true, 
-                    content: block.trim(), 
-                    type: 'text', 
-                    status: 'sent', 
-                    ai_generated: true 
+                await supabase.from('messages').insert({
+                    user_id: profile.id,
+                    conversation_id: conversationId,
+                    instance_id: instance.id,
+                    contact_id: contact.id,
+                    from_me: true,
+                    content: block.trim(),
+                    type: 'text',
+                    status: 'sent',
+                    ai_generated: true
                 });
 
                 // Pequeno intervalo entre mensagens se houver mais de uma
@@ -638,7 +636,7 @@ export const dynamic = 'force-dynamic'
         if (mediaItem) {
             await KnowledgeService.sendMedia(instance.id, remoteJid, mediaItem, profile.id, conversationId, contact.id);
         }
-        
+
         const newTag = await AIService.classifyContact(formattedHistory, profile.openai_api_key);
         if (newTag) {
             await supabase.from('contacts').update({ ai_tag: newTag }).eq('id', contact.id);
@@ -664,7 +662,7 @@ export const dynamic = 'force-dynamic'
                 const orderData = await AIService.extractOrderData([...formattedHistory, { role: 'assistant', content: reply }], profile.openai_api_key);
                 if (orderData) {
                     await NotificationService.sendSaleNotification(instanceName, orderData, phone, profile.notification_whatsapp);
-                    
+
                     const closingMsg = await AIService.generateClosingMessage(formattedHistory, aiConfig, profile.openai_api_key);
                     await MessageService.send(instance.id, remoteJid, closingMsg);
                 }
