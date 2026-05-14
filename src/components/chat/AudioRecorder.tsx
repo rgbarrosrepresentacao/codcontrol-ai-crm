@@ -24,11 +24,9 @@ export default function AudioRecorder({ onSend, onCancel }: Props) {
     const startRecording = async () => {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-            const mimeType = MediaRecorder.isTypeSupported('audio/mp4') 
-                ? 'audio/mp4' 
-                : MediaRecorder.isTypeSupported('audio/ogg; codecs=opus')
-                    ? 'audio/ogg; codecs=opus'
-                    : 'audio/webm'
+            const mimeType = MediaRecorder.isTypeSupported('audio/ogg; codecs=opus') 
+                ? 'audio/ogg; codecs=opus' 
+                : 'audio/webm'
 
             const recorder = new MediaRecorder(stream, { mimeType })
             
