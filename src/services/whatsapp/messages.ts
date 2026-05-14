@@ -83,7 +83,7 @@ export class MessageService {
                 }
 
                 const provider = new MetaProvider(instance.meta_config as any, instance.meta_access_token_encrypted || '');
-                await provider.sendMedia(remoteJid, audioUrl, 'audio');
+                await provider.sendMedia(remoteJid, { link: audioUrl }, 'audio');
             } catch (err) {
                 console.error('[MessageService.sendAudio] Erro ao processar áudio para Meta:', err);
             }
