@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic'
 /**
  * API: Testar credenciais da Meta API (Plano Pro, Agência e Admin)
  * POST /api/whatsapp/meta/test

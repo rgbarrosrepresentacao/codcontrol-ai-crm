@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic'
 /**
  * Webhook da API Oficial da Meta — WhatsApp API Oficial (Admin Only)
  *

@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic'
 /**
  * API: Salvar configurações da Meta API Oficial (Plano Pro, Agência e Admin)
  * POST /api/whatsapp/meta/config
