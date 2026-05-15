@@ -189,6 +189,11 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ received: true, info: 'Pending payment - ignored' })
         }
 
+        if (eventType === 'abandoned') {
+            console.log(`[KIWIFY_WEBHOOK] ℹ️ Abandoned checkout ignored for: ${email}`)
+            return NextResponse.json({ received: true, info: 'Abandoned checkout - ignored' })
+        }
+
         // ─── PROCESSAMENTO NO DB ───────────────────────────────────────────────
         const { data: existingUser } = await supabase
             .from('profiles').select('id').eq('email', email).single()
