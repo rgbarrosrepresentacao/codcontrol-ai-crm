@@ -6,7 +6,7 @@ import { cookies } from 'next/headers'
 export const dynamic = 'force-dynamic'
 
 async function getAuthUser(req: NextRequest) {
-    const cookieStore = cookies()
+    const cookieStore = await cookies()
     const supabase = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -25,14 +25,13 @@ export async function GET(req: NextRequest) {
 
         const { data: profile } = await supabase
             .from('profiles')
-            .select('is_admin, plan_slug')
+            .select('is_admin, plans:plan_id(slug)')
             .eq('id', user.id)
             .single()
 
-        const isAllowed = profile?.is_admin || ['pro', 'agencia'].includes(profile?.plan_slug || '')
+        const profileData = profile as any
+        const isAllowed = profileData?.is_admin || ['pro', 'agencia'].includes(profileData?.plans?.slug || '')
         if (!isAllowed) return NextResponse.json({ error: 'Plan upgrade required' }, { status: 403 })
-
-        const now = new Date().toISOString()
 
         // Buscar conversas ativas com status da janela de 24h
         const { data: conversations, error } = await supabase
@@ -42,12 +41,10 @@ export async function GET(req: NextRequest) {
                 contact_id,
                 last_message_at,
                 status,
-                funnel_stage,
                 contacts (
                     id,
                     name,
-                    phone,
-                    product_name
+                    phone
                 )
             `)
             .eq('user_id', user.id)
@@ -70,7 +67,6 @@ export async function GET(req: NextRequest) {
                 contact: conv.contacts,
                 last_message_at: conv.last_message_at,
                 status: conv.status,
-                funnel_stage: conv.funnel_stage,
                 window_open: windowOpen,
                 window_expires_in_minutes: windowOpen ? minutesLeft : 0,
                 hours_since_last_message: Math.round(diffHours * 10) / 10
