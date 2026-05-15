@@ -22,14 +22,17 @@ export default async function CentralMetaLayout({ children }: { children: React.
 
     const { data: profile } = await supabase
         .from('profiles')
-        .select('is_admin, plan_slug')
+        .select('is_admin, plans:plan_id(slug)')
         .eq('id', user.id)
         .single()
 
-    const allowed = canUseMetaAPI({ is_admin: profile?.is_admin ?? false, plan_slug: profile?.plan_slug })
+    const profileData = profile as any
+    const allowed = canUseMetaAPI({ 
+        is_admin: profileData?.is_admin ?? false, 
+        plan_slug: profileData?.plans?.slug 
+    })
 
     if (!allowed) {
-        // Redireciona para planos com mensagem de upgrade
         redirect('/dashboard/planos?upgrade=central-meta')
     }
 
