@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
 
         const { data: profile } = await supabase
             .from('profiles')
-            .select('is_admin, plans:plan_id(slug)')
+            .select('is_admin, plans(slug)')
             .eq('id', user.id)
             .single()
 
