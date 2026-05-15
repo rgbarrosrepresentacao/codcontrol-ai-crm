@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
         if (!isAllowed) return NextResponse.json({ error: 'Plan upgrade required' }, { status: 403 })
 
         // 2. Dados do Body
-        const { conversationId, phone, templateName } = await req.json()
+        const { conversationId, phone, templateName, variables } = await req.json()
         if (!phone || !templateName) {
             return NextResponse.json({ error: 'Telefone e nome do template são obrigatórios' }, { status: 400 })
         }
@@ -58,15 +58,44 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Template não encontrado no banco local' }, { status: 404 })
         }
 
-        // Trava de variáveis (Fase 2)
-        const componentsStr = JSON.stringify(template.components || [])
-        if (componentsStr.includes('{{1}}') || componentsStr.includes('{{2}}')) {
+        // ── VALIDAÇÃO RÍGIDA DE VARIÁVEIS (Fase 3) ──
+        const bodyComponent = template.components?.find((c: any) => c.type === 'BODY')
+        const bodyText = bodyComponent?.text || ''
+        const matches = bodyText.match(/\{\{(\d+)\}\}/g) || []
+        const requiredCount = matches.length
+
+        // Sanitização e validação dos valores recebidos
+        const sanitizedVariables = (variables || []).map((v: string) => {
+            const val = String(v || '').trim()
+            return val.slice(0, 1024) // Limite de segurança da Meta para parâmetros de texto
+        })
+
+        if (sanitizedVariables.length < requiredCount) {
             return NextResponse.json({ 
-                error: 'Este template possui variáveis obrigatórias. O envio com variáveis será liberado na próxima fase.' 
+                error: `Preencha todas as variáveis obrigatórias antes de enviar o template. (Esperado: ${requiredCount}, Recebido: ${sanitizedVariables.length})` 
             }, { status: 400 })
         }
 
-        // 4. Buscar a instância Meta configurada
+        // Bloquear campos vazios se houver variáveis exigidas
+        if (requiredCount > 0 && sanitizedVariables.some((v: string) => !v)) {
+            return NextResponse.json({ 
+                error: 'Não é permitido enviar variáveis com valores vazios.' 
+            }, { status: 400 })
+        }
+
+        // 4. Montar Componentes para a Meta
+        const components: any[] = []
+        if (requiredCount > 0) {
+            components.push({
+                type: 'body',
+                parameters: sanitizedVariables.map((v: string) => ({
+                    type: 'text',
+                    text: v
+                }))
+            })
+        }
+
+        // 5. Buscar a instância Meta configurada
         const { data: instance } = await supabase
             .from('whatsapp_instances')
             .select('*')
@@ -78,11 +107,16 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Meta API não configurada corretamente' }, { status: 400 })
         }
 
-        // 5. Disparar via MetaProvider
+        // 6. Disparar via MetaProvider
         const provider = new MetaProvider(instance.meta_config as any, instance.meta_access_token_encrypted)
-        const result = await provider.sendTemplate(phone, templateName, template.language || 'pt_BR')
+        const result = await provider.sendTemplate(
+            phone, 
+            templateName, 
+            template.language || 'pt_BR',
+            components
+        )
 
-        // 6. Salvar Log
+        // 7. Salvar Log
         const cost = CATEGORY_COSTS[template.category?.toLowerCase()] || 0.09
         
         await supabase.from('meta_message_logs').insert({
