@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabase'
 import {
     Bot, LayoutDashboard, Smartphone, Brain, Users,
     Settings, LogOut, ChevronRight, Shield, X, Menu, CreditCard, MessageCircle, MessageSquare,
-    Filter, Truck, PlayCircle, BookOpen, Megaphone, Phone, Rocket, MessageCircleCode
+    Filter, Truck, PlayCircle, BookOpen, Megaphone, Phone, Rocket, MessageCircleCode, Building2
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { canUseMetaAPI } from '@/lib/plan-features'
@@ -167,10 +167,31 @@ export function Sidebar({ isAdmin, userName, userEmail, planName, planSlug, tria
                     </>
                 )}
 
-                {/* WhatsApp API Oficial — visível para Pro, Agência e Admin */}
+                {/* WhatsApp API Oficial + Central Meta — visível para Pro, Agência e Admin */}
                 {canUseMetaAPI({ is_admin: isAdmin ?? false, plan_slug: planSlug }) && (
-                    <div className="mt-3 pt-3 border-t border-sidebar-border">
+                    <div className="mt-3 pt-3 border-t border-sidebar-border space-y-1">
                         <div className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-2 px-2">Premium</div>
+
+                        {/* Central Meta — NOVO */}
+                        <Link
+                            href="/dashboard/central-meta"
+                            onClick={() => setMobileOpen(false)}
+                            className={cn(
+                                'sidebar-link flex items-center gap-3 px-3 py-2.5 text-sm font-bold transition-all bg-purple-500/5 border border-purple-500/10 rounded-xl',
+                                pathname.startsWith('/dashboard/central-meta') ? 'active text-purple-400 bg-purple-500/10 border-purple-500/30' : 'text-muted-foreground hover:text-purple-400 hover:bg-purple-500/5'
+                            )}
+                        >
+                            <div className="w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center border border-purple-500/30">
+                                <Building2 className="w-4 h-4 text-purple-400" />
+                            </div>
+                            <div className="flex flex-col">
+                                <span>Central Meta</span>
+                                <span className="text-[10px] text-purple-400/70 font-medium">Controle Operacional</span>
+                            </div>
+                            <span className="text-[9px] bg-purple-500/20 text-purple-400 px-1 py-0.5 rounded border border-purple-500/30 font-black ml-auto">NOVO</span>
+                        </Link>
+
+                        {/* WhatsApp API Oficial — Configuração */}
                         <Link
                             href="/dashboard/admin/meta-api"
                             onClick={() => setMobileOpen(false)}

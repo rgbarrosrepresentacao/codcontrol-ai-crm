@@ -1,0 +1,94 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { createClient } from '@supabase/supabase-js'
+import { cookies } from 'next/headers'
+
+export const dynamic = 'force-dynamic'
+
+async function getAuthUser(req: NextRequest) {
+    const cookieStore = cookies()
+    const supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        { global: { headers: { Cookie: cookieStore.toString() } } }
+    )
+    const { data: { user } } = await supabase.auth.getUser()
+    return user
+}
+
+/** GET /api/meta/conversations — Lista conversas com estado da janela 24h */
+export async function GET(req: NextRequest) {
+    const supabase = getSupabaseAdmin()
+    try {
+        const user = await getAuthUser(req)
+        if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('is_admin, plan_slug')
+            .eq('id', user.id)
+            .single()
+
+        const isAllowed = profile?.is_admin || ['pro', 'agencia'].includes(profile?.plan_slug || '')
+        if (!isAllowed) return NextResponse.json({ error: 'Plan upgrade required' }, { status: 403 })
+
+        const now = new Date().toISOString()
+
+        // Buscar conversas ativas com status da janela de 24h
+        const { data: conversations, error } = await supabase
+            .from('conversations')
+            .select(`
+                id,
+                contact_id,
+                last_message_at,
+                status,
+                funnel_stage,
+                contacts (
+                    id,
+                    name,
+                    phone,
+                    product_name
+                )
+            `)
+            .eq('user_id', user.id)
+            .order('last_message_at', { ascending: false })
+            .limit(100)
+
+        if (error) throw error
+
+        // Calcular estado da janela de 24h para cada conversa
+        const enriched = (conversations || []).map((conv: any) => {
+            const lastMsg = conv.last_message_at ? new Date(conv.last_message_at) : null
+            const now = new Date()
+            const diffMs = lastMsg ? now.getTime() - lastMsg.getTime() : Infinity
+            const diffHours = diffMs / (1000 * 60 * 60)
+            const windowOpen = diffHours < 24
+            const minutesLeft = Math.max(0, Math.round((24 * 60) - (diffMs / (1000 * 60))))
+
+            return {
+                id: conv.id,
+                contact: conv.contacts,
+                last_message_at: conv.last_message_at,
+                status: conv.status,
+                funnel_stage: conv.funnel_stage,
+                window_open: windowOpen,
+                window_expires_in_minutes: windowOpen ? minutesLeft : 0,
+                hours_since_last_message: Math.round(diffHours * 10) / 10
+            }
+        })
+
+        const open = enriched.filter(c => c.window_open)
+        const closed = enriched.filter(c => !c.window_open)
+
+        return NextResponse.json({
+            total: enriched.length,
+            open: open.length,
+            closed: closed.length,
+            conversations: enriched
+        })
+
+    } catch (err: any) {
+        console.error('[META_CONVERSATIONS] Error:', err)
+        return NextResponse.json({ error: err.message }, { status: 500 })
+    }
+}
