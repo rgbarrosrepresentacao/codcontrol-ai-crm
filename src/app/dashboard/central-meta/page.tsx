@@ -18,8 +18,10 @@ export default function CentralMetaPage() {
     const [activeTab, setActiveTab] = useState('visao-geral')
     const [templates, setTemplates] = useState<any[]>([])
     const [conversations, setConversations] = useState<any>(null)
+    const [logs, setLogs] = useState<any[]>([])
     const [loadingTemplates, setLoadingTemplates] = useState(false)
     const [loadingConversations, setLoadingConversations] = useState(false)
+    const [loadingLogs, setLoadingLogs] = useState(false)
     const [syncing, setSyncing] = useState(false)
     const [lastSync, setLastSync] = useState<string | null>(null)
 
@@ -49,6 +51,19 @@ export default function CentralMetaPage() {
         }
     }, [])
 
+    const fetchLogs = useCallback(async () => {
+        setLoadingLogs(true)
+        try {
+            const res = await fetch('/api/meta/logs')
+            const data = await res.json()
+            if (data.logs) setLogs(data.logs)
+        } catch (e) {
+            console.error(e)
+        } finally {
+            setLoadingLogs(false)
+        }
+    }, [])
+
     const syncTemplates = async () => {
         setSyncing(true)
         try {
@@ -68,7 +83,8 @@ export default function CentralMetaPage() {
     useEffect(() => {
         fetchTemplates()
         fetchConversations()
-    }, [fetchTemplates, fetchConversations])
+        fetchLogs()
+    }, [fetchTemplates, fetchConversations, fetchLogs])
 
     const approved = templates.filter(t => t.status === 'APPROVED')
     const pending = templates.filter(t => t.status === 'PENDING')
@@ -135,7 +151,7 @@ export default function CentralMetaPage() {
             {activeTab === 'visao-geral' && <TabVisaoGeral stats={stats} templates={templates} conversations={conversations} />}
             {activeTab === 'templates' && <TabTemplates templates={templates} loading={loadingTemplates} onSync={syncTemplates} syncing={syncing} />}
             {activeTab === 'janela-24h' && <TabJanela24h data={conversations} loading={loadingConversations} approvedTemplates={approved} />}
-            {activeTab === 'custos' && <TabCustos conversations={conversations} templates={templates} />}
+            {activeTab === 'custos' && <TabCustos conversations={conversations} templates={templates} logs={logs} loading={loadingLogs} />}
         </div>
     )
 }

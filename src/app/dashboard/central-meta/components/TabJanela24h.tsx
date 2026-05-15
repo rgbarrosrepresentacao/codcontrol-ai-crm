@@ -2,6 +2,7 @@
 import { Clock, CheckCircle2, Loader2, AlertTriangle, Send } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
+import { toast } from 'sonner'
 
 function formatTimeLeft(minutes: number): string {
     if (minutes <= 0) return 'Expirada'
@@ -32,14 +33,35 @@ export function TabJanela24h({ data, loading, approvedTemplates }: any) {
         : conversations.filter((c: any) => !c.window_open)
 
     const handleReopen = async (convId: string, contactPhone: string) => {
-        if (!selectedTemplate) return
+        if (!selectedTemplate) {
+            toast.error('Selecione um template primeiro')
+            return
+        }
+
+        // Validação básica de variáveis no front (trava Fase 2)
+        const templateObj = approvedTemplates.find((t: any) => t.name === selectedTemplate)
+        const componentsStr = JSON.stringify(templateObj?.components || [])
+        if (componentsStr.includes('{{1}}') || componentsStr.includes('{{2}}')) {
+            toast.error('Este template possui variáveis obrigatórias. O envio com variáveis será liberado na próxima fase.')
+            return
+        }
+
         setSending(convId)
         try {
-            await fetch('/api/meta/send-template', {
+            const res = await fetch('/api/meta/send-template', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ conversationId: convId, phone: contactPhone, templateName: selectedTemplate })
             })
+            const result = await res.json()
+            
+            if (!res.ok) {
+                toast.error(result.error || 'Erro ao enviar template')
+            } else {
+                toast.success(`Template "${selectedTemplate}" enviado com sucesso!`)
+            }
+        } catch (err) {
+            toast.error('Erro de conexão ao enviar template')
         } finally {
             setSending(null)
         }

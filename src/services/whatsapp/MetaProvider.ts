@@ -176,4 +176,49 @@ export class MetaProvider {
             return { valid: false, error: msg }
         }
     }
+
+    /**
+     * Envia um template oficial da Meta.
+     */
+    async sendTemplate(to: string, templateName: string, languageCode: string = 'pt_BR', components: any[] = []): Promise<MetaSendResult> {
+        try {
+            const url = `${GRAPH_API_BASE}/${this.phoneNumberId}/messages`
+            const body = {
+                messaging_product: 'whatsapp',
+                recipient_type: 'individual',
+                to: to.replace(/\D/g, ''),
+                type: 'template',
+                template: {
+                    name: templateName,
+                    language: { code: languageCode },
+                    components: components
+                }
+            }
+
+            console.log(`[MetaProvider] Sending template "${templateName}" to ${body.to}...`)
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${this.accessToken}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(body),
+            })
+
+            const data = await response.json()
+            console.log(`[MetaProvider] Response for template "${templateName}":`, JSON.stringify(data))
+
+            if (!response.ok) {
+                const errorMsg = data?.error?.message || 'Erro ao enviar template da Meta'
+                return { success: false, error: errorMsg }
+            }
+
+            return { success: true, message_id: data?.messages?.[0]?.id }
+        } catch (error) {
+            const msg = error instanceof Error ? error.message : 'Erro interno'
+            console.error(`[MetaProvider] Exceção no envio de template:`, msg)
+            return { success: false, error: msg }
+        }
+    }
 }

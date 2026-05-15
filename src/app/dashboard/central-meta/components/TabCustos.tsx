@@ -11,22 +11,32 @@ const COST_TABLE = {
 }
 const USD_TO_BRL = 5.0
 
-export function TabCustos({ conversations, templates }: any) {
+export function TabCustos({ conversations, templates, logs, loading }: any) {
     const convList: any[] = conversations?.conversations || []
+    const logList: any[] = logs || []
 
-    // Calcular estimativas por categoria
+    // Filtrar logs de hoje para métricas rápidas
+    const today = new Date().toISOString().split('T')[0]
+    const logsToday = logList.filter(l => l.created_at.startsWith(today))
+    
+    // Calcular custos totais dos logs
+    const totalBRL = logList.reduce((acc, log) => acc + (Number(log.cost_estimated) || 0), 0)
+    const totalUSD = totalBRL / USD_TO_BRL
+
+    // Calcular por categoria baseando-se nos logs
     const byCategory = {
-        marketing: convList.filter(c => c.pricing_category === 'marketing').length,
-        utility: convList.filter(c => c.pricing_category === 'utility').length,
-        authentication: convList.filter(c => c.pricing_category === 'authentication').length,
-        service: convList.filter(c => c.pricing_category === 'service' || !c.pricing_category).length,
+        marketing: logList.filter(l => l.category?.toLowerCase() === 'marketing').length,
+        utility: logList.filter(l => l.category?.toLowerCase() === 'utility').length,
+        authentication: logList.filter(l => l.category?.toLowerCase() === 'authentication').length,
+        service: 0, // Meta logs via API Oficial geralmente são Marketing/Utility/Auth
     }
 
-    const totalUSD = Object.entries(byCategory).reduce((acc, [cat, count]) => {
-        return acc + (count * (COST_TABLE[cat as keyof typeof COST_TABLE] || 0))
-    }, 0)
-
-    const totalBRL = totalUSD * USD_TO_BRL
+    const costsByCategory = {
+        marketing: logList.filter(l => l.category?.toLowerCase() === 'marketing').reduce((acc, l) => acc + Number(l.cost_estimated), 0),
+        utility: logList.filter(l => l.category?.toLowerCase() === 'utility').reduce((acc, l) => acc + Number(l.cost_estimated), 0),
+        authentication: logList.filter(l => l.category?.toLowerCase() === 'authentication').reduce((acc, l) => acc + Number(l.cost_estimated), 0),
+        service: 0
+    }
 
     // Volume de templates
     const templatesSent = templates.filter((t: any) => t.status === 'APPROVED').length
@@ -34,17 +44,16 @@ export function TabCustos({ conversations, templates }: any) {
     const conversasFechadas = conversations?.closed ?? 0
 
     const metrics = [
-        { label: 'Conversas Iniciadas', value: convList.length, color: 'blue' },
-        { label: 'Conversas Abertas', value: conversasAbertas, color: 'emerald' },
-        { label: 'Conversas Fora da Janela', value: conversasFechadas, color: 'amber' },
-        { label: 'Templates Aprovados', value: templatesSent, color: 'purple' },
+        { label: 'Disparos Hoje', value: logsToday.length, color: 'blue' },
+        { label: 'Templates Enviados (Mês)', value: logList.length, color: 'purple' },
+        { label: 'Falhas de Envio', value: logList.filter(l => l.status === 'failed').length, color: 'red' },
+        { label: 'Templates Aprovados', value: templates.filter((t: any) => t.status === 'APPROVED').length, color: 'emerald' },
     ]
 
     const distribution = [
-        { label: 'Marketing', count: byCategory.marketing, cost: byCategory.marketing * COST_TABLE.marketing * USD_TO_BRL, color: 'purple', pct: COST_TABLE.marketing },
-        { label: 'Utilidade', count: byCategory.utility, cost: byCategory.utility * COST_TABLE.utility * USD_TO_BRL, color: 'blue', pct: COST_TABLE.utility },
-        { label: 'Autenticação', count: byCategory.authentication, cost: byCategory.authentication * COST_TABLE.authentication * USD_TO_BRL, color: 'orange', pct: COST_TABLE.authentication },
-        { label: 'Serviço', count: byCategory.service, cost: byCategory.service * COST_TABLE.service * USD_TO_BRL, color: 'gray', pct: COST_TABLE.service },
+        { label: 'Marketing', count: byCategory.marketing, cost: costsByCategory.marketing, color: 'purple', rate: 0.27 },
+        { label: 'Utilidade', count: byCategory.utility, cost: costsByCategory.utility, color: 'blue', rate: 0.09 },
+        { label: 'Autenticação', count: byCategory.authentication, cost: costsByCategory.authentication, color: 'orange', rate: 0.09 },
     ]
 
     return (
@@ -53,9 +62,9 @@ export function TabCustos({ conversations, templates }: any) {
             <div className="flex items-start gap-3 p-4 bg-blue-500/10 border border-blue-500/20 rounded-2xl">
                 <Info className="w-4 h-4 text-blue-400 flex-shrink-0 mt-0.5" />
                 <p className="text-sm text-blue-300">
-                    <strong>Custo estimado</strong> — Os valores são aproximações baseadas nas taxas públicas da Meta para o Brasil.
-                    Para valores exatos, consulte o <a href="https://business.facebook.com/billing" target="_blank" rel="noreferrer" className="underline hover:text-blue-200">Gerenciador de Negócios da Meta</a>.
-                    Taxa de câmbio utilizada: R$ {USD_TO_BRL.toFixed(2)}/USD.
+                    <strong>Custo real baseado em logs</strong> — Os valores abaixo refletem os templates disparados pelo sistema.
+                    Valores de referência: Marketing (R$ 0,27), Utilidade (R$ 0,09), Autenticação (R$ 0,09).
+                    Para valores exatos de faturamento, consulte o <a href="https://business.facebook.com/billing" target="_blank" rel="noreferrer" className="underline hover:text-blue-200">Gerenciador da Meta</a>.
                 </p>
             </div>
 
@@ -66,7 +75,7 @@ export function TabCustos({ conversations, templates }: any) {
                     <h2 className="text-4xl font-bold text-white mt-1">
                         R$ {totalBRL.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                     </h2>
-                    <p className="text-xs text-gray-400 mt-1">≈ USD {totalUSD.toFixed(2)} (estimado)</p>
+                    <p className="text-xs text-gray-400 mt-1">Total acumulado nos últimos 30 dias</p>
                 </div>
                 <div className="p-4 rounded-3xl bg-purple-500/20 border border-purple-500/30">
                     <DollarSign className="w-10 h-10 text-purple-400" />
@@ -109,7 +118,7 @@ export function TabCustos({ conversations, templates }: any) {
                                         R$ {d.cost.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                     </span>
                                     <span className="text-xs text-gray-500 ml-2">
-                                        @ R${(d.pct * USD_TO_BRL).toFixed(3)}/conv
+                                        @ R${d.rate.toFixed(2)}/disparo
                                     </span>
                                 </div>
                             </div>
@@ -122,7 +131,7 @@ export function TabCustos({ conversations, templates }: any) {
                                         d.color === 'orange' && 'bg-orange-400',
                                         d.color === 'gray' && 'bg-gray-400',
                                     )}
-                                    style={{ width: `${convList.length > 0 ? (d.count / convList.length) * 100 : 0}%` }}
+                                    style={{ width: `${logList.length > 0 ? (d.count / logList.length) * 100 : 0}%` }}
                                 />
                             </div>
                         </div>
