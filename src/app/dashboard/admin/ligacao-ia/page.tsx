@@ -147,6 +147,7 @@ export default function LigacaoIAPage() {
                     </div>
                     <p className="text-gray-400 text-sm mt-1">
                         Configure e teste o sistema de follow-up por voz via Vapi.ai
+                        <br /><span className="text-amber-400 font-bold">⚠️ Follow-up automático desativado temporariamente (Global)</span>
                     </p>
                 </div>
             </div>
@@ -158,9 +159,9 @@ export default function LigacaoIAPage() {
                 }`}>
                 {vapiEnabled && vapiKey ? (
                     <><CheckCircle2 className="w-5 h-5 text-green-400 flex-shrink-0" />
-                        <div>
-                            <p className="text-green-300 font-medium text-sm">Sistema Ativo</p>
-                            <p className="text-green-400/70 text-xs">A IA ligará automaticamente para leads inativos no stage {vapiStage}</p>
+                        <div className="flex flex-col">
+                            <p className="text-amber-300 font-medium text-sm">Follow-up Pausado</p>
+                            <p className="text-amber-400/70 text-xs">O sistema automático está desativado globalmente para evitar bloqueios.</p>
                         </div></>
                 ) : (
                     <><AlertCircle className="w-5 h-5 text-yellow-400 flex-shrink-0" />

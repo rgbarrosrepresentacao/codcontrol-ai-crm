@@ -24,6 +24,8 @@ export async function POST(req: NextRequest) {
         const signature = req.nextUrl.searchParams.get('signature')
         let validSignature = false
 
+        let currentLogId: string | null = null
+
         if (process.env.KIWIFY_WEBHOOK_SECRET) {
             // Calcula a assinatura esperada (HMAC SHA1 do body bruto)
             const expectedSignature = signature
@@ -37,14 +39,16 @@ export async function POST(req: NextRequest) {
 
             // ── LOG DE AUDITORIA (sempre salvo, inclusive em caso de rejeição) ─
             try {
-                await supabase.from('webhook_logs').insert({
+                const { data: logData } = await supabase.from('webhook_logs').insert({
                     provider: 'kiwify',
                     payload: body,
                     user_email: email,
                     event_type: eventType,
                     status: body.order_status || body.OrderStatus || body.status || 'unknown',
                     valid_signature: validSignature
-                })
+                }).select('id').single()
+                
+                currentLogId = logData?.id || null
             } catch (logErr) {
                 console.error('[KIWIFY_WEBHOOK] Failed to save log:', logErr)
             }
@@ -68,14 +72,16 @@ export async function POST(req: NextRequest) {
 
             // Log mesmo sem secret configurado
             try {
-                await supabase.from('webhook_logs').insert({
+                const { data: logData } = await supabase.from('webhook_logs').insert({
                     provider: 'kiwify',
                     payload: body,
                     user_email: email,
                     event_type: eventType,
                     status: body.order_status || body.OrderStatus || body.status || 'unknown',
                     valid_signature: false
-                })
+                }).select('id').single()
+
+                currentLogId = logData?.id || null
             } catch (logErr) {
                 console.error('[KIWIFY_WEBHOOK] Failed to save log:', logErr)
             }
@@ -98,14 +104,19 @@ export async function POST(req: NextRequest) {
         // ─── IDEMPOTÊNCIA (TRAVA DE DUPLICIDADE) ─────────────────────────────
         const orderId = body.order_id || body.OrderID || ''
         if (orderId) {
-            const { data: existingLog } = await supabase
+            const query = supabase
                 .from('webhook_logs')
                 .select('id')
                 .eq('provider', 'kiwify')
                 .eq('status', order_status)
                 .filter('payload->>order_id', 'eq', orderId)
-                .limit(1)
-                .maybeSingle()
+
+            // Se acabamos de inserir um log, ignoramos ele na busca de duplicados
+            if (currentLogId) {
+                query.neq('id', currentLogId)
+            }
+
+            const { data: existingLog } = await query.limit(1).maybeSingle()
 
             if (existingLog) {
                 console.log(`[KIWIFY_WEBHOOK] ⏩ Evento já processado anteriormente (ID: ${orderId}, Status: ${order_status}). Ignorando re-processamento.`)

@@ -11,6 +11,13 @@ export const revalidate = 0 // Disable cache
 const HARD_STOP_TAGS = ['PEDIDO_FECHADO', 'FECHADO', 'PERDIDO', 'HUMANO', 'CANCELADO']
 
 export async function GET(req: NextRequest) {
+    // ─── FEATURE FLAG: DESATIVAÇÃO GLOBAL ───────────────────────────────────
+    if (process.env.FOLLOWUP_AUTOMATION_ENABLED !== 'true') {
+        return NextResponse.json({ 
+            message: 'Follow-up automático desativado temporariamente' 
+        }, { status: 200 })
+    }
+
     const supabase = getSupabaseAdmin()
 
     const authHeader = req.headers.get('authorization');
