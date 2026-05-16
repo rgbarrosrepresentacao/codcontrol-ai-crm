@@ -119,10 +119,18 @@ export async function POST(req: NextRequest) {
 
         // 7. Criar na Meta
         const provider = new MetaProvider(instance.meta_config as any, instance.meta_access_token_encrypted)
-        const result = await provider.createTemplate(name, category, 'pt_BR', components)
+        
+        const finalName = name.trim().toLowerCase()
+        const finalCategory = category.toUpperCase() 
+        
+        const result = await provider.createTemplate(finalName, finalCategory, 'pt_BR', components)
 
         if (!result.success) {
-            return NextResponse.json({ error: result.error }, { status: 502 })
+            console.error('❌ [META_API_ERROR]:', result.error)
+            return NextResponse.json({ 
+                error: result.error,
+                details: 'Verifique se o nome do template já existe ou se os campos seguem as regras da Meta.' 
+            }, { status: 502 })
         }
 
         // 8. Salvar Localmente como PENDING

@@ -56,7 +56,12 @@ export class MetaProvider {
 
             const data = await response.json()
             if (!response.ok) {
-                return { success: false, error: data?.error?.message || 'Erro ao criar template' }
+                const metaError = data?.error?.message || 'Erro ao criar template'
+                const metaDetails = data?.error?.error_data?.details || ''
+                return { 
+                    success: false, 
+                    error: metaDetails ? `${metaError} (${metaDetails})` : metaError 
+                }
             }
 
             return { success: true }
