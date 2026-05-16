@@ -130,6 +130,26 @@ export async function POST(request: NextRequest) {
             // Ignora reações e status
             if (message.type === 'reaction' || message.type === 'status') continue
 
+            const messageId = message.id
+
+            // ── TRAVA DE DESDUPLICAÇÃO ──
+            // Verifica se a mensagem já foi processada (evita respostas duplas)
+            const { error: dedupError } = await supabaseAdmin
+                .from('webhook_deduplication')
+                .insert({ 
+                    message_id: messageId, 
+                    instance_name: instance.instance_name 
+                })
+
+            if (dedupError) {
+                // Se der erro de chave primária, significa que o ID já existe (duplicada)
+                if (dedupError.code === '23505') {
+                    console.log(`[Meta Webhook] 🛡️ Mensagem duplicada ignorada (msgId: ${messageId})`)
+                    continue
+                }
+                console.error('[Meta Webhook] Erro ao verificar desduplicação:', dedupError)
+            }
+
             let textContent = ''
 
             // ── C4: Suporte a Áudio recebido pela Meta ────────────────────
@@ -228,7 +248,6 @@ export async function POST(request: NextRequest) {
 
             const remoteJid   = `${message.from}@s.whatsapp.net`
             const pushName    = value?.contacts?.[0]?.profile?.name || message.from
-            const messageId   = message.id
             const wasAudio    = message.type === 'audio' || message.type === 'voice'
 
             console.log('[Meta Webhook] 📩 Mensagem recebida:', {

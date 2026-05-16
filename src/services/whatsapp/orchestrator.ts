@@ -33,12 +33,28 @@ export async function processWebhook(body: any) {
     const key = body.data?.key;
     if (!key || key.fromMe || !messageData) return;
 
+    const messageId = key.id;
+    const instanceName = body.instance;
+
+    // ── TRAVA DE DESDUPLICAÇÃO GLOBAL ──
+    // Evita processamento duplo se o webhook for reenviado rapidamente
+    const { error: dedupError } = await supabase
+        .from('webhook_deduplication')
+        .insert({ 
+            message_id: messageId, 
+            instance_name: instanceName 
+        });
+
+    if (dedupError && dedupError.code === '23505') {
+        console.log(`[Deduplication] 🛡️ Mensagem ${messageId} já está sendo processada. Abortando duplicata.`);
+        return;
+    }
+
     const remoteJid = key.remoteJid;
     if (!remoteJid || remoteJid.endsWith('@g.us')) return;
 
     const isAudioMessage = !!(messageData.audioMessage || messageData.pttMessage);
     const rawText = body.data?.message?.conversation || body.data?.message?.extendedTextMessage?.text || '';
-    const instanceName = body.instance;
 
     console.log(`[Webhook] 📩 Mensagem de ${remoteJid} na instância ${instanceName}`);
 
