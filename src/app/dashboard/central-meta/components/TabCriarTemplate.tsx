@@ -11,22 +11,24 @@ export function TabCriarTemplate({ onSuccess }: { onSuccess: () => void }) {
     const [bodyText, setBodyText] = useState('')
     const [footer, setFooter] = useState('')
     const [buttons, setButtons] = useState<string[]>([])
+    const [samples, setSamples] = useState<Record<number, string>>({})
     const [loading, setLoading] = useState(false)
 
-    // Validação de Nome (Fase 4: apenas minúsculas, números e underscores)
+    // Extrair variáveis únicas do texto
+    const matches = bodyText.match(/\{\{(\d+)\}\}/g) || []
+    const variableNumbers = Array.from(new Set(
+        matches.map(m => parseInt(m.replace('{{', '').replace('}}', '')))
+    )).sort((a, b) => a - b)
+
+    // Validação de Nome
     const isNameValid = /^[a-z0-9_]+$/.test(name) && name.length > 0
 
     // Validação de Variáveis (Sequencial sem pular)
-    const validateVariables = (text: string) => {
-        const matches = text.match(/\{\{(\d+)\}\}/g) || []
-        const nums = matches.map(m => parseInt(m.replace('{{', '').replace('}}', ''))).sort((a, b) => a - b)
-        const unique = Array.from(new Set(nums))
-        for (let i = 0; i < unique.length; i++) {
-            if (unique[i] !== i + 1) return false
-        }
-        return true
-    }
-    const variablesOk = validateVariables(bodyText)
+    const variablesOk = variableNumbers.every((num, idx) => num === idx + 1)
+    
+    // Validação de Amostras (Todas as variáveis detectadas devem ter exemplo)
+    const samplesOk = variableNumbers.length === 0 || 
+                      variableNumbers.every(num => samples[num]?.trim().length > 0)
 
     const handleAddButton = () => {
         if (buttons.length < 3) setButtons([...buttons, ''])
@@ -37,6 +39,7 @@ export function TabCriarTemplate({ onSuccess }: { onSuccess: () => void }) {
     }
 
     const handleButtonChange = (idx: number, val: string) => {
+        if (val.length > 25) return // Limite de caracteres para botões Meta
         const newButtons = [...buttons]
         newButtons[idx] = val
         setButtons(newButtons)
@@ -46,13 +49,22 @@ export function TabCriarTemplate({ onSuccess }: { onSuccess: () => void }) {
         if (!isNameValid) return toast.error('Nome do template inválido')
         if (!bodyText.trim()) return toast.error('O corpo da mensagem é obrigatório')
         if (!variablesOk) return toast.error('A sequência das variáveis está incorreta (ex: {{1}}, {{2}})')
+        if (!samplesOk) return toast.error('Preencha as amostras de todas as variáveis')
         
         setLoading(true)
         try {
             const res = await fetch('/api/meta/templates/create', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, category, header, bodyText, footer, buttons })
+                body: JSON.stringify({ 
+                    name, 
+                    category, 
+                    header, 
+                    bodyText, 
+                    footer, 
+                    buttons,
+                    samples: variableNumbers.map(num => samples[num])
+                })
             })
             const data = await res.json()
             if (!res.ok) {
@@ -152,6 +164,30 @@ export function TabCriarTemplate({ onSuccess }: { onSuccess: () => void }) {
                             />
                         </div>
 
+                        {/* Amostras de Variáveis (SAMPLES) */}
+                        {variableNumbers.length > 0 && (
+                            <div className="space-y-3 p-4 bg-purple-500/5 border border-purple-500/10 rounded-2xl animate-in slide-in-from-top-2 duration-300">
+                                <div className="flex items-center gap-2 mb-1">
+                                    <AlertCircle className="w-4 h-4 text-purple-400" />
+                                    <h3 className="text-xs font-bold text-purple-300 uppercase tracking-wider">Amostras Requeridas pela Meta</h3>
+                                </div>
+                                <div className="grid grid-cols-1 gap-3">
+                                    {variableNumbers.map(num => (
+                                        <div key={num} className="flex flex-col gap-1.5">
+                                            <label className="text-[10px] font-medium text-gray-500 ml-1">Variável {'{{'}{num}{'}}'}</label>
+                                            <input 
+                                                type="text"
+                                                value={samples[num] || ''}
+                                                onChange={e => setSamples({...samples, [num]: e.target.value})}
+                                                placeholder={`Ex: ${num === 1 ? 'Rafael' : num === 2 ? 'Resina Extreme' : 'Amostra...'}`}
+                                                className="w-full px-4 py-2 bg-black/30 border border-white/5 rounded-xl text-xs text-white outline-none focus:border-purple-500/40"
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
                         <div className="space-y-2">
                             <label className="text-xs font-medium text-gray-400 ml-1">Rodapé (Footer)</label>
                             <input 
@@ -199,7 +235,7 @@ export function TabCriarTemplate({ onSuccess }: { onSuccess: () => void }) {
 
                     <button
                         onClick={handleSubmit}
-                        disabled={loading || !isNameValid || !bodyText.trim() || !variablesOk}
+                        disabled={loading || !isNameValid || !bodyText.trim() || !variablesOk || !samplesOk}
                         className="w-full py-4 bg-purple-500 hover:bg-purple-600 disabled:opacity-30 disabled:cursor-not-allowed text-white font-bold rounded-2xl transition-all shadow-xl shadow-purple-500/20 flex items-center justify-center gap-2 group"
                     >
                         {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5 group-hover:translate-x-1 group-hover:-translate-y-1 transition-all" />}
