@@ -23,11 +23,46 @@ export interface MetaSendResult {
 
 export class MetaProvider {
     private phoneNumberId: string
+    private wabaId: string
     private accessToken: string
 
     constructor(config: MetaConfig, encryptedToken: string) {
         this.phoneNumberId = config.phone_number_id
+        this.wabaId = config.waba_id
         this.accessToken = decrypt(encryptedToken)
+    }
+
+    /**
+     * Cria um novo template na conta WABA.
+     */
+    async createTemplate(name: string, category: string, language: string, components: any[]): Promise<{ success: boolean; error?: string }> {
+        try {
+            const url = `${GRAPH_API_BASE}/${this.wabaId}/message_templates`
+            const body = {
+                name,
+                category,
+                language,
+                components
+            }
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${this.accessToken}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(body),
+            })
+
+            const data = await response.json()
+            if (!response.ok) {
+                return { success: false, error: data?.error?.message || 'Erro ao criar template' }
+            }
+
+            return { success: true }
+        } catch (error) {
+            return { success: false, error: error instanceof Error ? error.message : 'Erro interno' }
+        }
     }
 
     /**

@@ -4,12 +4,14 @@ import { Building2, RefreshCcw, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { TabVisaoGeral } from './components/TabVisaoGeral'
 import { TabTemplates } from './components/TabTemplates'
+import { TabCriarTemplate } from './components/TabCriarTemplate'
 import { TabJanela24h } from './components/TabJanela24h'
 import { TabCustos } from './components/TabCustos'
 
 const TABS = [
     { id: 'visao-geral', label: 'Visão Geral' },
     { id: 'templates', label: 'Templates' },
+    { id: 'criar-template', label: 'Criar Template' },
     { id: 'janela-24h', label: 'Janela 24h' },
     { id: 'custos', label: 'Custos' },
 ]
@@ -150,6 +152,7 @@ export default function CentralMetaPage() {
             {/* Content */}
             {activeTab === 'visao-geral' && <TabVisaoGeral stats={stats} templates={templates} conversations={conversations} />}
             {activeTab === 'templates' && <TabTemplates templates={templates} loading={loadingTemplates} onSync={syncTemplates} syncing={syncing} />}
+            {activeTab === 'criar-template' && <TabCriarTemplate onSuccess={() => { fetchTemplates(); setActiveTab('templates'); }} />}
             {activeTab === 'janela-24h' && <TabJanela24h data={conversations} loading={loadingConversations} approvedTemplates={approved} />}
             {activeTab === 'custos' && <TabCustos conversations={conversations} templates={templates} logs={logs} loading={loadingLogs} />}
         </div>
