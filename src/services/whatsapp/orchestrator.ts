@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import crypto from 'crypto';
 import { ProcessorService } from '@/services/whatsapp/processor';
 import { GuardService } from '@/services/whatsapp/guard';
 import { ContactService } from '@/services/whatsapp/logistics';
@@ -35,28 +36,46 @@ export async function processWebhook(body: any) {
 
     const messageId = key.id;
     const instanceName = body.instance;
-
-    // ── TRAVA DE DESDUPLICAÇÃO GLOBAL ──
-    // Evita processamento duplo se o webhook for reenviado rapidamente
-    const { error: dedupError } = await supabase
-        .from('webhook_deduplication')
-        .insert({ 
-            message_id: messageId, 
-            instance_name: instanceName 
-        });
-
-    if (dedupError && dedupError.code === '23505') {
-        console.log(`[Deduplication] 🛡️ Mensagem ${messageId} já está sendo processada. Abortando duplicata.`);
-        return;
-    }
-
     const remoteJid = key.remoteJid;
     if (!remoteJid || remoteJid.endsWith('@g.us')) return;
 
+    const rawText = body.data?.message?.conversation || body.data?.message?.extendedTextMessage?.text || '';
+    
+    // ── TRAVA DE DESDUPLICAÇÃO POR CONTEÚDO (HASH) ──
+    // Evita duplicatas se o ID da mensagem mudar mas o conteúdo for idêntico
+    const contentHash = crypto.createHash('md5').update(`${remoteJid}:${rawText.trim()}`).digest('hex');
+    const dedupId = `HASH_${contentHash}`;
+
+    // Tenta travar pelo ID original ou pelo Hash de conteúdo recente
+    const { error: dedupError } = await supabase
+        .from('webhook_deduplication')
+        .insert([ 
+            { message_id: messageId, instance_name: instanceName },
+            { message_id: dedupId, instance_name: instanceName }
+        ]);
+
+    if (dedupError && (dedupError.code === '23505' || dedupError.message?.includes('duplicate key'))) {
+        console.log(`[Deduplication] 🛡️ Mensagem ou Hash ${messageId} / ${dedupId} já processados. Abortando.`);
+        return;
+    }
+
+    console.log(`[Webhook] 📩 Recebido de ${remoteJid}. Processando em background...`);
+
+    // EXECUTAR EM BACKGROUND PARA NÃO TRAVAR O WEBHOOK
+    handleWebhookLogic(body).catch(err => console.error('[Webhook Error]', err));
+
+    return { success: true };
+}
+
+async function handleWebhookLogic(body: any) {
+    const supabase = getSupabaseAdmin();
+    const messageData = body.data?.message;
+    const key = body.data?.key!;
+    const messageId = key.id;
+    const instanceName = body.instance;
+    const remoteJid = key.remoteJid!;
     const isAudioMessage = !!(messageData.audioMessage || messageData.pttMessage);
     const rawText = body.data?.message?.conversation || body.data?.message?.extendedTextMessage?.text || '';
-
-    console.log(`[Webhook] 📩 Mensagem de ${remoteJid} na instância ${instanceName}`);
 
     try {
         const { data: instance, error: instanceErr } = await supabase
@@ -394,7 +413,7 @@ export async function processWebhook(body: any) {
         if (!profile.openai_api_key) return;
         if (!aiConfig) return;
 
-        const waitTime = 12000;
+        const waitTime = 4000; // Reduzido para 4s para ser mais ágil e evitar reenvios de webhook
         await new Promise(r => setTimeout(r, waitTime));
 
         const { data: lockResult, error: lockError } = await supabase
