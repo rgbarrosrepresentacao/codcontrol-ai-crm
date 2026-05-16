@@ -43,7 +43,10 @@ export async function processWebhook(body: any) {
     
     // ── TRAVA DE DESDUPLICAÇÃO POR CONTEÚDO (HASH) ──
     // Evita duplicatas se o ID da mensagem mudar mas o conteúdo for idêntico
-    const contentHash = crypto.createHash('md5').update(`${remoteJid}:${rawText.trim()}`).digest('hex');
+    // Usamos um Hash que expira virtualmente ao incluir a hora e o minuto (janela de 1 minuto)
+    // Isso evita duplicatas imediatas mas permite que o cliente use a mesma frase em momentos diferentes do dia.
+    const timeWindow = new Date().toISOString().slice(0, 16); // Ex: 2024-05-16T15:30
+    const contentHash = crypto.createHash('md5').update(`${remoteJid}:${rawText.trim()}:${timeWindow}`).digest('hex');
     const dedupId = `HASH_${contentHash}`;
 
     // Tenta travar pelo ID original ou pelo Hash de conteúdo recente
