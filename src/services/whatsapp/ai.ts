@@ -2,6 +2,25 @@ export type AiTag = 'NOVO_LEAD' | 'EM_ATENDIMENTO' | 'QUALIFICADO' | 'INTERESSAD
 
 export class AIService {
     /**
+     * Auxiliar para tratar erros específicos de status da OpenAI
+     */
+    static async handleResponseStatus(response: any) {
+        if (!response.ok) {
+            const errText = await response.text();
+            if (response.status === 429) {
+                console.error(`[AIService] OpenAI Quota Exceeded (429): ${errText}`);
+                throw new Error('OPENAI_QUOTA_EXCEEDED');
+            }
+            if (response.status === 401) {
+                console.error(`[AIService] OpenAI Invalid Key (401): ${errText}`);
+                throw new Error('OPENAI_INVALID_KEY');
+            }
+            console.error(`[AIService] OpenAI API error (${response.status}): ${errText}`);
+            throw new Error(`OpenAI API error: ${response.status} - ${errText}`);
+        }
+    }
+
+    /**
      * Extrai dados de pedido da conversa
      */
     static async extractOrderData(messages: any[], openaiKey: string): Promise<any> {
@@ -13,8 +32,8 @@ export class AIService {
                 body: JSON.stringify({
                     model: 'gpt-4o-mini',
                     messages: [
-                        { 
-                            role: 'system', 
+                        {
+                            role: 'system',
                             content: `Você é um extrator de dados de pedidos. Sua tarefa é extrair os dados do cliente para preencher um formulário de entrega.
                             REGRAS:
                             - Extraia: Nome Completo, CPF, CEP, Rua, Número, Bairro, Cidade, Estado.
@@ -28,12 +47,16 @@ export class AIService {
                     response_format: { type: 'json_object' }
                 })
             });
+            await AIService.handleResponseStatus(response);
             const data = await response.json();
             const content = data.choices?.[0]?.message?.content;
             if (!content) return null;
             const cleanContent = content.replace(/```json/g, '').replace(/```/g, '').trim();
             return JSON.parse(cleanContent);
-        } catch (err) {
+        } catch (err: any) {
+            if (err?.message === 'OPENAI_QUOTA_EXCEEDED' || err?.message === 'OPENAI_INVALID_KEY') {
+                throw err;
+            }
             console.error('[AIService] Extraction error:', err);
             return null;
         }
@@ -61,11 +84,14 @@ export class AIService {
                     max_tokens: 20
                 })
             });
-            if (!response.ok) return null;
+            await AIService.handleResponseStatus(response);
             const data = await response.json();
             const tag = data.choices[0].message.content.trim().toUpperCase() as AiTag;
             return tag;
-        } catch {
+        } catch (err: any) {
+            if (err?.message === 'OPENAI_QUOTA_EXCEEDED' || err?.message === 'OPENAI_INVALID_KEY') {
+                throw err;
+            }
             return null;
         }
     }
@@ -91,10 +117,13 @@ export class AIService {
                     max_tokens: 200
                 })
             });
-            if (!response.ok) throw new Error();
+            await AIService.handleResponseStatus(response);
             const data = await response.json();
             return data.choices[0].message.content;
-        } catch {
+        } catch (err: any) {
+            if (err?.message === 'OPENAI_QUOTA_EXCEEDED' || err?.message === 'OPENAI_INVALID_KEY') {
+                throw err;
+            }
             return 'Obrigada pelo seu pedido! 🎉 Em breve nossa equipe entrará em contato.';
         }
     }
@@ -103,8 +132,8 @@ export class AIService {
      * Gera a resposta principal da IA
      */
     static async generateResponse(
-        messages: any[], 
-        aiConfig: any, 
+        messages: any[],
+        aiConfig: any,
         openaiKey: string,
         knowledgeContext: string = '',
         leadContext: string = '',
@@ -115,19 +144,19 @@ export class AIService {
     ): Promise<string | null> {
         try {
             // Prepara o contexto do funil se existir
-            const funnelInfo = funnelContext 
+            const funnelInfo = funnelContext
                 ? `\nCONTEXTO DO FUNIL DE VENDAS (HISTÓRICO RECENTE):\n${funnelContext}\nInstrução: O cliente acabou de passar por este fluxo automatizado. Use essas informações para continuar o atendimento sem repetir o que já foi dito.`
                 : '';
 
             // Prepara a Memória Estratégica se existir
             const memoryInfo = leadIntelligence && Object.keys(leadIntelligence).length > 0
                 ? `\n[MEMÓRIA ESTRATÉGICA DO LEAD]\n` +
-                  `- Interesse: ${leadIntelligence.main_interest || 'A descobrir'}\n` +
-                  `- Dor: ${leadIntelligence.main_pain || 'A descobrir'}\n` +
-                  `- Objeção: ${leadIntelligence.main_objection || 'Nenhuma detectada'}\n` +
-                  `- Estágio: ${leadIntelligence.buying_stage || 'frio'}\n` +
-                  `- Próxima melhor ação: ${leadIntelligence.next_best_action || 'Qualificar'}\n` +
-                  `- Última oferta: ${leadIntelligence.last_offer || 'Nenhuma'}\n`
+                `- Interesse: ${leadIntelligence.main_interest || 'A descobrir'}\n` +
+                `- Dor: ${leadIntelligence.main_pain || 'A descobrir'}\n` +
+                `- Objeção: ${leadIntelligence.main_objection || 'Nenhuma detectada'}\n` +
+                `- Estágio: ${leadIntelligence.buying_stage || 'frio'}\n` +
+                `- Próxima melhor ação: ${leadIntelligence.next_best_action || 'Qualificar'}\n` +
+                `- Última oferta: ${leadIntelligence.last_offer || 'Nenhuma'}\n`
                 : '';
 
             // ── MONTAGEM DA HIERARQUIA DO PROMPT (MODO ELITE MULTI-PRODUTO) ──
@@ -193,10 +222,13 @@ ${leadContext}
                 })
             });
 
-            if (!response.ok) return null;
+            await AIService.handleResponseStatus(response);
             const data = await response.json();
             return data.choices?.[0]?.message?.content || null;
-        } catch (err) {
+        } catch (err: any) {
+            if (err?.message === 'OPENAI_QUOTA_EXCEEDED' || err?.message === 'OPENAI_INVALID_KEY') {
+                throw err;
+            }
             console.error('[AIService] Error generating response:', err);
             return null;
         }
@@ -208,7 +240,7 @@ ${leadContext}
     static async analyzeIntelligence(messages: any[], openaiKey: string, currentIntelligence: any = {}): Promise<any> {
         try {
             const conversationText = messages.slice(-10).map(m => `${m.role === 'assistant' ? 'IA' : 'Cliente'}: ${m.content}`).join('\n');
-            
+
             const response = await fetch('https://api.openai.com/v1/chat/completions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openaiKey}` },
@@ -221,7 +253,7 @@ ${leadContext}
                             
                             DADOS ATUAIS:
                             ${JSON.stringify(currentIntelligence)}
-
+ 
                             REGRAS DE EXTRAÇÃO (JSON):
                             - lead_summary: Um resumo curto do momento do lead.
                             - main_interest: O que ele realmente quer?
@@ -240,7 +272,7 @@ ${leadContext}
                 })
             });
 
-            if (!response.ok) return currentIntelligence;
+            await AIService.handleResponseStatus(response);
             const data = await response.json();
             const content = data.choices?.[0]?.message?.content;
             if (!content) return currentIntelligence;
@@ -258,17 +290,21 @@ ${leadContext}
             }
 
             return intelligence;
-        } catch (err) {
+        } catch (err: any) {
+            if (err?.message === 'OPENAI_QUOTA_EXCEEDED' || err?.message === 'OPENAI_INVALID_KEY') {
+                throw err;
+            }
             console.error('[AIService] Intelligence analysis error:', err);
             return currentIntelligence;
         }
     }
+
     /**
      * Avalia uma condição de funil baseado na resposta do cliente
      */
     static async evaluateCondition(
-        messages: any[], 
-        conditionLabel: string, 
+        messages: any[],
+        conditionLabel: string,
         openaiKey: string
     ): Promise<{ decision: 'yes' | 'no' | 'unclear' | 'human'; confidence: number; reason: string }> {
         try {
@@ -296,7 +332,7 @@ ${leadContext}
                             {
                                 "decision": "yes" | "no" | "unclear" | "human",
                                 "confidence": 0-100,
-                                "reason": "explicação curta"
+                                "reason": "explicação corta"
                             }`
                         },
                         { role: 'user', content: `Avalie esta conversa:\n\n${conversationText}` }
@@ -306,29 +342,29 @@ ${leadContext}
                 })
             });
 
-            if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`OpenAI API error: ${response.status} - ${errorText}`);
-            }
+            await AIService.handleResponseStatus(response);
             const data = await response.json();
             const content = data.choices?.[0]?.message?.content;
             if (!content) throw new Error('Empty response from OpenAI');
-            
+
             return JSON.parse(content);
         } catch (err: any) {
+            if (err?.message === 'OPENAI_QUOTA_EXCEEDED' || err?.message === 'OPENAI_INVALID_KEY') {
+                throw err;
+            }
             console.error('[AIService] Condition evaluation error:', err.message);
-            
+
             // FALLBACK MANUAL: Se a IA falhar, fazemos um match simples de palavras-chave
             // Isso evita que o funil trave por erro de API
             const lastUserMsg = messages[messages.length - 1]?.content?.toLowerCase().trim() || '';
-            
+
             // Regex mais abrangente para respostas positivas curtas
-            if (lastUserMsg.match(/^(sim|s|ss|si|simm|quero|queremos|vontade|interesse|pode|com certeza|claro|ok|agora|manda|bora|vqv|👍|✅)$/i) || 
+            if (lastUserMsg.match(/^(sim|s|ss|si|simm|quero|queremos|vontade|interesse|pode|com certeza|claro|ok|agora|manda|bora|vqv|👍|✅)$/i) ||
                 lastUserMsg.match(/\b(sim|quero|tenho interesse|pode mandar|com certeza)\b/i)) {
                 return { decision: 'yes', confidence: 100, reason: 'Fallback manual: Palavra-chave positiva detectada' };
             }
-            
-            if (lastUserMsg.match(/^(não|nao|n|nn|no|nem|parar|cancelar|sair|👎|❌)$/i) || 
+
+            if (lastUserMsg.match(/^(não|nao|n|nn|no|nem|parar|cancelar|sair|👎|❌)$/i) ||
                 lastUserMsg.match(/\b(não quero|nao tenho interesse|agora não)\b/i)) {
                 return { decision: 'no', confidence: 100, reason: 'Fallback manual: Palavra-chave negativa detectada' };
             }

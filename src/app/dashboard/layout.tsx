@@ -4,6 +4,7 @@ import { Sidebar } from '@/components/Sidebar'
 import { TrialWall } from '@/components/TrialWall'
 import { AnnouncementBanner } from '@/components/AnnouncementBanner'
 import { SubscriptionAlert } from '@/components/SubscriptionAlert'
+import { OpenAiKeyAlert } from '@/components/OpenAiKeyAlert'
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
     const supabase = await createSupabaseServerClient()
@@ -41,6 +42,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
                     planName={planName}
                     isAdmin={profile?.is_admin}
                     affiliateId={affiliateId}
+                />
+                {/* Alerta de status da chave OpenAI */}
+                <OpenAiKeyAlert
+                    openaiKeyStatus={profile?.openai_key_status ?? null}
+                    isAdmin={profile?.is_admin}
                 />
                 <TrialWall
                     isAdmin={profile?.is_admin}

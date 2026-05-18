@@ -80,19 +80,23 @@ async function handleWebhookLogic(body: any) {
     const isAudioMessage = !!(messageData.audioMessage || messageData.pttMessage);
     const rawText = body.data?.message?.conversation || body.data?.message?.extendedTextMessage?.text || '';
 
+    let instance: any = null;
+    let profile: any = null;
+
     try {
-        const { data: instance, error: instanceErr } = await supabase
+        const { data: instData, error: instanceErr } = await supabase
             .from('whatsapp_instances')
             .select('id, user_id, provider_type')
             .eq('instance_name', instanceName)
             .single();
 
-        const isMetaProvider = instance?.provider_type === 'META';
-
-        if (instanceErr || !instance) {
+        if (instanceErr || !instData) {
             console.log(`[Webhook Debug] Instance not found: ${instanceName}`);
             return;
         }
+        instance = instData;
+
+        const isMetaProvider = instance.provider_type === 'META';
 
         const OPT_OUT_REGEX = /^(sair|parar|stop|cancelar|nao quero|não quero|descadastrar|remover|bloquear|chega|para|pare)\s*[!.]*$/i;
         if (OPT_OUT_REGEX.test(rawText.trim())) {
@@ -108,16 +112,17 @@ async function handleWebhookLogic(body: any) {
             console.log(`[BLAST OPT-OUT] ⛔ ${phone} pediu para sair.`);
         }
 
-        const { data: profile, error: profileErr } = await supabase
+        const { data: profData, error: profileErr } = await supabase
             .from('profiles')
             .select('*')
             .eq('id', instance.user_id)
             .single();
 
-        if (profileErr || !profile) {
+        if (profileErr || !profData) {
             console.log(`[Webhook Debug] Profile not found for userId: ${instance.user_id}`);
             return;
         }
+        profile = profData;
 
         const access = GuardService.checkAccess(profile);
         if (!access.hasAccess) return;
@@ -314,6 +319,15 @@ async function handleWebhookLogic(body: any) {
                             profile.openai_api_key
                         );
 
+                        // Auto-heal OpenAI Key status if successful
+                        if (profile.openai_key_status !== 'active') {
+                            await supabase.from('profiles').update({
+                                openai_key_status: 'active',
+                                openai_key_error_at: null
+                            }).eq('id', profile.id);
+                            console.log(`[AIService] ✨ Status da chave OpenAI do usuário ${profile.id} restaurado para: active (via funil)`);
+                        }
+
                         try {
                             await supabase.from('funnel_execution_logs').insert({
                                 user_id: profile.id,
@@ -460,6 +474,15 @@ async function handleWebhookLogic(body: any) {
         );
         if (!reply) return;
 
+        // Auto-heal OpenAI Key status if successful
+        if (profile.openai_key_status !== 'active') {
+            await supabase.from('profiles').update({
+                openai_key_status: 'active',
+                openai_key_error_at: null
+            }).eq('id', profile.id);
+            console.log(`[AIService] ✨ Status da chave OpenAI do usuário ${profile.id} restaurado para: active`);
+        }
+
         const { item: mediaItem, cleanReply } = KnowledgeService.detectMediaTrigger(reply, knowledgeItems);
         reply = cleanReply;
 
@@ -553,5 +576,20 @@ async function handleWebhookLogic(body: any) {
         }
     } catch (err: any) {
         console.error('❌ Erro no webhook:', err);
+        try {
+            if (err?.message === 'OPENAI_QUOTA_EXCEEDED' || err?.message === 'OPENAI_INVALID_KEY') {
+                const finalUserId = profile?.id || instance?.user_id;
+                if (finalUserId) {
+                    const status = err.message === 'OPENAI_QUOTA_EXCEEDED' ? 'insufficient_quota' : 'invalid_key';
+                    await supabase.from('profiles').update({
+                        openai_key_status: status,
+                        openai_key_error_at: new Date().toISOString()
+                    }).eq('id', finalUserId);
+                    console.log(`[AIService] ⚠️ Status da chave OpenAI do usuário ${finalUserId} atualizado para: ${status}`);
+                }
+            }
+        } catch (dbErr) {
+            console.error('❌ Erro ao atualizar status da chave no perfil:', dbErr);
+        }
     }
 }
