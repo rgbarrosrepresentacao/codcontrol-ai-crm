@@ -4,8 +4,8 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 export const dynamic = 'force-dynamic'
 
 const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL!
-const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY!
-const INSTANCE_NAME = 'crm_bf2a9710_rbpo'
+const INSTANCE_NAME = 'crm_bf2a9710_cgh0'
+const INSTANCE_API_KEY = '0672D494-CCF7-4FC4-96F7-F1B58E8D177D'
 
 function formatWhatsApp(raw: string): string {
     const digits = raw.replace(/\D/g, '')
@@ -112,7 +112,7 @@ export async function POST(req: NextRequest) {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'apikey': EVOLUTION_API_KEY
+                'apikey': INSTANCE_API_KEY
             },
             body: JSON.stringify({
                 number: formattedWA,
