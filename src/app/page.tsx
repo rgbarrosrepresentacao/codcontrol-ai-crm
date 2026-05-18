@@ -511,10 +511,10 @@ export default function HomePage() {
            {/* More Plans */}
            <div className="grid lg:grid-cols-3 gap-8 items-stretch pt-24 px-4">
               <div className="glass-card p-12 rounded-[44px] flex flex-col border-white/5 hover:border-primary/20 transition-all duration-500">
-                 <h4 className="text-xl font-black mb-8">Intermediário</h4>
+                 <h4 className="text-xl font-black mb-8">Básico</h4>
                  <div className="mb-12">
                     <div className="flex items-baseline gap-1">
-                      <span className="text-5xl font-black">R$ 97</span>
+                      <span className="text-5xl font-black">R$ 59</span>
                       <span className="text-muted-foreground font-black text-xs uppercase opacity-60">/mês</span>
                     </div>
                  </div>
@@ -525,16 +525,16 @@ export default function HomePage() {
                     <li className="flex items-center gap-3 text-sm font-semibold text-muted-foreground"><CheckCircle2 className="w-4 h-4 text-primary" /> Multi-Campanhas</li>
                     <li className="flex items-center gap-3 text-sm font-semibold text-muted-foreground"><CheckCircle2 className="w-4 h-4 text-primary" /> CRM Kanban Completo</li>
                  </ul>
-                 <Link href="/register?plan=basico" className="w-full border-2 border-white/10 text-white font-black py-5 rounded-2xl hover:bg-white/5 transition-all text-center">COMEÇAR TESTE</Link>
+                 <Link href="https://pay.kiwify.com.br/i7DjjOL" className="w-full border-2 border-white/10 text-white font-black py-5 rounded-2xl hover:bg-white/5 transition-all text-center">COMEÇAR TESTE</Link>
               </div>
 
               <div className="glass-card p-14 rounded-[50px] flex flex-col transform lg:-translate-y-12 relative border-primary shadow-[0_30px_60px_rgba(0,0,0,0.5)] z-20">
                  <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 gradient-primary text-black text-[10px] font-black px-8 py-2.5 rounded-full uppercase tracking-[0.3em] shadow-2xl">MUITO RECOMENDADO</div>
-                 <h4 className="text-3xl font-black mb-8">Professional</h4>
+                 <h4 className="text-3xl font-black mb-8">Pro</h4>
                  <div className="mb-12">
                     <div className="flex items-baseline gap-2">
                        <span className="text-sm font-black opacity-40">R$</span>
-                       <span className="text-7xl font-black text-primary tracking-tighter leading-none">297</span>
+                       <span className="text-7xl font-black text-primary tracking-tighter leading-none">120</span>
                        <span className="text-sm font-black uppercase tracking-widest opacity-60 ml-1">/mês</span>
                     </div>
                  </div>
@@ -544,7 +544,7 @@ export default function HomePage() {
                     <li className="flex items-center gap-4 text-lg font-black"><CheckCircle2 className="w-6 h-6 text-primary" /> Multi-Campanhas</li>
                     <li className="flex items-center gap-4 text-lg font-black text-primary"><CheckCircle2 className="w-6 h-6 text-primary" /> Treinamento Prioritário</li>
                  </ul>
-                 <Link href="/register?plan=pro" className="w-full gradient-primary text-black font-black py-6 rounded-3xl text-2xl hover:scale-105 transition-all glow-primary shadow-2xl text-center leading-none">QUERO ESCALAR AGORA</Link>
+                 <Link href="https://pay.kiwify.com.br/unGMIpe" className="w-full gradient-primary text-black font-black py-6 rounded-3xl text-2xl hover:scale-105 transition-all glow-primary shadow-2xl text-center leading-none">QUERO ESCALAR AGORA</Link>
               </div>
 
               <div className="glass-card p-12 rounded-[44px] flex flex-col border-white/5 hover:border-primary/20 transition-all duration-500">
