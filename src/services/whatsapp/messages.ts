@@ -16,6 +16,7 @@ export class MessageService {
         content: string;
         type: 'text' | 'audio' | 'image' | 'video' | 'document';
         ai_generated?: boolean;
+        payload?: any;
     }) {
         const supabase = getSupabaseAdmin();
         await supabase.from('messages').insert({

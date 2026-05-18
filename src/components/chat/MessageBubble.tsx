@@ -10,6 +10,9 @@ interface Message {
     type: string
     created_at: string
     status: string
+    payload?: {
+        audioUrl?: string;
+    }
 }
 
 interface Props {
@@ -101,7 +104,7 @@ function AudioBubble({ msg }: { msg: Message }) {
                 <Mic className="w-5 h-5" />
             </div>
             <div className="flex-1 min-w-0">
-                <audio src={msg.content} controls className="h-8 w-full filter drop-shadow-sm" />
+                <audio src={msg.payload?.audioUrl || msg.content} controls className="h-8 w-full filter drop-shadow-sm" />
             </div>
             <MsgTime msg={msg} />
         </div>

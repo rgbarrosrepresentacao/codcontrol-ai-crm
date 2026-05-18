@@ -1,19 +1,24 @@
 import { evolutionApi } from '@/lib/evolution';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import crypto from 'crypto';
 
 export class ProcessorService {
     /**
      * Extrai o conteúdo de texto de uma mensagem (incluindo áudio e visão)
      */
-    static async extractMessageContent(body: any, instanceName: string, openaiKey: string | null): Promise<string | null> {
+    static async extractMessageContent(body: any, instanceName: string, openaiKey: string | null): Promise<{ text: string | null, audioUrl?: string } | null> {
         const messageData = body.data?.message;
         if (!messageData) return null;
 
         // 1. Texto Direto
         let text = messageData.conversation || messageData.extendedTextMessage?.text || messageData.imageMessage?.caption;
+        let audioUrl: string | undefined;
 
         // 2. Transcrição de Áudio
         if (!text && messageData.audioMessage && openaiKey) {
-            text = await this.transcribeAudio(body, instanceName, openaiKey);
+            const result = await this.transcribeAudio(body, instanceName, openaiKey);
+            text = result?.text;
+            audioUrl = result?.audioUrl;
         }
 
         // 3. Vision (Análise de Imagem)
@@ -32,10 +37,10 @@ export class ProcessorService {
             else if (messageData.locationMessage) text = '[Localização]';
         }
 
-        return text || null;
+        return { text: text || null, audioUrl };
     }
 
-    private static async transcribeAudio(body: any, instanceName: string, openaiKey: string): Promise<string | null> {
+    private static async transcribeAudio(body: any, instanceName: string, openaiKey: string): Promise<{ text: string | null, audioUrl?: string } | null> {
         try {
             const EVOLUTION_URL = process.env.EVOLUTION_API_URL || 'https://api.codcontrolpro.bond';
             const mediaRes = await fetch(`${EVOLUTION_URL}/chat/getBase64FromMediaMessage/${instanceName}`, {
@@ -50,6 +55,24 @@ export class ProcessorService {
             if (!base64Audio) return null;
 
             const audioBuffer = Buffer.from(base64Audio, 'base64');
+            
+            // Upload para Supabase Storage
+            const supabase = getSupabaseAdmin();
+            const fileName = `received-audios/${instanceName}/${crypto.randomUUID()}.ogg`;
+            const { error: uploadError } = await supabase.storage
+                .from('chat-media')
+                .upload(fileName, audioBuffer, { contentType: 'audio/ogg' });
+
+            let audioUrl = '';
+            if (!uploadError) {
+                const { data: { publicUrl } } = supabase.storage
+                    .from('chat-media')
+                    .getPublicUrl(fileName);
+                audioUrl = publicUrl;
+            } else {
+                console.error('[ProcessorService] Storage upload error:', uploadError);
+            }
+
             const formData = new FormData();
             formData.append('file', new File([audioBuffer as any], 'audio.ogg', { type: 'audio/ogg' }));
             formData.append('model', 'whisper-1');
@@ -63,7 +86,7 @@ export class ProcessorService {
 
             if (whisperRes.ok) {
                 const whisperData = await whisperRes.json();
-                return whisperData.text;
+                return { text: whisperData.text, audioUrl };
             }
         } catch (err) {
             console.error('[ProcessorService] Audio error:', err);

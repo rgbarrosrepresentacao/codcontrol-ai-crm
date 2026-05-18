@@ -127,8 +127,9 @@ async function handleWebhookLogic(body: any) {
         const access = GuardService.checkAccess(profile);
         if (!access.hasAccess) return;
 
-        const textMessage = await ProcessorService.extractMessageContent(body, instanceName, profile.openai_api_key);
-        if (!textMessage) return;
+        const result = await ProcessorService.extractMessageContent(body, instanceName, profile.openai_api_key);
+        if (!result || (!result.text && !result.audioUrl)) return;
+        const textMessage = result.text || '';
 
         const phone = remoteJid.replace(/\D/g, '');
         const contact = await ContactService.upsert(profile.id, instance.id, remoteJid, phone, body.data?.pushName);
@@ -190,7 +191,8 @@ async function handleWebhookLogic(body: any) {
             message_id: key.id,
             from_me: false,
             content: textMessage,
-            type: isAudioMessage ? 'audio' : 'text'
+            type: isAudioMessage ? 'audio' : 'text',
+            payload: result.audioUrl ? { audioUrl: result.audioUrl } : undefined
         });
 
         const FunnelService = (await import('@/services/whatsapp/funnels')).FunnelService;
@@ -505,6 +507,23 @@ async function handleWebhookLogic(body: any) {
                 const audioB64 = await generateSpeech(cleanTextForAudio(reply), aiConfig.voice_id || 'nova', profile.openai_api_key);
                 await MessageService.sendAudio(instance.id, remoteJid, audioB64);
 
+                // Upload para Supabase Storage
+                const fileName = `sent-audios/${instance.id}/${crypto.randomUUID()}.ogg`;
+                const buffer = Buffer.from(audioB64, 'base64');
+                const { error: uploadError } = await supabase.storage
+                    .from('chat-media')
+                    .upload(fileName, buffer, { contentType: 'audio/ogg' });
+
+                let audioUrl = '';
+                if (!uploadError) {
+                    const { data: { publicUrl } } = supabase.storage
+                        .from('chat-media')
+                        .getPublicUrl(fileName);
+                    audioUrl = publicUrl;
+                } else {
+                    console.error('[orchestrator] Storage upload error:', uploadError);
+                }
+
                 await supabase.from('messages').insert({
                     user_id: profile.id,
                     conversation_id: conversationId,
@@ -514,7 +533,8 @@ async function handleWebhookLogic(body: any) {
                     content: reply,
                     type: 'audio',
                     status: 'sent',
-                    ai_generated: true
+                    ai_generated: true,
+                    payload: audioUrl ? { audioUrl } : undefined
                 });
             } catch (err) {
                 await MessageService.send(instance.id, remoteJid, reply);
