@@ -30,12 +30,53 @@ function cleanTextForAudio(text: string): string {
 
 export async function processWebhook(body: any) {
     const supabase = getSupabaseAdmin();
+    const eventType = (body.event || body.eventType || '').toLowerCase();
+    const instanceName = body.instance;
+
+    // --- TRATAMENTO DE ACKS (CONFIRMAÇÕES DE LEITURA/ENTREGA/ERRO) ---
+    if (eventType === 'messages.update' || eventType === 'messages_update') {
+        const updates = Array.isArray(body.data) ? body.data : [body.data];
+        for (const item of updates) {
+            if (!item || !item.key || !item.update) continue;
+            const messageId = item.key.id;
+            const statusNumber = item.update.status;
+            
+            let newStatus = '';
+            if (statusNumber === 2) newStatus = 'sent';
+            else if (statusNumber === 3) newStatus = 'delivered';
+            else if (statusNumber === 4) newStatus = 'read';
+            else if (item.update.status === 'ERROR' || item.update.status === 5) newStatus = 'failed';
+
+            const errorCode = item.update.error?.code || item.update.errorCode || null;
+            const errorMessage = item.update.error?.message || item.update.error || item.update.message || null;
+
+            if (errorCode || errorMessage || newStatus === 'failed') {
+                newStatus = 'failed';
+                console.error(`[EVOLUTION_FATAL] Falha de entrega na Evolution API! MsgID: ${messageId} | Instância: ${instanceName} | Erro: ${errorMessage} (Código: ${errorCode})`);
+            } else if (newStatus) {
+                console.log(`[EVOLUTION_ACK] MsgID: ${messageId} atualizada para status: ${newStatus}`);
+            }
+
+            if (newStatus) {
+                await supabase.from('messages')
+                    .update({ 
+                        status: newStatus, 
+                        error_code: errorCode ? String(errorCode) : null,
+                        error_message: errorMessage ? String(errorMessage) : null,
+                        last_status_at: new Date().toISOString()
+                    })
+                    .eq('message_id', messageId);
+            }
+        }
+        return { success: true };
+    }
+    // -----------------------------------------------------------------
+
     const messageData = body.data?.message;
     const key = body.data?.key;
     if (!key || key.fromMe || !messageData) return;
 
     const messageId = key.id;
-    const instanceName = body.instance;
     const remoteJid = key.remoteJid;
     if (!remoteJid || remoteJid.endsWith('@g.us')) return;
 
@@ -504,14 +545,18 @@ async function handleWebhookLogic(body: any) {
                 } else {
                     await new Promise(r => setTimeout(r, Math.max(typingTime - 1000, 2000)));
                 }
-                const audioB64 = await generateSpeech(cleanTextForAudio(reply), aiConfig.voice_id || 'nova', profile.openai_api_key);
+                const audioFormat = isMetaProvider ? 'opus' : 'mp3';
+                const audioExt = isMetaProvider ? 'ogg' : 'mp3';
+                const audioContentType = isMetaProvider ? 'audio/ogg' : 'audio/mp3';
+
+                const audioB64 = await generateSpeech(cleanTextForAudio(reply), aiConfig.voice_id || 'nova', profile.openai_api_key, audioFormat);
 
                 // Upload para Supabase Storage
-                const fileName = `sent-audios/${instance.id}/${crypto.randomUUID()}.ogg`;
+                const fileName = `sent-audios/${instance.id}/${crypto.randomUUID()}.${audioExt}`;
                 const buffer = Buffer.from(audioB64, 'base64');
                 const { error: uploadError } = await supabase.storage
                     .from('chat-media')
-                    .upload(fileName, buffer, { contentType: 'audio/ogg' });
+                    .upload(fileName, buffer, { contentType: audioContentType });
 
                 let audioUrl = '';
                 if (!uploadError) {
@@ -523,9 +568,10 @@ async function handleWebhookLogic(body: any) {
                     console.error('[orchestrator] Storage upload error:', uploadError);
                 }
 
-                // Envia a URL do áudio para o provedor (Evolution usará sendMedia com ptt=true)
-                await MessageService.sendAudio(instance.id, remoteJid, audioUrl || audioB64);
+                // Envia a URL do áudio e o base64 para o provedor (Evolution usará Base64 MP3, Meta usará URL Ogg)
+                const audioResult = await MessageService.sendAudio(instance.id, remoteJid, audioUrl || audioB64, audioB64);
 
+                console.log(`[MESSAGE_PERSIST] Persistindo mensagem de Áudio da IA no DB. MessageID: ${audioResult?.messageId}`);
                 const { error: insertError } = await supabase.from('messages').insert({
                     user_id: profile.id,
                     conversation_id: conversationId,
@@ -536,14 +582,15 @@ async function handleWebhookLogic(body: any) {
                     type: 'audio',
                     status: 'sent',
                     ai_generated: true,
+                    message_id: audioResult?.messageId,
                     payload: audioUrl ? { audioUrl } : undefined
                 });
                 
                 if (insertError) throw insertError;
             } catch (err) {
                 console.error('[WEBHOOK] Erro ao enviar áudio, fazendo fallback para texto:', err);
-                await MessageService.send(instance.id, remoteJid, reply);
-                const { error: fallbackError } = await supabase.from('messages').insert({ user_id: profile.id, conversation_id: conversationId, instance_id: instance.id, contact_id: contact.id, from_me: true, content: reply, type: 'text', status: 'sent', ai_generated: true });
+                const fallbackResult = await MessageService.send(instance.id, remoteJid, reply);
+                const { error: fallbackError } = await supabase.from('messages').insert({ user_id: profile.id, conversation_id: conversationId, instance_id: instance.id, contact_id: contact.id, from_me: true, content: reply, type: 'text', status: 'sent', ai_generated: true, message_id: fallbackResult?.messageId });
                 if (fallbackError) console.error('[WEBHOOK] Erro fatal no fallback de texto:', fallbackError);
             }
         } else {
@@ -554,7 +601,8 @@ async function handleWebhookLogic(body: any) {
                     await evolutionApi.sendPresence(instanceName, remoteJid, 'composing');
                 }
                 await new Promise(r => setTimeout(r, chunkTypingTime));
-                await MessageService.send(instance.id, remoteJid, block.trim());
+                const txtResult = await MessageService.send(instance.id, remoteJid, block.trim());
+                console.log(`[MESSAGE_PERSIST] Persistindo bloco de texto da IA no DB. MessageID: ${txtResult?.messageId}`);
                 await supabase.from('messages').insert({
                     user_id: profile.id,
                     conversation_id: conversationId,
@@ -564,7 +612,8 @@ async function handleWebhookLogic(body: any) {
                     content: block.trim(),
                     type: 'text',
                     status: 'sent',
-                    ai_generated: true
+                    ai_generated: true,
+                    message_id: txtResult?.messageId
                 });
                 if (index < messageBlocks.length - 1) {
                     await new Promise(r => setTimeout(r, 800));

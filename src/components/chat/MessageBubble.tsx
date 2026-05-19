@@ -1,5 +1,5 @@
 'use client'
-import { Bot, UserCheck, Mic } from 'lucide-react'
+import { Bot, UserCheck, Mic, AlertCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface Message {
@@ -40,7 +40,12 @@ function MsgTime({ msg }: { msg: Message }) {
             </span>
             {isMe && (
                 <div className="flex items-center gap-1">
-                    {isSending ? (
+                    {msg.status === 'failed' ? (
+                        <div className="flex items-center gap-1 bg-destructive/10 text-destructive px-1.5 py-0.5 rounded text-[10px] font-bold">
+                            <AlertCircle className="w-3 h-3" />
+                            <span>Falhou</span>
+                        </div>
+                    ) : isSending ? (
                         <div className="w-2 h-2 border-2 border-primary-foreground/30 border-t-transparent rounded-full animate-spin" />
                     ) : (
                         <>
@@ -230,6 +235,7 @@ export default function MessageBubble({ msg, showDate, prevMsg }: Props) {
                         <div
                             className={cn(
                                 'relative px-5 py-3.5 shadow-sm transition-shadow hover:shadow-md',
+                                msg.status === 'failed' && isMe ? 'bg-destructive/10 text-destructive border-destructive/20 border rounded-2xl rounded-tr-none' : 
                                 isMe
                                     ? 'bg-primary text-primary-foreground rounded-2xl rounded-tr-none'
                                     : 'bg-card text-foreground border border-border/40 rounded-2xl rounded-tl-none shadow-black/5'

@@ -1,6 +1,6 @@
 import { Buffer } from 'buffer'
 
-export async function generateSpeech(text: string, voice: string, apiKey: string): Promise<string> {
+export async function generateSpeech(text: string, voice: string, apiKey: string, format: 'opus' | 'mp3' = 'opus'): Promise<string> {
     try {
         const response = await fetch('https://api.openai.com/v1/audio/speech', {
             method: 'POST',
@@ -12,7 +12,7 @@ export async function generateSpeech(text: string, voice: string, apiKey: string
                 model: 'tts-1-hd',
                 voice: voice,
                 input: text,
-                response_format: 'opus'
+                response_format: format
             })
         })
 

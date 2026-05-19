@@ -42,9 +42,9 @@ export class MessageService {
     }
 
     /**
-     * Envia áudio (Base64 ou URL) via provedor correto
+     * Caso contrário (Meta ou Evolution Padrão), faz fallback pro comportamento antigo (URL)
      */
-    static async sendAudio(instanceId: string, remoteJid: string, audioData: string) {
+    static async sendAudio(instanceId: string, remoteJid: string, mediaUrl: string, base64Data?: string): Promise<{ success: boolean, messageId?: string, error?: string }> {
         const supabase = getSupabaseAdmin();
         const { data: instance, error } = await supabase
             .from('whatsapp_instances')
@@ -54,18 +54,17 @@ export class MessageService {
 
         if (error || !instance) {
             console.error(`[MessageService.sendAudio] Instância ${instanceId} não encontrada:`, error);
-            return;
+            return { success: false, error: 'Instância não encontrada' };
         }
 
         if (instance.provider_type === 'META') {
             try {
                 // Para Meta, precisamos de uma URL pública.
-                // Se recebemos Base64, fazemos upload temporário para o Supabase Storage.
-                let audioUrl = audioData;
+                let audioUrl = mediaUrl;
                 
-                if (audioData.length > 500) { // Provavelmente é Base64
+                if (!audioUrl.startsWith('http') && audioUrl.length > 500) { 
                     const fileName = `temp-audios/${Date.now()}-${Math.random().toString(36).substring(7)}.ogg`;
-                    const buffer = Buffer.from(audioData, 'base64');
+                    const buffer = Buffer.from(audioUrl, 'base64');
                     
                     const { error: uploadError } = await supabase.storage
                         .from('funnel-assets')
@@ -81,16 +80,21 @@ export class MessageService {
                 }
 
                 const provider = new MetaProvider(instance.meta_config as any, instance.meta_access_token_encrypted || '');
-                await provider.sendMedia(remoteJid, { link: audioUrl }, 'audio');
+                const result = await provider.sendMedia(remoteJid, { link: audioUrl }, 'audio');
+                return { success: result.success, messageId: result.message_id, error: result.error };
             } catch (err) {
                 console.error('[MessageService.sendAudio] Erro ao processar áudio para Meta:', err);
+                return { success: false, error: 'Erro no envio via Meta' };
             }
         } else {
-            // Para Evolution, enviamos a URL via sendMedia (com ptt=true) ou Base64 direto
-            if (audioData.startsWith('http')) {
-                await evolutionApi.sendMedia(instance.instance_name, remoteJid, audioData, 'audio', '', true);
+            if (instance.provider_type === 'EVOLUTION' && base64Data) {
+                console.log(`[EVOLUTION_SEND] Enviando áudio em base64 direto pela Evolution. Instance: ${instance.instance_name} | To: ${remoteJid}`);
+                const result = await evolutionApi.sendWhatsAppAudio(instance.instance_name, remoteJid, base64Data);
+                console.log(`[EVOLUTION_RESPONSE] Recebido resposta da Evolution (Áudio). MessageID: ${result?.key?.id}`);
+                return { success: true, messageId: result?.key?.id };
             } else {
-                await evolutionApi.sendWhatsAppAudio(instance.instance_name, remoteJid, audioData);
+                console.log(`[PROVIDER_ROUTER] Fallback sendAudio -> sendMedia (URL)`);
+                return await this.sendMedia(instanceId, remoteJid, mediaUrl, 'audio');
             }
         }
     }
@@ -98,7 +102,7 @@ export class MessageService {
     /**
      * Envia mídia via provedor correto
      */
-    static async sendMedia(instanceId: string, remoteJid: string, url: string, type: 'image' | 'video' | 'audio' | 'document', caption?: string) {
+    static async sendMedia(instanceId: string, remoteJid: string, url: string, type: 'image' | 'video' | 'audio' | 'document', caption?: string): Promise<{ success: boolean, messageId?: string, error?: string }> {
         const supabase = getSupabaseAdmin();
         const { data: instance, error } = await supabase
             .from('whatsapp_instances')
@@ -108,7 +112,7 @@ export class MessageService {
 
         if (error || !instance) {
             console.error(`[MessageService.sendMedia] Instância ${instanceId} não encontrada:`, error);
-            return;
+            return { success: false, error: 'Instância não encontrada' };
         }
 
         if (instance.provider_type === 'META') {
@@ -116,11 +120,11 @@ export class MessageService {
             const metaConfig = instance.meta_config as any;
             if (!metaConfig || !metaConfig.phone_number_id) {
                 console.error(`[MessageService.sendMedia] ❌ META: meta_config ausente ou sem phone_number_id para instância ${instanceId}`);
-                return;
+                return { success: false, error: 'Configuração da Meta incompleta' };
             }
             if (!instance.meta_access_token_encrypted) {
                 console.error(`[MessageService.sendMedia] ❌ META: meta_access_token_encrypted ausente para instância ${instanceId}`);
-                return;
+                return { success: false, error: 'Token da Meta ausente' };
             }
 
             console.log(`[MessageService.sendMedia] 📤 META: Enviando ${type} para ${remoteJid} | URL: ${url.slice(0, 80)}...`);
@@ -133,12 +137,18 @@ export class MessageService {
                 } else {
                     console.log(`[MessageService.sendMedia] ✅ META: ${type} enviado com sucesso. ID: ${result.message_id}`);
                 }
-            } catch (decryptErr) {
+                return { success: result.success, messageId: result.message_id, error: result.error };
+            } catch (decryptErr: any) {
                 console.error(`[MessageService.sendMedia] ❌ META: Erro ao descriptografar token:`, decryptErr);
+                return { success: false, error: decryptErr.message };
             }
         } else {
-            await evolutionApi.sendMedia(instance.instance_name, remoteJid, url, type, caption);
+            console.log(`[EVOLUTION_SEND] Enviando mídia/áudio via Evolution. Instance: ${instance.instance_name} | To: ${remoteJid}`);
+            const result = await evolutionApi.sendMedia(instance.instance_name, remoteJid, url, type, caption);
+            console.log(`[EVOLUTION_RESPONSE] Recebido resposta da Evolution para Mídia. MessageID: ${result?.key?.id}`);
+            return { success: true, messageId: result?.key?.id };
         }
+        return { success: false };
     }
 
     /**
@@ -146,7 +156,7 @@ export class MessageService {
      * C3: Falhas de envio agora são tratadas explicitamente com log e marcação do contato.
      * C2 básico: Erro 131047 (janela 24h fechada) é identificado e registrado separadamente.
      */
-    static async send(instanceId: string, remoteJid: string, text: string, contactId?: string) {
+    static async send(instanceId: string, remoteJid: string, text: string, contactId?: string): Promise<{ success: boolean, messageId?: string, error?: string }> {
         const supabase = getSupabaseAdmin();
         // Busca info da instância para saber o provedor
         const { data: instance, error } = await supabase
@@ -157,7 +167,7 @@ export class MessageService {
 
         if (error || !instance) {
             console.error(`[MessageService.send] Instância ${instanceId} não encontrada:`, error);
-            return;
+            return { success: false, error: 'Instância não encontrada' };
         }
 
         if (instance.provider_type === 'META') {
@@ -188,9 +198,13 @@ export class MessageService {
                     console.warn(`[MessageService.send] 🏷️ Contato ${contactId} marcado como ATENCAO.`);
                 }
             }
+            return { success: result.success, messageId: result.message_id, error: result.error };
         } else {
             // Evolution API usa o nome da instância
-            await evolutionApi.sendTextMessage(instance.instance_name, remoteJid, text);
+            console.log(`[EVOLUTION_SEND] Enviando via Evolution pela IA/API. Instance: ${instance.instance_name} | To: ${remoteJid}`);
+            const result = await evolutionApi.sendTextMessage(instance.instance_name, remoteJid, text);
+            console.log(`[EVOLUTION_RESPONSE] Recebido resposta da Evolution. MessageID: ${result?.key?.id}`);
+            return { success: true, messageId: result?.key?.id };
         }
     }
 }

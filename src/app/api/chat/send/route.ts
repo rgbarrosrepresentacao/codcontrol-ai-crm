@@ -15,7 +15,10 @@ export async function POST(req: NextRequest) {
 
         const { conversationId, instanceId, contactWhatsappId, message } = await req.json()
 
+        console.log(`[CHAT_SEND] Solicitado envio manual. ConvsID: ${conversationId} | Instance: ${instanceId} | To: ${contactWhatsappId}`);
+
         if (!conversationId || !instanceId || !contactWhatsappId || !message?.trim()) {
+            console.error('[CHAT_SEND] Parâmetros inválidos fornecidos');
             return NextResponse.json({ error: 'Parâmetros inválidos' }, { status: 400 })
         }
 
@@ -44,6 +47,7 @@ export async function POST(req: NextRequest) {
         }
 
         // 1. Busca o provedor e envia
+        console.log(`[PROVIDER_ROUTER] Resolvendo provedor para instância ${instance.provider_type}`);
         let messageId = ''
         if (instance.provider_type === 'META') {
             const { MetaProvider } = await import('@/services/whatsapp/MetaProvider')
@@ -59,15 +63,16 @@ export async function POST(req: NextRequest) {
             messageId = result.message_id || ''
         } else {
             // Provedor Evolution (padrão)
+            console.log(`[EVOLUTION_SEND] Enviando via Evolution. Instance: ${instance.instance_name} | To: ${contactWhatsappId}`);
             await evolutionApi.sendPresence(instance.instance_name, contactWhatsappId, 'composing')
             await new Promise(resolve => setTimeout(resolve, 800))
             const result = await evolutionApi.sendTextMessage(instance.instance_name, contactWhatsappId, message.trim())
             messageId = result?.key?.id || ''
+            console.log(`[EVOLUTION_RESPONSE] Recebido status 200 Fake/Real. MessageID: ${messageId}`);
         }
 
         // 2. Salva a mensagem no banco de dados (marcada como humana, nao da IA)
-
-        // 2. Salva a mensagem no banco de dados (marcada como humana, nao da IA)
+        console.log(`[MESSAGE_PERSIST] Persistindo mensagem de Chat manual no DB. MessageID: ${messageId}`);
         const { data: insertedMsg, error: insertError } = await supabaseAdmin.from('messages').insert({
             user_id: user.id,
             conversation_id: conversationId,
@@ -78,10 +83,13 @@ export async function POST(req: NextRequest) {
             type: 'text',
             ai_generated: false,
             status: 'sent',
+            message_id: messageId,
         }).select('id, content, from_me, ai_generated, type, created_at, status').single()
 
         if (insertError) {
-            console.error('[Chat/Send] Erro ao inserir mensagem no DB:', insertError)
+            console.error('[Chat/Send] [MESSAGE_PERSIST_ERROR] Erro ao inserir mensagem no DB:', insertError)
+        } else {
+            console.log(`[MESSAGE_PERSIST] Mensagem salva com sucesso. Row ID: ${insertedMsg?.id}`);
         }
 
         // 3. Atualiza a ultima mensagem da conversa

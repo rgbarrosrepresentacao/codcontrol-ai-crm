@@ -8,7 +8,7 @@ export async function POST(req: NextRequest) {
         const body = await req.json();
         const eventType = (body.event || body.eventType || '').toLowerCase();
 
-        if (eventType !== 'messages.upsert' && eventType !== 'messages_upsert') {
+        if (!['messages.upsert', 'messages_upsert', 'messages.update', 'messages_update'].includes(eventType)) {
             return NextResponse.json({ success: true, reason: 'ignored_event' });
         }
 
