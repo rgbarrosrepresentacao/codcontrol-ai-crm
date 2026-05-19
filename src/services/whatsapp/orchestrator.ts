@@ -505,7 +505,6 @@ async function handleWebhookLogic(body: any) {
                     await new Promise(r => setTimeout(r, Math.max(typingTime - 1000, 2000)));
                 }
                 const audioB64 = await generateSpeech(cleanTextForAudio(reply), aiConfig.voice_id || 'nova', profile.openai_api_key);
-                await MessageService.sendAudio(instance.id, remoteJid, audioB64);
 
                 // Upload para Supabase Storage
                 const fileName = `sent-audios/${instance.id}/${crypto.randomUUID()}.ogg`;
@@ -524,7 +523,10 @@ async function handleWebhookLogic(body: any) {
                     console.error('[orchestrator] Storage upload error:', uploadError);
                 }
 
-                await supabase.from('messages').insert({
+                // Envia a URL do áudio para o provedor (Evolution usará sendMedia com ptt=true)
+                await MessageService.sendAudio(instance.id, remoteJid, audioUrl || audioB64);
+
+                const { error: insertError } = await supabase.from('messages').insert({
                     user_id: profile.id,
                     conversation_id: conversationId,
                     instance_id: instance.id,
@@ -536,9 +538,13 @@ async function handleWebhookLogic(body: any) {
                     ai_generated: true,
                     payload: audioUrl ? { audioUrl } : undefined
                 });
+                
+                if (insertError) throw insertError;
             } catch (err) {
+                console.error('[WEBHOOK] Erro ao enviar áudio, fazendo fallback para texto:', err);
                 await MessageService.send(instance.id, remoteJid, reply);
-                await supabase.from('messages').insert({ user_id: profile.id, conversation_id: conversationId, instance_id: instance.id, contact_id: contact.id, from_me: true, content: reply, type: 'text', status: 'sent', ai_generated: true });
+                const { error: fallbackError } = await supabase.from('messages').insert({ user_id: profile.id, conversation_id: conversationId, instance_id: instance.id, contact_id: contact.id, from_me: true, content: reply, type: 'text', status: 'sent', ai_generated: true });
+                if (fallbackError) console.error('[WEBHOOK] Erro fatal no fallback de texto:', fallbackError);
             }
         } else {
             const messageBlocks = reply.split('\n\n').filter(block => block.trim().length > 0);

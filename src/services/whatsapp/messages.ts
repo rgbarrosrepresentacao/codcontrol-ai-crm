@@ -86,8 +86,12 @@ export class MessageService {
                 console.error('[MessageService.sendAudio] Erro ao processar áudio para Meta:', err);
             }
         } else {
-            // Para Evolution, enviamos o Base64 direto (ou URL se for o caso)
-            await evolutionApi.sendWhatsAppAudio(instance.instance_name, remoteJid, audioData);
+            // Para Evolution, enviamos a URL via sendMedia (com ptt=true) ou Base64 direto
+            if (audioData.startsWith('http')) {
+                await evolutionApi.sendMedia(instance.instance_name, remoteJid, audioData, 'audio', '', true);
+            } else {
+                await evolutionApi.sendWhatsAppAudio(instance.instance_name, remoteJid, audioData);
+            }
         }
     }
 
