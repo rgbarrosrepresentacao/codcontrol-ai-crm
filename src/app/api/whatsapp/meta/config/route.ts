@@ -124,15 +124,16 @@ export async function GET() {
         return NextResponse.json({ configured: false })
     }
 
-    // Tenta descriptografar dados sensíveis para exibir na UI
+    // Tenta descriptografar dados sensíveis para exibir na UI de forma mascarada
     let accessToken = null
     let appSecret = null
     try {
         if (instance.meta_access_token_encrypted) {
-            accessToken = decrypt(instance.meta_access_token_encrypted)
+            const rawToken = decrypt(instance.meta_access_token_encrypted)
+            accessToken = '***' + rawToken.slice(-4)
         }
         if (instance.meta_app_secret_encrypted) {
-            appSecret = decrypt(instance.meta_app_secret_encrypted)
+            appSecret = '***' // Nunca retorna o secret, apenas um placeholder para o frontend saber que existe
         }
     } catch (err) {
         console.error('[CONFIG_GET] Erro ao descriptografar dados:', err)

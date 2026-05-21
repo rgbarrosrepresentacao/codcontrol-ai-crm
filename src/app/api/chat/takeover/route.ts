@@ -8,8 +8,8 @@ export async function POST(req: NextRequest) {
     const supabaseAdmin = getSupabaseAdmin()
     try {
         const supabase = await createSupabaseServerClient()
-        const { data: { session } } = await supabase.auth.getSession()
-        if (!session) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+        const { data: { user }, error: authError } = await supabase.auth.getUser()
+        if (authError || !user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
 
         const { contactId, action } = await req.json() as { contactId: string; action: 'take' | 'return' }
 
@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
                     followup_stage: 0,
                 })
                 .eq('id', contactId)
-                .eq('user_id', session.user.id)
+                .eq('user_id', user.id)
 
             if (error) throw error
             return NextResponse.json({ success: true, mode: 'human' })
@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
                     ai_tag: null,
                 })
                 .eq('id', contactId)
-                .eq('user_id', session.user.id)
+                .eq('user_id', user.id)
 
             if (error) throw error
             return NextResponse.json({ success: true, mode: 'ai' })

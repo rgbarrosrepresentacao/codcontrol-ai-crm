@@ -4,8 +4,8 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 export const dynamic = 'force-dynamic'
 
 const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL!
-const INSTANCE_NAME = 'crm_bf2a9710_cgh0'
-const INSTANCE_API_KEY = '0672D494-CCF7-4FC4-96F7-F1B58E8D177D'
+const INSTANCE_NAME = process.env.AUTH_INSTANCE_NAME
+const INSTANCE_API_KEY = process.env.AUTH_INSTANCE_API_KEY
 
 function formatWhatsApp(raw: string): string {
     const digits = raw.replace(/\D/g, '')
@@ -24,6 +24,11 @@ export async function POST(req: NextRequest) {
 
         if (!whatsapp || !code || !email || !password) {
             return NextResponse.json({ error: 'Dados incompletos.' }, { status: 400 })
+        }
+
+        if (!INSTANCE_NAME || !INSTANCE_API_KEY || !EVOLUTION_API_URL) {
+            console.error('[VERIFY_CODE] Configurações de AUTH_INSTANCE_NAME ou AUTH_INSTANCE_API_KEY não encontradas no .env')
+            return NextResponse.json({ error: 'Serviço indisponível por falta de configuração interna.' }, { status: 503 })
         }
 
         const formattedWA = formatWhatsApp(whatsapp)

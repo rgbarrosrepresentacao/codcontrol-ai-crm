@@ -6,6 +6,7 @@ import {
     BookOpen, Plus, Trash2, Loader2, Upload, Image as ImageIcon,
     Video, FileText, Info, X, CheckCircle2, Megaphone, Smartphone
 } from 'lucide-react'
+import { validateMediaFile, friendlyMediaError, sanitizeStoragePath, type MediaCategory } from '@/lib/media-validator'
 
 interface KnowledgeItem {
     id: string
@@ -119,24 +120,35 @@ export default function ConhecimentoPage() {
         if (!file) return
 
         setUploading(true)
-        const toastId = toast.loading('Fazendo upload da mídia...')
+        const toastId = toast.loading('Validando arquivo...')
 
         try {
             const { data: { user } } = await supabase.auth.getUser()
             if (!user) throw new Error('Não autenticado')
 
-            const ext = file.name.split('.').pop()
-            const path = `${user.id}/knowledge/${Date.now()}.${ext}`
+            // ── Validação de mídia (MIME, tamanho, magic bytes) ──
+            const expectedCategory = form.media_type as MediaCategory
+            const validation = await validateMediaFile(file, expectedCategory, `knowledge/${user.id}`)
+
+            if (!validation.valid) {
+                toast.error(friendlyMediaError(validation), { id: toastId })
+                return
+            }
+
+            toast.loading('Fazendo upload da mídia...', { id: toastId })
+
+            // ── Path sanitizado: nunca usa o nome original do arquivo ──
+            const safePath = sanitizeStoragePath(file.name || 'upload', validation.mimeType, `${user.id}/knowledge`)
 
             const { error: uploadErr } = await supabase.storage
                 .from('funnel-assets')
-                .upload(path, file)
+                .upload(safePath, file, { contentType: validation.mimeType })
 
             if (uploadErr) throw uploadErr
 
             const { data: { publicUrl } } = supabase.storage
                 .from('funnel-assets')
-                .getPublicUrl(path)
+                .getPublicUrl(safePath)
 
             setForm(prev => ({ ...prev, media_url: publicUrl }))
             toast.success('Upload concluído! ✅', { id: toastId })

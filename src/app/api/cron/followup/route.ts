@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { evolutionApi } from '@/lib/evolution'
+import { GuardService } from '@/services/whatsapp/guard'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,9 +24,8 @@ export async function GET(req: NextRequest) {
     const authHeader = req.headers.get('authorization');
     const cronSecret = process.env.CRON_SECRET;
 
-    // Se o secret estiver configurado, exige a batida de chave
-    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-        console.error('[Follow-up] 🚫 Acesso não autorizado negado.');
+    if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+        console.error('[Follow-up] 🚫 Acesso não autorizado negado ou CRON_SECRET não configurado.');
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -134,30 +134,17 @@ export async function GET(req: NextRequest) {
 
             if (!profile?.openai_api_key) continue
 
-            // 3b. BLOQUEIO DE SEGURANÇA - Validação unificada (Admin, Kiwify ou Trial com 48h de carência)
-            const gracePeriodMs = 48 * 60 * 60 * 1000;
-            const subStatus = profile.stripe_subscription_status || '';
-            const isPaidStatus = ['paid', 'active', 'aprovado', 'approved'].includes(subStatus.toLowerCase());
-            const trialEndsAt = profile.trial_ends_at;
-            
-            let hasAccess = profile.is_admin || false;
+            // 3b. BLOQUEIO DE SEGURANÇA - Validação unificada via GuardService
+            const { hasAccess, reason } = GuardService.checkAccess({
+                id: conversation.user_id,
+                is_admin: profile.is_admin || false,
+                stripe_subscription_status: profile.stripe_subscription_status,
+                trial_ends_at: profile.trial_ends_at,
+                openai_api_key: profile.openai_api_key
+            });
 
             if (!hasAccess) {
-                if (isPaidStatus) {
-                    if (!trialEndsAt) {
-                        hasAccess = true;
-                    } else {
-                        const graceEnd = new Date(new Date(trialEndsAt).getTime() + gracePeriodMs);
-                        hasAccess = new Date() <= graceEnd;
-                    }
-                } else if (subStatus === 'trialing' && trialEndsAt) {
-                    const graceEnd = new Date(new Date(trialEndsAt).getTime() + gracePeriodMs);
-                    hasAccess = new Date() <= graceEnd;
-                }
-            }
-
-            if (!hasAccess) {
-                console.log(`[Follow-up] 🚫 Resgate bloqueado para o usuário ${conversation.user_id}: Plano expirado (vencimento + 48h). Status: ${subStatus}`)
+                console.log(`[Follow-up] 🚫 Resgate bloqueado para o usuário ${conversation.user_id}: ${reason || 'Plano expirado'}. Status: ${profile.stripe_subscription_status}`)
                 continue
             }
 

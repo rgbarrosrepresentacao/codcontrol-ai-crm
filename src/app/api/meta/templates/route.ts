@@ -1,28 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
-import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
+import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { decrypt } from '@/lib/crypto'
 
 export const dynamic = 'force-dynamic'
 
-async function getAuthUser(req: NextRequest) {
-    const cookieStore = await cookies()
-    const supabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        { global: { headers: { Cookie: cookieStore.toString() } } }
-    )
-    const { data: { user } } = await supabase.auth.getUser()
-    return user
-}
 
 /** GET /api/meta/templates — Lista templates do banco local */
 export async function GET(req: NextRequest) {
     const supabase = getSupabaseAdmin()
     try {
-        const user = await getAuthUser(req)
-        if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+        const supabaseAuth = await createSupabaseServerClient()
+        const { data: { user }, error: authError } = await supabaseAuth.auth.getUser()
+        if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
         const { data: profile } = await supabase
             .from('profiles')
@@ -53,8 +43,9 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
     const supabase = getSupabaseAdmin()
     try {
-        const user = await getAuthUser(req)
-        if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+        const supabaseAuth = await createSupabaseServerClient()
+        const { data: { user }, error: authError } = await supabaseAuth.auth.getUser()
+        if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
         const { data: profile } = await supabase
             .from('profiles')

@@ -23,6 +23,9 @@ interface BlastCampaign {
     created_at: string
     started_at: string | null
     completed_at: string | null
+    template_name?: string | null
+    template_language?: string
+    template_variable_mappings?: any[]
 }
 
 interface WhatsAppInstance {
@@ -30,6 +33,16 @@ interface WhatsAppInstance {
     instance_name: string
     status: string
     phone_number?: string
+    provider_type?: 'EVOLUTION' | 'META'
+}
+
+interface WhatsAppTemplate {
+    id: string
+    name: string
+    category: string
+    status: 'APPROVED' | 'PENDING' | 'REJECTED' | 'PAUSED'
+    language: string
+    components: any[]
 }
 
 // ─── Utilitários ──────────────────────────────────────────────────────────────
@@ -90,6 +103,116 @@ function ProgressBar({ value, max, color = '#22c55e' }: { value: number; max: nu
                 borderRadius: 99,
                 transition: 'width 0.5s ease',
             }} />
+        </div>
+    )
+}
+
+function WhatsAppPreview({ template, mappings }: { template: WhatsAppTemplate; mappings: { paramIndex: number; csvColumn: string }[] }) {
+    const headerComp = template.components?.find((c: any) => c.type === 'HEADER')
+    const bodyComp = template.components?.find((c: any) => c.type === 'BODY')
+    const footerComp = template.components?.find((c: any) => c.type === 'FOOTER')
+    const buttonComp = template.components?.find((c: any) => c.type === 'BUTTONS')
+
+    let bodyText = bodyComp?.text || ''
+    
+    const renderBodyText = () => {
+        const parts = bodyText.split(/(\{\{\d+\}\})/g)
+        return parts.map((part: string, idx: number) => {
+            if (part.match(/^\{\{\d+\}\}$/)) {
+                const num = parseInt(part.replace(/\D/g, ''), 10)
+                const mapping = mappings.find(m => m.paramIndex === num)
+                const colName = mapping?.csvColumn || `var_${num}`
+                return (
+                    <span key={idx} style={{ 
+                        background: 'rgba(0, 168, 132, 0.15)', 
+                        border: '1px solid rgba(0, 168, 132, 0.3)',
+                        color: '#00a884', 
+                        padding: '1px 6px', 
+                        borderRadius: 6,
+                        fontSize: '0.85em',
+                        fontFamily: 'monospace',
+                        margin: '0 2px',
+                        display: 'inline-block'
+                    }}>
+                        {`{${colName}}`}
+                    </span>
+                )
+            }
+            return <span key={idx}>{part}</span>
+        })
+    }
+
+    return (
+        <div style={{
+            background: '#0b141a',
+            backgroundImage: 'url("https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png")',
+            backgroundSize: 'cover',
+            backgroundBlendMode: 'overlay',
+            borderRadius: 12,
+            padding: 16,
+            display: 'flex',
+            flexDirection: 'column',
+            maxWidth: 340,
+            margin: '10px auto',
+            border: '1px solid rgba(255,255,255,0.08)'
+        }}>
+            <div style={{
+                background: '#1f2c34',
+                color: '#e9edef',
+                borderRadius: '8px 8px 8px 0px',
+                padding: '8px 12px',
+                fontSize: 13.5,
+                lineHeight: 1.5,
+                alignSelf: 'flex-start',
+                position: 'relative',
+                boxShadow: '0 1px 0.5px rgba(0,0,0,0.13)',
+                maxWidth: '90%',
+            }}>
+                {headerComp && (
+                    <div style={{ fontWeight: 'bold', marginBottom: 4, color: '#e9edef', opacity: 0.9 }}>
+                        {headerComp.text}
+                    </div>
+                )}
+                
+                <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                    {renderBodyText()}
+                </div>
+
+                {footerComp && (
+                    <div style={{ color: '#8696a0', fontSize: 11, marginTop: 4 }}>
+                        {footerComp.text}
+                    </div>
+                )}
+
+                <div style={{ textAlign: 'right', fontSize: 9, color: '#8696a0', marginTop: 2 }}>
+                    12:00 ✓✓
+                </div>
+            </div>
+
+            {buttonComp && buttonComp.buttons && buttonComp.buttons.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8, maxWidth: '90%' }}>
+                    {buttonComp.buttons.map((btn: any, idx: number) => (
+                        <div key={idx} style={{
+                            background: '#1f2c34',
+                            color: '#00a884',
+                            textAlign: 'center',
+                            padding: '6px 12px',
+                            borderRadius: 8,
+                            fontSize: 13,
+                            fontWeight: 500,
+                            cursor: 'pointer',
+                            boxShadow: '0 1px 0.5px rgba(0,0,0,0.13)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 6
+                        }}>
+                            {btn.type === 'URL' ? '🔗 ' : btn.type === 'PHONE_NUMBER' ? '📞 ' : '💬 '}
+                            {btn.text}
+                        </div>
+                    ))}
+                </div>
+            )}
         </div>
     )
 }
@@ -221,10 +344,14 @@ function NewCampaignForm({ instances, onCreated }: { instances: WhatsAppInstance
     // Campos da campanha
     const [name, setName] = useState('')
     const [description, setDescription] = useState('')
-    const [variants, setVariants] = useState([{ text: '' }])
-    const [mediaUrl, setMediaUrl] = useState('')
-    const [mediaType, setMediaType] = useState('')
-    const [mediaCaption, setMediaCaption] = useState('')
+    
+    // Estados para Templates Oficiais Meta
+    const [templates, setTemplates] = useState<WhatsAppTemplate[]>([])
+    const [selectedTemplateName, setSelectedTemplateName] = useState('')
+    const [selectedTemplate, setSelectedTemplate] = useState<WhatsAppTemplate | null>(null)
+    const [templateMappings, setTemplateMappings] = useState<{ paramIndex: number; csvColumn: string }[]>([])
+    const [syncingTemplates, setSyncingTemplates] = useState(false)
+
     const [selectedInstances, setSelectedInstances] = useState<string[]>([])
     const [delayMin, setDelayMin] = useState(30)
     const [delayMax, setDelayMax] = useState(90)
@@ -233,60 +360,95 @@ function NewCampaignForm({ instances, onCreated }: { instances: WhatsAppInstance
     // CSV
     const [csvText, setCsvText] = useState('')
     const [csvPreview, setCsvPreview] = useState<any[]>([])
+    const [csvHeaders, setCsvHeaders] = useState<string[]>([])
     const fileInputRef = useRef<HTMLInputElement>(null)
 
     const [createdCampaignId, setCreatedCampaignId] = useState<string | null>(null)
-    const [uploading, setUploading] = useState(false)
-    const mediaFileInputRef = useRef<HTMLInputElement>(null)
 
-    const handleMediaUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0]
-        if (!file) return
-
-        // Limite de 15MB para WhatsApp dependendo do provedor, mas vamos deixar subir
-        setUploading(true)
-        const toastId = toast.loading('Subindo arquivo para a nuvem...')
-
+    // Busca templates locais ao carregar
+    const fetchTemplates = async () => {
         try {
-            // Verifica se o usuário tem permissão/sessão
-            const { data: { session } } = await supabase.auth.getSession()
-            if (!session) throw new Error('Sessão expirada. Faça login novamente.')
-
-            const ext = file.name.split('.').pop()
-            const filename = `${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`
-            const path = `blast-media/${session.user.id}/${filename}`
-
-            const { error: uploadErr } = await supabase.storage
-                .from('funnel-assets')
-                .upload(path, file)
-
-            if (uploadErr) throw uploadErr
-
-            const { data: { publicUrl } } = supabase.storage
-                .from('funnel-assets')
-                .getPublicUrl(path)
-
-            setMediaUrl(publicUrl)
-            
-            // Detectar tipo
-            if (file.type.startsWith('image/')) setMediaType('image')
-            else if (file.type.startsWith('video/')) setMediaType('video')
-            else if (file.type.startsWith('audio/')) setMediaType('audio')
-            else setMediaType('document')
-
-            toast.success('Mídia enviada com sucesso! 🚀', { id: toastId })
-        } catch (err: any) {
-            console.error('Upload error:', err)
-            toast.error('Erro no upload: ' + (err.message || 'Erro desconhecido'), { id: toastId })
-        } finally {
-            setUploading(false)
-            if (mediaFileInputRef.current) mediaFileInputRef.current.value = ''
+            const res = await fetch('/api/meta/templates')
+            if (res.ok) {
+                const d = await res.json()
+                const approvedOnly = (d.templates || []).filter((t: any) => t.status === 'APPROVED')
+                setTemplates(approvedOnly)
+            }
+        } catch (err) {
+            console.error('Erro ao buscar templates:', err)
         }
     }
 
+    useEffect(() => {
+        fetchTemplates()
+    }, [])
+
+    // Sincroniza da Meta via POST
+    const syncTemplates = async () => {
+        setSyncingTemplates(true)
+        const toastId = toast.loading('Sincronizando templates da Meta...')
+        try {
+            const res = await fetch('/api/meta/templates', { method: 'POST' })
+            const data = await res.json()
+            if (res.ok) {
+                const approvedOnly = (data.templates || []).filter((t: any) => t.status === 'APPROVED')
+                toast.success(`Sincronizado: ${data.synced} templates!`, { id: toastId })
+                setTemplates(approvedOnly)
+            } else {
+                throw new Error(data.error || 'Erro ao sincronizar')
+            }
+        } catch (err: any) {
+            toast.error(err.message || 'Falha na sincronização', { id: toastId })
+        } finally {
+            setSyncingTemplates(false)
+        }
+    }
+
+    // Atualiza o template selecionado
+    useEffect(() => {
+        const found = templates.find(t => t.name === selectedTemplateName) || null
+        setSelectedTemplate(found)
+    }, [selectedTemplateName, templates])
+
+    // Extrai variáveis do template
+    const getTemplateBodyVariables = (template: WhatsAppTemplate | null) => {
+        if (!template) return []
+        const bodyComp = template.components?.find((c: any) => c.type === 'BODY')
+        const bodyText = bodyComp?.text || ''
+        const matches = bodyText.match(/\{\{(\d+)\}\}/g) || []
+        const indices = (Array.from(new Set(matches.map((m: string) => {
+            const num = m.replace(/\D/g, '')
+            return parseInt(num, 10)
+        }))) as number[]).sort((a, b) => a - b)
+        return indices
+    }
+
+    // Inicializa mapeamento de variáveis quando o template muda ou o CSV muda
+    useEffect(() => {
+        if (selectedTemplate) {
+            const vars = getTemplateBodyVariables(selectedTemplate)
+            const newMappings = vars.map(v => {
+                let defaultCol = ''
+                if (v === 1) defaultCol = 'nome'
+                else if (csvHeaders.length > v - 1) defaultCol = csvHeaders[v - 1]
+                return { paramIndex: v, csvColumn: defaultCol }
+            })
+            setTemplateMappings(newMappings)
+        } else {
+            setTemplateMappings([])
+        }
+    }, [selectedTemplate, csvHeaders])
+
     const handleCSV = (text: string) => {
         setCsvText(text)
-        setCsvPreview(parseCSV(text).slice(0, 5))
+        const parsed = parseCSV(text)
+        setCsvPreview(parsed.slice(0, 5))
+        
+        const lines = text.trim().split('\n').filter(l => l.trim())
+        if (lines.length > 0) {
+            const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''))
+            setCsvHeaders(headers)
+        }
     }
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -301,19 +463,23 @@ function NewCampaignForm({ instances, onCreated }: { instances: WhatsAppInstance
         setError('')
         setLoading(true)
         try {
+            if (!selectedTemplateName) {
+                throw new Error('Por favor, selecione um template aprovado da Meta.')
+            }
             const res = await fetch('/api/blast/campaigns', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    name, description,
-                    message_variants: variants.filter(v => v.text.trim()),
-                    media_url: mediaUrl || null,
-                    media_type: mediaType || null,
-                    media_caption: mediaCaption || null,
+                    name,
+                    description,
+                    template_name: selectedTemplateName,
+                    template_language: selectedTemplate?.language || 'pt_BR',
+                    template_variable_mappings: templateMappings,
                     instance_ids: selectedInstances,
                     delay_min: delayMin,
                     delay_max: delayMax,
                     warming_enabled: warmingEnabled,
+                    message_variants: [], // não é necessário para Meta
                 }),
             })
             const data = await res.json()
@@ -406,137 +572,138 @@ function NewCampaignForm({ instances, onCreated }: { instances: WhatsAppInstance
                         <input style={inputStyle} value={description} onChange={e => setDescription(e.target.value)} placeholder="Nota interna sobre a campanha" />
                     </div>
 
-                    <div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                            <label style={{ ...labelStyle, marginBottom: 0 }}>✍️ Variantes de Mensagem (anti-repetição)</label>
+                    {/* Seleção de Template da Meta */}
+                    <div style={{
+                        background: 'rgba(255,255,255,0.02)',
+                        border: '1px solid rgba(255,255,255,0.06)',
+                        borderRadius: 12,
+                        padding: 16,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 12
+                    }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <label style={{ ...labelStyle, marginBottom: 0, fontWeight: 600 }}>📋 Selecionar Template da Meta *</label>
                             <button
-                                onClick={() => setVariants(v => [...v, { text: '' }])}
-                                style={{ background: 'none', border: '1px solid rgba(34,197,94,0.4)', color: '#22c55e', borderRadius: 8, padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}
-                            >+ Variante</button>
-                        </div>
-                        <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: 12, marginBottom: 10 }}>
-                            Use {'{{nome}}'} para personalizar. Cada envio sorteia uma variante diferente.
-                        </div>
-                        {variants.map((v, i) => (
-                            <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                                <textarea
-                                    style={{ ...inputStyle, resize: 'vertical', minHeight: 80, flex: 1 }}
-                                    value={v.text}
-                                    onChange={e => {
-                                        const copy = [...variants]
-                                        copy[i].text = e.target.value
-                                        setVariants(copy)
-                                    }}
-                                    placeholder={`Variante ${i + 1}: Oi {{nome}}, tudo bem?...`}
-                                />
-                                {variants.length > 1 && (
-                                    <button
-                                        onClick={() => setVariants(variants.filter((_, j) => j !== i))}
-                                        style={{ background: 'rgba(239,68,68,0.1)', border: 'none', color: '#ef4444', borderRadius: 8, padding: '0 12px', cursor: 'pointer', fontSize: 18 }}
-                                    >×</button>
-                                )}
-                            </div>
-                        ))}
-                    </div>
-
-                    <div>
-                        <label style={labelStyle}>📎 Mídia (opcional)</label>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                                <label style={{ ...labelStyle, fontSize: 11 }}>URL ou Upload</label>
-                                <div style={{ position: 'relative', display: 'flex', gap: 6 }}>
-                                    <input 
-                                        style={{ ...inputStyle, flex: 1 }} 
-                                        value={mediaUrl} 
-                                        onChange={e => setMediaUrl(e.target.value)} 
-                                        placeholder="https://..." 
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={() => mediaFileInputRef.current?.click()}
-                                        disabled={uploading}
-                                        style={{
-                                            background: '#3b82f6',
-                                            color: 'white',
-                                            border: 'none',
-                                            borderRadius: 8,
-                                            width: 42,
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            cursor: uploading ? 'not-allowed' : 'pointer',
-                                            transition: 'all 0.2s ease',
-                                        }}
-                                        title="Fazer Upload de Arquivo"
-                                    >
-                                        {uploading ? <Loader2 size={18} className="animate-spin" /> : <Upload size={18} />}
-                                    </button>
-                                    <input 
-                                        type="file" 
-                                        ref={mediaFileInputRef} 
-                                        style={{ display: 'none' }} 
-                                        onChange={handleMediaUpload}
-                                        accept="image/*,video/*,audio/*,application/pdf"
-                                    />
-                                </div>
-                            </div>
-                            <div>
-                                <label style={{ ...labelStyle, fontSize: 11 }}>Tipo</label>
-                                <select style={inputStyle} value={mediaType} onChange={e => setMediaType(e.target.value)}>
-                                    <option value="">Sem mídia</option>
-                                    <option value="image">🖼️ Imagem</option>
-                                    <option value="video">🎥 Vídeo</option>
-                                    <option value="audio">🎙️ Áudio</option>
-                                    <option value="document">📄 Documento</option>
-                                </select>
-                            </div>
-                        </div>
-                        {mediaUrl && (
-                            <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                                <div style={{ 
-                                    padding: '10px 14px', 
-                                    background: 'rgba(59, 130, 246, 0.08)', 
-                                    border: '1px solid rgba(59, 130, 246, 0.2)', 
-                                    borderRadius: 12,
+                                type="button"
+                                onClick={syncTemplates}
+                                disabled={syncingTemplates}
+                                style={{
+                                    background: 'none',
+                                    border: '1px solid rgba(0,168,132,0.4)',
+                                    color: '#00a884',
+                                    borderRadius: 8,
+                                    padding: '4px 12px',
                                     fontSize: 12,
-                                    color: '#60a5fa',
+                                    cursor: 'pointer',
                                     display: 'flex',
                                     alignItems: 'center',
-                                    justifyContent: 'space-between',
-                                    gap: 10
-                                }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, overflow: 'hidden' }}>
-                                        <CheckCircle2 size={16} />
-                                        <span style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-                                            Mídia pronta: {mediaUrl.split('/').pop()}
-                                        </span>
-                                    </div>
-                                    <button 
-                                        type="button"
-                                        onClick={() => { setMediaUrl(''); setMediaType(''); }}
-                                        style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 11, fontWeight: 600 }}
-                                    >
-                                        Remover
-                                    </button>
+                                    gap: 6
+                                }}
+                            >
+                                {syncingTemplates ? <Loader2 size={12} className="animate-spin" /> : '🔄'} Sincronizar da Meta
+                            </button>
+                        </div>
+
+                        {templates.length === 0 ? (
+                            <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13, textAlign: 'center', padding: 12 }}>
+                                Nenhum template homologado (APPROVED) encontrado. Clique em Sincronizar.
+                            </div>
+                        ) : (
+                            <select
+                                style={inputStyle}
+                                value={selectedTemplateName}
+                                onChange={e => setSelectedTemplateName(e.target.value)}
+                            >
+                                <option value="">-- Selecione um template aprovado --</option>
+                                {templates.map(t => (
+                                    <option key={t.id} value={t.name}>
+                                        {t.name} ({t.category?.toLowerCase()} - {t.language})
+                                    </option>
+                                ))}
+                            </select>
+                        )}
+
+                        {/* Preview do Template selecionado */}
+                        {selectedTemplate && (
+                            <div style={{ marginTop: 8 }}>
+                                <div style={{ display: 'flex', gap: 10, fontSize: 12, color: 'rgba(255,255,255,0.5)', marginBottom: 8, justifyContent: 'center' }}>
+                                    <span>Categoria: <strong style={{ color: '#00a884' }}>{selectedTemplate.category}</strong></span>
+                                    <span>•</span>
+                                    <span>Status: <strong style={{ color: '#22c55e' }}>{selectedTemplate.status}</strong></span>
                                 </div>
-                                {mediaType === 'image' && (
-                                    <div style={{ 
-                                        width: '100%', 
-                                        height: 120, 
-                                        borderRadius: 12, 
-                                        overflow: 'hidden', 
-                                        border: '1px solid rgba(255,255,255,0.1)',
-                                        background: 'rgba(0,0,0,0.2)'
+                                
+                                <WhatsAppPreview template={selectedTemplate} mappings={templateMappings} />
+
+                                {/* Mapeamento de variáveis */}
+                                {getTemplateBodyVariables(selectedTemplate).length > 0 && (
+                                    <div style={{
+                                        marginTop: 16,
+                                        borderTop: '1px solid rgba(255,255,255,0.08)',
+                                        paddingTop: 16
                                     }}>
-                                        <img src={mediaUrl} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                                        <label style={{ ...labelStyle, fontWeight: 600, color: '#fff', marginBottom: 10 }}>
+                                            🔗 Mapear Colunas do CSV para o Template
+                                        </label>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                            {getTemplateBodyVariables(selectedTemplate).map(idx => {
+                                                const mapping = templateMappings.find(m => m.paramIndex === idx)
+                                                return (
+                                                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'space-between' }}>
+                                                        <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)', fontFamily: 'monospace' }}>
+                                                            Variável {'{{'}{idx}{'}}'}:
+                                                        </span>
+                                                        <div style={{ display: 'flex', gap: 8, flex: 1, maxWidth: 220 }}>
+                                                            <select
+                                                                style={{ ...inputStyle, padding: '6px 10px' }}
+                                                                value={mapping?.csvColumn || ''}
+                                                                onChange={e => {
+                                                                    const updated = templateMappings.map(m =>
+                                                                        m.paramIndex === idx ? { ...m, csvColumn: e.target.value } : m
+                                                                    )
+                                                                    setTemplateMappings(updated)
+                                                                }}
+                                                            >
+                                                                <option value="">-- Selecione a coluna --</option>
+                                                                {csvHeaders.length > 0 ? (
+                                                                    csvHeaders.map(h => (
+                                                                        <option key={h} value={h}>{h}</option>
+                                                                    ))
+                                                                ) : (
+                                                                    <>
+                                                                        <option value="nome">nome (Padrão)</option>
+                                                                        <option value="empresa">empresa</option>
+                                                                        <option value="valor">valor</option>
+                                                                        <option value="vencimento">vencimento</option>
+                                                                        <option value="cidade">cidade</option>
+                                                                        <option value="link">link</option>
+                                                                    </>
+                                                                )}
+                                                            </select>
+                                                            {csvHeaders.length === 0 && (
+                                                                <input
+                                                                    type="text"
+                                                                    placeholder="Ou digite o nome"
+                                                                    style={{ ...inputStyle, padding: '6px 10px', width: 110 }}
+                                                                    value={mapping?.csvColumn || ''}
+                                                                    onChange={e => {
+                                                                        const updated = templateMappings.map(m =>
+                                                                            m.paramIndex === idx ? { ...m, csvColumn: e.target.value } : m
+                                                                        )
+                                                                        setTemplateMappings(updated)
+                                                                    }}
+                                                                />
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                )
+                                            })}
+                                        </div>
+                                        <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', margin: '10px 0 0' }}>
+                                            💡 Se o seu CSV tiver cabeçalhos diferentes, faça o upload dele no passo 3 para mapeá-los de forma dinâmica!
+                                        </p>
                                     </div>
                                 )}
-                            </div>
-                        )}
-                        {mediaType && (
-                            <div style={{ marginTop: 10 }}>
-                                <label style={{ ...labelStyle, fontSize: 11 }}>Legenda da Mídia</label>
-                                <input style={inputStyle} value={mediaCaption} onChange={e => setMediaCaption(e.target.value)} placeholder="Legenda com {{nome}}" />
                             </div>
                         )}
                     </div>
@@ -568,7 +735,7 @@ function NewCampaignForm({ instances, onCreated }: { instances: WhatsAppInstance
                     </div>
 
                     <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                        <button style={btnPrimary} onClick={() => setStep(2)} disabled={!name || !variants[0]?.text}>
+                        <button style={btnPrimary} onClick={() => setStep(2)} disabled={!name || !selectedTemplateName}>
                             Próximo →
                         </button>
                     </div>
@@ -581,7 +748,7 @@ function NewCampaignForm({ instances, onCreated }: { instances: WhatsAppInstance
                     <div>
                         <label style={labelStyle}>📱 Selecione as Instâncias (rotação automática)</label>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                            {instances.filter(i => i.status === 'connected').map(inst => (
+                            {instances.filter(i => i.status === 'connected' && i.provider_type === 'META').map(inst => (
                                 <div
                                     key={inst.id}
                                     onClick={() => setSelectedInstances(sel =>
@@ -607,25 +774,53 @@ function NewCampaignForm({ instances, onCreated }: { instances: WhatsAppInstance
                                             <span style={{ color: '#fff', fontSize: 14, fontWeight: 500 }}>{inst.instance_name}</span>
                                             <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12 }}>{inst.phone_number ? `(${inst.phone_number})` : ''}</span>
                                         </div>
-                                        <div style={{ color: '#22c55e', fontSize: 11 }}>● Conectado</div>
+                                        <div style={{ color: '#22c55e', fontSize: 11 }}>● Conectado (API Oficial Meta)</div>
                                     </div>
                                 </div>
                             ))}
-                            {instances.filter(i => i.status !== 'connected').length > 0 && (
-                                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)', padding: '8px 0' }}>
-                                    {instances.filter(i => i.status !== 'connected').length} instância(s) desconectada(s) não exibida(s)
+                            {instances.filter(i => i.status === 'connected' && i.provider_type !== 'META').length > 0 && (
+                                <div style={{
+                                    fontSize: 12,
+                                    color: 'rgba(245,158,11,0.7)',
+                                    background: 'rgba(245,158,11,0.05)',
+                                    border: '1px solid rgba(245,158,11,0.15)',
+                                    borderRadius: 8,
+                                    padding: '8px 12px',
+                                    marginTop: 6
+                                }}>
+                                    ⚠️ {instances.filter(i => i.status === 'connected' && i.provider_type !== 'META').length} instância(s) Evolution detectada(s). Por segurança, elas foram ocultadas pois disparos em massa são permitidos <strong>exclusivamente</strong> via API Oficial da Meta.
                                 </div>
                             )}
-                            {instances.filter(i => i.status === 'connected').length === 0 && (
-                                <div style={{ color: '#ef4444', fontSize: 14, padding: 16 }}>
-                                    ⚠️ Nenhuma instância conectada. Conecte um WhatsApp primeiro.
+                            {instances.filter(i => i.status === 'connected' && i.provider_type === 'META').length === 0 && (
+                                <div style={{
+                                    background: 'rgba(239,68,68,0.1)',
+                                    border: '1px solid rgba(239,68,68,0.25)',
+                                    borderRadius: 12,
+                                    padding: '16px 20px',
+                                    color: '#f87171',
+                                    fontSize: 14,
+                                    lineHeight: 1.5,
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: 8,
+                                    marginTop: 10
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600 }}>
+                                        ⚠️ Nenhuma Instância Oficial da Meta Conectada
+                                    </div>
+                                    <div>
+                                        Disparos em massa no CodControl AI CRM estão blindados para funcionar <strong>exclusivamente</strong> via API Oficial da Meta.
+                                    </div>
+                                    <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)' }}>
+                                        Acesse a aba <strong>WhatsApp API Oficial</strong> no menu lateral para registrar e conectar sua WABA (WhatsApp Business Account) oficial antes de criar disparos.
+                                    </div>
                                 </div>
                             )}
                         </div>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                         <button style={{ ...btnPrimary, background: 'rgba(255,255,255,0.08)' }} onClick={() => setStep(1)}>← Voltar</button>
-                        <button style={btnPrimary} onClick={createCampaign} disabled={selectedInstances.length === 0 || loading}>
+                        <button style={btnPrimary} onClick={createCampaign} disabled={selectedInstances.length === 0 || loading || instances.filter(i => i.status === 'connected' && i.provider_type === 'META').length === 0}>
                             {loading ? 'Criando...' : 'Criar Campanha →'}
                         </button>
                     </div>

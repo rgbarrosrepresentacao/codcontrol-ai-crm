@@ -19,6 +19,16 @@ export async function POST(req: Request) {
 
         // FLUXO 1: Análise de um contato específico
         if (contactId) {
+            const { data: contactCheck } = await supabase
+                .from('contacts')
+                .select('id')
+                .eq('id', contactId)
+                .eq('user_id', user.id)
+                .single()
+
+            if (!contactCheck) {
+                return NextResponse.json({ success: false, error: 'Contato não encontrado ou não pertence a este usuário' }, { status: 403 })
+            }
             const { data: messages } = await supabase
                 .from('messages')
                 .select('from_me, content, created_at')

@@ -8,8 +8,8 @@ export async function POST(req: NextRequest) {
     const supabaseAdmin = getSupabaseAdmin()
     try {
         const supabase = await createSupabaseServerClient()
-        const { data: { session } } = await supabase.auth.getSession()
-        if (!session) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+        const { data: { user }, error: authError } = await supabase.auth.getUser()
+        if (authError || !user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
 
         const { conversationId } = await req.json()
         if (!conversationId) return NextResponse.json({ error: 'conversationId obrigatório' }, { status: 400 })
@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
             .from('conversations')
             .update({ unread_count: 0 })
             .eq('id', conversationId)
-            .eq('user_id', session.user.id)
+            .eq('user_id', user.id)
 
         return NextResponse.json({ success: true })
     } catch (error) {

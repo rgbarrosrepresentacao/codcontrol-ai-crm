@@ -5,8 +5,8 @@ import { createSupabaseServerClient } from '@/lib/supabase-server'
 export async function POST(req: NextRequest) {
     try {
         const supabase = await createSupabaseServerClient()
-        const { data: { session } } = await supabase.auth.getSession()
-        if (!session) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+        const { data: { user }, error: authError } = await supabase.auth.getUser()
+        if (authError || !user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
 
         const { contactId, name, notes, status } = await req.json()
 
@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
                 updated_at: new Date().toISOString()
             })
             .eq('id', contactId)
-            .eq('user_id', session.user.id)
+            .eq('user_id', user.id)
 
         if (error) throw error
 

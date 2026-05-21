@@ -2,6 +2,8 @@ export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { evolutionApi } from '@/lib/evolution'
+import { MetaProvider } from '@/services/whatsapp/MetaProvider'
+import { GuardService } from '@/services/whatsapp/guard'
 
 export const maxDuration = 300
 export const revalidate = 0
@@ -10,13 +12,18 @@ export const revalidate = 0
 // Com delay mínimo de 30s, cabe ~8 mensagens seguras por ciclo
 const MAX_PER_RUN = 8
 
+const CATEGORY_COSTS: Record<string, number> = {
+    'marketing': 0.27,
+    'utility': 0.09,
+    'authentication': 0.09
+}
+
 export async function GET(req: NextRequest) {
     const authHeader = req.headers.get('authorization');
     const cronSecret = process.env.CRON_SECRET;
 
-    // Se o secret estiver configurado, exige a batida de chave
-    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-        console.error('[BLAST_CRON] 🚫 Acesso não autorizado negado.');
+    if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+        console.error('[BLAST_CRON] 🚫 Acesso não autorizado negado ou CRON_SECRET não configurado.');
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -44,6 +51,9 @@ export async function GET(req: NextRequest) {
                 media_type,
                 media_caption,
                 attempts,
+                template_name,
+                template_language,
+                template_variables,
                 blast_campaigns!inner ( * ),
                 blast_contacts!inner ( * ),
                 whatsapp_instances!inner ( * )
@@ -84,7 +94,7 @@ export async function GET(req: NextRequest) {
             try {
                 // ── Verificações de segurança ────────────────────────────────
 
-                // 1. Assinatura e Carência de 48h
+                // 1. Verifica acesso via GuardService (fonte única de verdade)
                 let profile = profilesCache[item.user_id]
                 if (!profile) {
                     const { data: p } = await supabase.from('profiles').select('*').eq('id', item.user_id).single()
@@ -99,29 +109,12 @@ export async function GET(req: NextRequest) {
                     continue
                 }
 
-                const gracePeriodMs = 48 * 60 * 60 * 1000;
-                const subStatus = profile.stripe_subscription_status || '';
-                const isPaidStatus = ['paid', 'active', 'aprovado', 'approved'].includes(subStatus.toLowerCase());
-                const trialEndsAt = profile.trial_ends_at;
-                
-                let hasAccess = profile.is_admin || false;
+                // GuardService.checkAccess garante que assinantes pagos nunca são bloqueados
+                // por datas de trial históricas — elimina a cópia duplicada do bug anterior.
+                const { hasAccess, reason: accessReason } = GuardService.checkAccess(profile)
 
                 if (!hasAccess) {
-                    if (isPaidStatus) {
-                        if (!trialEndsAt) {
-                            hasAccess = true;
-                        } else {
-                            const graceEnd = new Date(new Date(trialEndsAt).getTime() + gracePeriodMs);
-                            hasAccess = new Date() <= graceEnd;
-                        }
-                    } else if (subStatus === 'trialing' && trialEndsAt) {
-                        const graceEnd = new Date(new Date(trialEndsAt).getTime() + gracePeriodMs);
-                        hasAccess = new Date() <= graceEnd;
-                    }
-                }
-
-                if (!hasAccess) {
-                    console.warn(`[BLAST_CRON] 🚫 Disparo bloqueado para o usuário ${item.user_id}: Plano expirado (vencimento + 48h). Status: ${subStatus}`)
+                    console.warn(`[BLAST_CRON] 🚫 Disparo bloqueado para o usuário ${item.user_id}: ${accessReason}. Status: ${profile.stripe_subscription_status}`)
                     // Pausa a campanha se o dono estiver inadimplente para evitar processamento inútil
                     await supabase.from('blast_campaigns').update({ status: 'paused' }).eq('id', campaign.id)
                     continue
@@ -129,7 +122,7 @@ export async function GET(req: NextRequest) {
 
                 // Skip: contato optou por sair
                 if (contact.opted_out) {
-                    await supabase.from('blast_queue').update({ status: 'opted_out' }).eq('id', item.id)
+                    await supabase.from('blast_queue').update({ status: 'opted_out' }).eq('id', item.id).eq('user_id', item.user_id)
                     console.log(`[BLAST_CRON] ⛔ Contato ${contact.phone} optou por sair. Pulando.`)
                     continue
                 }
@@ -141,7 +134,7 @@ export async function GET(req: NextRequest) {
                         status: 'pending',
                         scheduled_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(), // tenta de novo em 5min
                         last_error: 'Instância desconectada',
-                    }).eq('id', item.id)
+                    }).eq('id', item.id).eq('user_id', item.user_id)
                     continue
                 }
 
@@ -152,59 +145,105 @@ export async function GET(req: NextRequest) {
                     if (failRate >= campaign.auto_pause_on_fail_rate) {
                         console.error(`[BLAST_CRON] 🚨 Taxa de falha crítica (${(failRate * 100).toFixed(1)}%) na campanha ${campaign.id}. PAUSANDO AUTOMATICAMENTE.`)
                         await supabase.from('blast_campaigns').update({ status: 'paused' }).eq('id', campaign.id)
-                        await supabase.from('blast_queue').update({ status: 'pending' }).eq('id', item.id) // re-fila
+                        await supabase.from('blast_queue').update({ status: 'pending' }).eq('id', item.id).eq('user_id', item.user_id) // re-fila
                         break
                     }
                 }
 
-                // ── Simulação de comportamento humano ANTES do envio ─────────
+                // ── BLOQUEIO DE SEGURANÇA: Evolution API impedida de fazer disparos em massa ──
+                if (instance.provider_type !== 'META') {
+                    console.error(`[BLAST_CRON] 🚫 Instância Evolution (${instance.instance_name}) bloqueada para disparo em massa.`)
+                    await supabase.from('blast_queue').update({
+                        status: 'failed',
+                        last_error: 'Disparo em massa bloqueado para instâncias Evolution. Use somente instâncias oficiais da Meta.',
+                        attempts: item.attempts + 1,
+                    }).eq('id', item.id).eq('user_id', item.user_id)
 
-                // 1. Abre a conversa (presença available)
-                await evolutionApi.sendPresence(instance.instance_name, contact.phone + '@s.whatsapp.net', 'available')
-                await new Promise(r => setTimeout(r, 800 + Math.random() * 700)) // 0.8s ~ 1.5s
-
-                // 2. Simula digitando (3 a 8 segundos proporcional ao tamanho da mensagem)
-                const msgLength = item.resolved_message.length
-                const typingTime = Math.min(Math.max(msgLength * 60, 3000), 8000) // 3s ~ 8s
-                await evolutionApi.sendPresence(instance.instance_name, contact.phone + '@s.whatsapp.net', 'composing')
-                await new Promise(r => setTimeout(r, typingTime))
-
-                // ── Envio da mensagem ────────────────────────────────────────
-
-                let whatsappMsgId: string | null = null
-
-                if (item.media_url && item.media_type) {
-                    // Envia mídia (com caption opcional)
-                    if (item.media_type === 'audio') {
-                        // Para áudio: simula "gravando..." antes
-                        await evolutionApi.sendPresence(instance.instance_name, contact.phone + '@s.whatsapp.net', 'recording')
-                        await new Promise(r => setTimeout(r, 2000 + Math.random() * 2000))
-                    }
-                    const mediaResult = await evolutionApi.sendMedia(
-                        instance.instance_name,
-                        contact.phone + '@s.whatsapp.net',
-                        item.media_url,
-                        item.media_type as 'image' | 'video' | 'audio' | 'document',
-                        item.media_caption || item.resolved_message
-                    )
-                    whatsappMsgId = mediaResult?.key?.id || null
-
-                    // Se tem mídia E texto, envia o texto também (separado)
-                    if (item.media_caption && item.resolved_message) {
-                        await new Promise(r => setTimeout(r, 1500))
-                        await evolutionApi.sendPresence(instance.instance_name, contact.phone + '@s.whatsapp.net', 'composing')
-                        await new Promise(r => setTimeout(r, 2500))
-                        await evolutionApi.sendTextMessage(instance.instance_name, contact.phone + '@s.whatsapp.net', item.resolved_message)
-                    }
-                } else {
-                    // Só texto
-                    const textResult = await evolutionApi.sendTextMessage(
-                        instance.instance_name,
-                        contact.phone + '@s.whatsapp.net',
-                        item.resolved_message
-                    )
-                    whatsappMsgId = textResult?.key?.id || null
+                    await supabase.from('blast_campaigns').update({
+                        failed_count: (campaign.failed_count || 0) + 1,
+                    }).eq('id', campaign.id)
+                    continue
                 }
+
+                // ── Validação do Template para disparo via Meta API ──
+                if (!item.template_name) {
+                    console.error(`[BLAST_CRON] ❌ Item ${item.id} não possui template_name configurado.`)
+                    await supabase.from('blast_queue').update({
+                        status: 'failed',
+                        last_error: 'Campanha Meta exige a definição de um template oficial.',
+                        attempts: item.attempts + 1,
+                    }).eq('id', item.id).eq('user_id', item.user_id)
+
+                    await supabase.from('blast_campaigns').update({
+                        failed_count: (campaign.failed_count || 0) + 1,
+                    }).eq('id', campaign.id)
+                    continue
+                }
+
+                if (!instance.meta_access_token_encrypted || !instance.meta_config) {
+                    throw new Error('Meta API não configurada corretamente na instância. Token ou Configuração ausente.')
+                }
+
+                // ── Envio via Meta API Oficial ──
+                const provider = new MetaProvider(
+                    instance.meta_config as any,
+                    instance.meta_access_token_encrypted
+                )
+
+                const components: any[] = []
+                const variables = (item as any).template_variables || []
+                if (variables && variables.length > 0) {
+                    components.push({
+                        type: 'body',
+                        parameters: variables.map((v: string) => ({
+                            type: 'text',
+                            text: String(v || '').trim().slice(0, 1024)
+                        }))
+                    })
+                }
+
+                console.log(`[BLAST_CRON] Enviando template '${item.template_name}' para ${contact.phone} via Meta API...`)
+
+                const result = await provider.sendTemplate(
+                    contact.phone,
+                    item.template_name,
+                    item.template_language || 'pt_BR',
+                    components
+                )
+
+                if (!result.success) {
+                    throw new Error(result.error || 'Erro desconhecido ao enviar template da Meta')
+                }
+
+                const whatsappMsgId = result.message_id || null
+
+                // Estimação do custo para log
+                let category = 'utility'
+                const { data: temp } = await supabase
+                    .from('whatsapp_templates')
+                    .select('category')
+                    .eq('user_id', item.user_id)
+                    .eq('name', item.template_name)
+                    .maybeSingle()
+                
+                if (temp?.category) {
+                    category = temp.category
+                }
+
+                const cost = CATEGORY_COSTS[category.toLowerCase()] || 0.09
+
+                await supabase.from('meta_message_logs').insert({
+                    user_id: item.user_id,
+                    conversation_id: null,
+                    template_name: item.template_name,
+                    category: category,
+                    recipient_phone: contact.phone,
+                    message_id: whatsappMsgId || null,
+                    status: 'sent',
+                    error_code: null,
+                    error_message: null,
+                    cost_estimated: cost
+                })
 
                 // ── Sucesso: atualiza o item e a campanha ────────────────────
 
@@ -213,7 +252,7 @@ export async function GET(req: NextRequest) {
                     sent_at: new Date().toISOString(),
                     whatsapp_message_id: whatsappMsgId,
                     attempts: item.attempts + 1,
-                }).eq('id', item.id)
+                }).eq('id', item.id).eq('user_id', item.user_id)
 
                 await supabase.from('blast_campaigns').update({
                     sent_count: (campaign.sent_count || 0) + 1,
@@ -232,12 +271,37 @@ export async function GET(req: NextRequest) {
                     console.log(`[BLAST_CRON] 🎉 Campanha ${campaign.id} CONCLUÍDA!`)
                 }
 
-                // ── Anti-spam: delay entre envios (já definido no scheduled_at)
-                // Mas adicionamos uma pausa mínima de 2s entre iterações do loop
-                await new Promise(r => setTimeout(r, 2000))
+                // ── Anti-spam / Limite de vazão de API
+                await new Promise(r => setTimeout(r, 1000))
 
             } catch (err: any) {
                 console.error(`[BLAST_CRON] ❌ Erro ao enviar para ${contact.phone}:`, err.message)
+
+                // Loga a falha do envio via Meta se for o caso
+                if (instance.provider_type === 'META') {
+                    let category = 'utility'
+                    const { data: temp } = await supabase
+                        .from('whatsapp_templates')
+                        .select('category')
+                        .eq('user_id', item.user_id)
+                        .eq('name', item.template_name || '')
+                        .maybeSingle()
+                    if (temp?.category) {
+                        category = temp.category
+                    }
+                    await supabase.from('meta_message_logs').insert({
+                        user_id: item.user_id,
+                        conversation_id: null,
+                        template_name: item.template_name || null,
+                        category: category,
+                        recipient_phone: contact.phone,
+                        message_id: null,
+                        status: 'failed',
+                        error_code: 'META_ERROR',
+                        error_message: err.message || 'Erro desconhecido',
+                        cost_estimated: 0
+                    })
+                }
 
                 const newAttempts = item.attempts + 1
                 const maxAttempts = 3
@@ -248,7 +312,7 @@ export async function GET(req: NextRequest) {
                         status: 'failed',
                         attempts: newAttempts,
                         last_error: err.message,
-                    }).eq('id', item.id)
+                    }).eq('id', item.id).eq('user_id', item.user_id)
 
                     await supabase.from('blast_campaigns').update({
                         failed_count: (campaign.failed_count || 0) + 1,
@@ -260,7 +324,7 @@ export async function GET(req: NextRequest) {
                         attempts: newAttempts,
                         last_error: err.message,
                         scheduled_at: new Date(Date.now() + 3 * 60 * 1000).toISOString(),
-                    }).eq('id', item.id)
+                    }).eq('id', item.id).eq('user_id', item.user_id)
                 }
             }
         }

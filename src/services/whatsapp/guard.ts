@@ -25,14 +25,10 @@ export class GuardService {
         const isPaidStatus = ['paid', 'active', 'aprovado', 'approved'].includes(status);
 
         if (isPaidStatus) {
-            // Legado ou sem data de fim = acesso total
-            if (!trialEndsAt) return { hasAccess: true };
-
-            // Verifica carência
-            const graceEnd = new Date(new Date(trialEndsAt).getTime() + SUBSCRIPTION_CONSTANTS.GRACE_PERIOD_MS);
-            if (new Date() <= graceEnd) return { hasAccess: true };
-            
-            return { hasAccess: false, reason: 'Subscription expired' };
+            // Assinante pago/ativo: acesso total garantido.
+            // A data de trial_ends_at é ignorada intencionalmente aqui — ela pertence
+            // ao período de teste anterior e não deve bloquear assinantes legítimos.
+            return { hasAccess: true };
         }
 
         // Período de Trial

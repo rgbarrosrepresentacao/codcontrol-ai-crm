@@ -28,10 +28,11 @@ function cleanTextForAudio(text: string): string {
     return clean || text;
 }
 
-export async function processWebhook(body: any) {
+export async function processWebhook(body: any, correlationId?: string) {
     const supabase = getSupabaseAdmin();
     const eventType = (body.event || body.eventType || '').toLowerCase();
     const instanceName = body.instance;
+    const correlationIdFinal = correlationId || body.correlation_id || crypto.randomUUID();
 
     // --- TRATAMENTO DE ACKS (CONFIRMAÇÕES DE LEITURA/ENTREGA/ERRO) ---
     if (eventType === 'messages.update' || eventType === 'messages_update') {
@@ -52,9 +53,9 @@ export async function processWebhook(body: any) {
 
             if (errorCode || errorMessage || newStatus === 'failed') {
                 newStatus = 'failed';
-                console.error(`[EVOLUTION_FATAL] Falha de entrega na Evolution API! MsgID: ${messageId} | Instância: ${instanceName} | Erro: ${errorMessage} (Código: ${errorCode})`);
+                console.error(`[EVOLUTION_FATAL] [${correlationIdFinal}] Falha de entrega na Evolution API! MsgID: ${messageId} | Instância: ${instanceName} | Erro: ${errorMessage} (Código: ${errorCode})`);
             } else if (newStatus) {
-                console.log(`[EVOLUTION_ACK] MsgID: ${messageId} atualizada para status: ${newStatus}`);
+                console.log(`[EVOLUTION_ACK] [${correlationIdFinal}] MsgID: ${messageId} atualizada para status: ${newStatus}`);
             }
 
             if (newStatus) {
@@ -83,9 +84,6 @@ export async function processWebhook(body: any) {
     const rawText = body.data?.message?.conversation || body.data?.message?.extendedTextMessage?.text || '';
     
     // ── TRAVA DE DESDUPLICAÇÃO POR CONTEÚDO (HASH) ──
-    // Evita duplicatas se o ID da mensagem mudar mas o conteúdo for idêntico
-    // Usamos um Hash que expira virtualmente ao incluir a hora e o minuto (janela de 1 minuto)
-    // Isso evita duplicatas imediatas mas permite que o cliente use a mesma frase em momentos diferentes do dia.
     const timeWindow = new Date().toISOString().slice(0, 16); // Ex: 2024-05-16T15:30
     const contentHash = crypto.createHash('md5').update(`${remoteJid}:${rawText.trim()}:${timeWindow}`).digest('hex');
     const dedupId = `HASH_${contentHash}`;
@@ -99,19 +97,18 @@ export async function processWebhook(body: any) {
         ]);
 
     if (dedupError && (dedupError.code === '23505' || dedupError.message?.includes('duplicate key'))) {
-        console.log(`[Deduplication] 🛡️ Mensagem ou Hash ${messageId} / ${dedupId} já processados. Abortando.`);
+        console.log(`[WEBHOOK_DEDUP] [${correlationIdFinal}] Mensagem ou Hash ${messageId} / ${dedupId} já processados. Abortando.`);
         return;
     }
 
-    console.log(`[Webhook] 📩 Recebido de ${remoteJid}. Processando em background...`);
+    console.log(`[WEBHOOK_RECEIVED] [${correlationIdFinal}] Recebido de ${remoteJid}. Processando...`);
 
-    // EXECUTAR EM BACKGROUND PARA NÃO TRAVAR O WEBHOOK
-    handleWebhookLogic(body).catch(err => console.error('[Webhook Error]', err));
+    await handleWebhookLogic(body, correlationIdFinal);
 
     return { success: true };
 }
 
-async function handleWebhookLogic(body: any) {
+async function handleWebhookLogic(body: any, correlationId: string) {
     const supabase = getSupabaseAdmin();
     const messageData = body.data?.message;
     const key = body.data?.key!;
@@ -625,32 +622,133 @@ async function handleWebhookLogic(body: any) {
             await KnowledgeService.sendMedia(instance.id, remoteJid, mediaItem, profile.id, conversationId, contact.id);
         }
 
-        const newTag = await AIService.classifyContact(formattedHistory, profile.openai_api_key);
-        if (newTag) {
-            await supabase.from('contacts').update({ ai_tag: newTag }).eq('id', contact.id);
-            const RELEVANCE_REGEX = /(valor|preço|quanto|custo|frete|prazo|entrega|comprar|link|pix|cartão|boleto|caro|desconto|garantia|golpe|mentira|funciona)/i;
-            if (RELEVANCE_REGEX.test(textMessage) || RELEVANCE_REGEX.test(reply)) {
-                const updatedIntelligence = await AIService.analyzeIntelligence(
-                    [...formattedHistory, { role: 'assistant', content: reply }],
-                    profile.openai_api_key,
-                    contact.lead_intelligence
-                );
-                if (updatedIntelligence) {
-                    await supabase.from('contacts').update({ lead_intelligence: updatedIntelligence }).eq('id', contact.id);
-                }
+        // ── BLOCO 4: Análise Secundária Inteligente e Paralela ──────────────────────────────────
+
+        // ── Funções de Decisão (sem alterar generateResponse ou regras de venda) ──
+
+        /**
+         * Decide se deve pular a classificação do lead com base na tag atual e no histórico.
+         * Não cria nenhuma coluna nova no banco. Usa somente o estado e o histórico já disponíveis.
+         */
+        const shouldSkipClassification = (currentTag: string | null | undefined, historyLength: number): { skip: boolean; reason: string } => {
+            // Tags finais: reclassificar seria desperdício puro
+            if (currentTag === 'COMPRADOR' || currentTag === 'FECHADO') {
+                return { skip: true, reason: `tag já é final (${currentTag})` };
+            }
+            // Primeira interação do lead: classificar SEMPRE, independente do tamanho
+            if (!currentTag || currentTag === 'NOVO_LEAD') {
+                return { skip: false, reason: 'novo lead — classificação obrigatória' };
+            }
+            // Se o histórico tem poucas mensagens (conversa jovem), classificar sempre
+            if (historyLength <= 4) {
+                return { skip: false, reason: `histórico curto (${historyLength} msgs) — classificação necessária` };
+            }
+            // Para leads em andamento com histórico longo, classificar a cada 3 mensagens do cliente
+            // Aproximação: mensagens do cliente = metade do histórico
+            const clientMsgCount = Math.round(historyLength / 2);
+            if (clientMsgCount % 3 !== 0) {
+                return { skip: true, reason: `throttle — ${clientMsgCount} msgs do cliente desde a última classificação` };
+            }
+            return { skip: false, reason: 'intervalo de throttle atingido — reclassificando' };
+        };
+
+        /**
+         * Decide se deve pular a análise de inteligência estratégica.
+         * Preserva TODOS os sinais comerciais. Pula apenas ruído genuíno.
+         */
+        const shouldSkipIntelligence = (msg: string): { skip: boolean; reason: string; msgType: string } => {
+            const trimmed = msg.trim().toLowerCase();
+
+            // Palavras-chave comerciais: NUNCA pular, sempre geram inteligência
+            const COMMERCIAL_SIGNALS = /(valor|preço|quanto|custo|frete|prazo|entrega|comprar|quero|link|pix|cartão|boleto|desconto|garantia|golpe|mentira|funciona|caro|barato|parcelar|parcela|visa|master|débito|crédito)/i;
+            if (COMMERCIAL_SIGNALS.test(msg)) {
+                return { skip: false, reason: 'sinal comercial detectado', msgType: 'comercial' };
             }
 
-            if (newTag === 'COMPRADOR' && profile.sale_notifications_enabled && profile.notification_whatsapp) {
-                const orderData = await AIService.extractOrderData([...formattedHistory, { role: 'assistant', content: reply }], profile.openai_api_key);
-                if (orderData) {
-                    await NotificationService.sendSaleNotification(instanceName, orderData, phone, profile.notification_whatsapp);
-                    const closingMsg = await AIService.generateClosingMessage(formattedHistory, aiConfig, profile.openai_api_key);
-                    await MessageService.send(instance.id, remoteJid, closingMsg);
-                }
+            // Mensagens irrelevantes: confirmações genéricas sem informação nova
+            const IRRELEVANT_PATTERNS = [
+                /^(ok|oks|okay|okey)$/i,
+                /^(sim|s|ss|si|simm)$/i,
+                /^(n[aã]o?|nn|n)$/i,
+                /^(obrigad[ao]|obg|vlw|valeu|valew)$/i,
+                /^(blz|beleza|bele|tá|ta|tá bom|ta bom|tudo bem|td bem|tdb)$/i,
+                /^(oi|olá|ola|hey|eae|e aí|eai|ola|bom dia|boa tarde|boa noite)$/i,
+                /^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]+$/u,  // emoji isolado
+                /^[👍👎❤️🙏😊😂🤣😍🥰😘🤔😅😁✅❌]+$/u,                           // emoji de reação
+                /^(até logo|tchauu?|xau|tchau|flw|falou)$/i,
+            ];
+            const isIrrelevant = IRRELEVANT_PATTERNS.some(p => p.test(trimmed));
+            if (isIrrelevant) {
+                return { skip: true, reason: 'mensagem irrelevante — sem sinal comercial ou cognitivo', msgType: 'ruído' };
+            }
+
+            // Para qualquer outra mensagem (pergunta, objeção, dúvida, texto longo), analisar
+            return { skip: false, reason: 'conteúdo com potencial informativo', msgType: 'geral' };
+        };
+
+        // ── Decisões de Skip ──
+        const classifyDecision = shouldSkipClassification(contact.ai_tag, formattedHistory.length);
+        const intelligenceDecision = shouldSkipIntelligence(textMessage);
+
+        if (classifyDecision.skip) {
+            console.log(`[AI_SKIP_CLASSIFICATION] [${correlationId}] Motivo: ${classifyDecision.reason} | tag atual: ${contact.ai_tag || 'none'}`);
+        }
+        if (intelligenceDecision.skip) {
+            console.log(`[AI_SKIP_INTELLIGENCE] [${correlationId}] Motivo: ${intelligenceDecision.reason} | tipo: ${intelligenceDecision.msgType} | msg: "${textMessage.slice(0, 40)}"`);
+        }
+
+        // ── Execução Paralela das Análises Secundárias (Promise.allSettled) ──
+        // classifyContact e analyzeIntelligence rodam em paralelo APÓS o envio da resposta ao cliente.
+        // Usando allSettled: falha em uma não quebra a outra nem o job principal.
+
+        const secondaryStart = Date.now();
+        console.log(`[AI_SECONDARY_START] [${correlationId}] Iniciando análises secundárias | classify_skip=${classifyDecision.skip} | intelligence_skip=${intelligenceDecision.skip}`);
+
+        const classifyTask = classifyDecision.skip
+            ? Promise.resolve(null)
+            : AIService.classifyContact(formattedHistory, profile.openai_api_key);
+
+        const intelligenceTask = intelligenceDecision.skip
+            ? Promise.resolve(null)
+            : AIService.analyzeIntelligence(
+                [...formattedHistory, { role: 'assistant', content: reply }],
+                profile.openai_api_key,
+                contact.lead_intelligence
+            );
+
+        const [classifyResult, intelligenceResult] = await Promise.allSettled([classifyTask, intelligenceTask]);
+
+        const secondaryMs = Date.now() - secondaryStart;
+        console.log(`[AI_SECONDARY_DONE] [${correlationId}] Análises secundárias concluídas em ${secondaryMs}ms`);
+
+        // ── Processa resultado da Classificação ──
+        let newTag: string | null = null;
+        if (classifyResult.status === 'fulfilled' && classifyResult.value) {
+            newTag = classifyResult.value;
+            await supabase.from('contacts').update({ ai_tag: newTag }).eq('id', contact.id);
+        } else if (classifyResult.status === 'rejected') {
+            console.error(`[AI_SECONDARY_FAILED] [${correlationId}] classifyContact falhou: ${classifyResult.reason?.message || classifyResult.reason}`);
+        }
+
+        // ── Processa resultado da Inteligência Estratégica ──
+        if (intelligenceResult.status === 'fulfilled' && intelligenceResult.value) {
+            await supabase.from('contacts').update({ lead_intelligence: intelligenceResult.value }).eq('id', contact.id);
+        } else if (intelligenceResult.status === 'rejected') {
+            console.error(`[AI_SECONDARY_FAILED] [${correlationId}] analyzeIntelligence falhou: ${intelligenceResult.reason?.message || intelligenceResult.reason}`);
+        }
+
+        // ── Notificação de Venda e Fechamento (somente se tag for COMPRADOR) ──
+        // Este bloco permanece síncrono pois depende de newTag e de enviar msg adicional ao cliente.
+        if ((newTag === 'COMPRADOR' || contact.ai_tag === 'COMPRADOR') && profile.sale_notifications_enabled && profile.notification_whatsapp) {
+            const orderData = await AIService.extractOrderData([...formattedHistory, { role: 'assistant', content: reply }], profile.openai_api_key);
+            if (orderData) {
+                await NotificationService.sendSaleNotification(instanceName, orderData, phone, profile.notification_whatsapp);
+                const closingMsg = await AIService.generateClosingMessage(formattedHistory, aiConfig, profile.openai_api_key);
+                await MessageService.send(instance.id, remoteJid, closingMsg);
             }
         }
     } catch (err: any) {
-        console.error('❌ Erro no webhook:', err);
+        console.error(`[WEBHOOK_JOB_FAILED] [${correlationId}] Erro no webhook:`, err);
         try {
             if (err?.message === 'OPENAI_QUOTA_EXCEEDED' || err?.message === 'OPENAI_INVALID_KEY') {
                 const finalUserId = profile?.id || instance?.user_id;
@@ -660,11 +758,12 @@ async function handleWebhookLogic(body: any) {
                         openai_key_status: status,
                         openai_key_error_at: new Date().toISOString()
                     }).eq('id', finalUserId);
-                    console.log(`[AIService] ⚠️ Status da chave OpenAI do usuário ${finalUserId} atualizado para: ${status}`);
+                    console.log(`[AIService] [${correlationId}] ⚠️ Status da chave OpenAI do usuário ${finalUserId} atualizado para: ${status}`);
                 }
             }
         } catch (dbErr) {
-            console.error('❌ Erro ao atualizar status da chave no perfil:', dbErr);
+            console.error(`[WEBHOOK_JOB_FAILED] [${correlationId}] Erro ao atualizar status da chave no perfil:`, dbErr);
         }
+        throw err;
     }
 }

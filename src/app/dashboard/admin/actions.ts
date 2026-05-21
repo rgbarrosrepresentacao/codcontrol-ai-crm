@@ -4,8 +4,19 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { revalidatePath } from 'next/cache'
 import { kiwify } from '@/lib/kiwify'
 import { sendEmail, buildEmailTemplate, BulkEmailResult } from '@/lib/mail'
+import { createSupabaseServerClient } from '@/lib/supabase-server'
+
+async function requireAdmin() {
+    const supabase = await createSupabaseServerClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Acesso Negado')
+    
+    const { data: profile } = await supabase.from('profiles').select('is_admin').eq('id', user.id).single()
+    if (!profile || !profile.is_admin) throw new Error('Acesso Negado')
+}
 
 export async function toggleUserStatusAction(userId: string, isActive: boolean) {
+    await requireAdmin()
     const adminSupabase = getSupabaseAdmin()
     const { error } = await adminSupabase.from('profiles').update({ is_active: !isActive }).eq('id', userId)
     if (error) throw new Error(error.message)
@@ -13,6 +24,7 @@ export async function toggleUserStatusAction(userId: string, isActive: boolean) 
 }
 
 export async function deleteUserAction(userId: string) {
+    await requireAdmin()
     const adminSupabase = getSupabaseAdmin()
     
     // Tenta deletar do Auth (isolará do sistema de login)
@@ -29,6 +41,7 @@ export async function deleteUserAction(userId: string) {
 
 
 export async function saveAnnouncementAction(title: string, content: string, type: string) {
+    await requireAdmin()
     const adminSupabase = getSupabaseAdmin()
     
     const { error } = await adminSupabase.from('announcements').insert({
@@ -44,6 +57,7 @@ export async function saveAnnouncementAction(title: string, content: string, typ
 }
 
 export async function deleteAnnouncementAction(id: string) {
+    await requireAdmin()
     const adminSupabase = getSupabaseAdmin()
     
     const { error } = await adminSupabase.from('announcements').delete().eq('id', id)
@@ -53,6 +67,7 @@ export async function deleteAnnouncementAction(id: string) {
 }
 
 export async function saveMaterialAction(title: string, type: string, link: string) {
+    await requireAdmin()
     const adminSupabase = getSupabaseAdmin()
     
     const { error } = await adminSupabase.from('academy_materials').insert({
@@ -68,6 +83,7 @@ export async function saveMaterialAction(title: string, type: string, link: stri
 }
 
 export async function deleteMaterialAction(id: string) {
+    await requireAdmin()
     const adminSupabase = getSupabaseAdmin()
     
     const { error } = await adminSupabase.from('academy_materials').delete().eq('id', id)
@@ -80,6 +96,7 @@ export async function deleteMaterialAction(id: string) {
 // ─── KIWIFY FINANCIAL ACTIONS ─────────────────────────────────────────
 
 export async function getKiwifyStatsAction() {
+    await requireAdmin()
     try {
         const [salesData, balanceData] = await Promise.all([
             kiwify.getSales(1, 15).catch((e) => {
@@ -98,6 +115,7 @@ export async function getKiwifyStatsAction() {
 }
 
 export async function refundKiwifyOrderAction(orderId: string) {
+    await requireAdmin()
     try {
         await kiwify.refundSale(orderId)
         revalidatePath('/dashboard/admin')
@@ -115,6 +133,7 @@ export async function sendMarketingEmailAction(
     audience: 'leads' | 'paid' | 'all' | 'external',
     externalEmailList?: string // raw string with emails for audience === 'external'
 ): Promise<EmailActionResult> {
+    await requireAdmin()
     try {
         // 1. Validações de segurança
         if (!subject?.trim() || !bodyContent?.trim()) {

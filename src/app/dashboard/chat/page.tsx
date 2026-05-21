@@ -215,28 +215,65 @@ function ChatContent() {
         return () => { supabase.removeChannel(channel) }
     }, [userId])
 
-    // ── Load messages ─────────────────────────────────────────────────────
+    // ── Pagination state ──────────────────────────────────────────────────
+
+    const [hasMoreMessages, setHasMoreMessages] = useState(false)
+    const [loadingOlder, setLoadingOlder] = useState(false)
+    const MSG_PAGE_SIZE = 50
+
+    // ── Load messages (initial, paginated) ───────────────────────────────
 
     const loadMessages = useCallback(async (convId: string) => {
         setLoadingMsg(true)
+        setHasMoreMessages(false)
+        // FIX: include `payload` so audioUrl is available in MessageBubble
         const { data } = await supabase
             .from('messages')
-            .select('id, content, from_me, ai_generated, type, created_at, status')
+            .select('id, content, from_me, ai_generated, type, created_at, status, payload')
             .eq('conversation_id', convId)
-            .order('created_at', { ascending: true })
-            .limit(200)
-        setMessages(data || [])
+            .order('created_at', { ascending: false })
+            .limit(MSG_PAGE_SIZE)
+        const msgs = (data || []).reverse()
+        setMessages(msgs)
+        setHasMoreMessages(msgs.length === MSG_PAGE_SIZE)
         setLoadingMsg(false)
         setNewMsgCount(0)
         setAutoScrollEnabled(true)
     }, [])
+
+    // ── Load older messages (load-more) ───────────────────────────────────
+
+    const loadMoreMessages = useCallback(async () => {
+        if (!selected || loadingOlder || !hasMoreMessages) return
+        setLoadingOlder(true)
+        const oldest = messages[0]?.created_at
+        if (!oldest) { setLoadingOlder(false); return }
+        const { data } = await supabase
+            .from('messages')
+            .select('id, content, from_me, ai_generated, type, created_at, status, payload')
+            .eq('conversation_id', selected.id)
+            .order('created_at', { ascending: false })
+            .lt('created_at', oldest)
+            .limit(MSG_PAGE_SIZE)
+        const older = (data || []).reverse()
+        setMessages(prev => [...older, ...prev])
+        setHasMoreMessages(older.length === MSG_PAGE_SIZE)
+        setLoadingOlder(false)
+    }, [selected, loadingOlder, hasMoreMessages, messages])
 
     useEffect(() => {
         if (!selected) return
         loadMessages(selected.id)
     }, [selected?.id]) // eslint-disable-line
 
+    // ── FIX: Keep autoScrollEnabled in a stable ref so the messages channel
+    //    doesn't get destroyed/recreated every time the user scrolls ─────
+    const autoScrollRef = useRef(autoScrollEnabled)
+    useEffect(() => { autoScrollRef.current = autoScrollEnabled }, [autoScrollEnabled])
+
     // ── Realtime: messages ────────────────────────────────────────────────
+    // Depends only on selected?.id — NOT on autoScrollEnabled.
+    // This prevents subscription churn on every scroll event.
 
     useEffect(() => {
         if (!selected) return
@@ -252,17 +289,15 @@ function ChatContent() {
                 const newMsg = payload.new as Message
                 setMessages(prev => {
                     if (prev.some(m => m.id === newMsg.id)) return prev
-                    // Replace temp version if exists
+
+                    // ── Optimistic reconciliation by temp-ID prefix ──
+                    // For text: match by content. For media: match by type+from_me (first pending temp).
+                    // We read autoScroll from the stable ref to avoid channel re-subscription.
                     const tempIdx = prev.findIndex(m => {
                         if (!m.id.startsWith('temp-')) return false
                         if (m.type !== newMsg.type) return false
                         if (m.from_me !== newMsg.from_me) return false
-                        
-                        // Para texto, o conteúdo deve bater
                         if (m.type === 'text') return m.content === newMsg.content
-                        
-                        // Para mídia (audio, image, etc), o conteúdo muda de blob: local para URL remota.
-                        // Então confiamos no tipo + from_me + proximidade temporal (já garantida pelo real-time)
                         return true
                     })
                     if (tempIdx >= 0) {
@@ -270,8 +305,9 @@ function ChatContent() {
                         next[tempIdx] = newMsg
                         return next
                     }
-                    // New incoming message
-                    if (!autoScrollEnabled && !newMsg.from_me) {
+
+                    // Incoming message from client
+                    if (!autoScrollRef.current && !newMsg.from_me) {
                         setNewMsgCount(c => c + 1)
                     }
                     return [...prev, newMsg]
@@ -280,7 +316,7 @@ function ChatContent() {
             .subscribe()
 
         return () => { supabase.removeChannel(channel) }
-    }, [selected?.id, autoScrollEnabled]) // eslint-disable-line
+    }, [selected?.id]) // eslint-disable-line — stable ref used for autoScroll
 
     // ── Auto-scroll ───────────────────────────────────────────────────────
 
@@ -382,21 +418,21 @@ function ChatContent() {
 
     async function sendMedia(file: File | Blob, type: string) {
         if (!selected || sending) return
-        
+
         const tempId = 'temp-' + Date.now()
         let mediaType: 'image' | 'video' | 'audio' | 'document' = 'document'
         if (file.type.startsWith('image/')) mediaType = 'image'
         else if (file.type.startsWith('video/')) {
-            // Some browsers label webm audio as video/webm
             if (file.type.includes('webm')) mediaType = 'audio'
             else mediaType = 'video'
-        }
-        else if (file.type.startsWith('audio/')) mediaType = 'audio'
+        } else if (file.type.startsWith('audio/')) mediaType = 'audio'
 
-        // Optimistic Media
+        // ── FIX: Create ObjectURL once, track it for revocation ──
+        const previewUrl = URL.createObjectURL(file)
+
         const optimistic: Message = {
             id: tempId,
-            content: URL.createObjectURL(file), // Local preview
+            content: previewUrl,
             from_me: true,
             type: mediaType,
             created_at: new Date().toISOString(),
@@ -425,6 +461,9 @@ function ChatContent() {
                 body: formData
             })
 
+            // ── FIX: Revoke ObjectURL after server responds (success or failure) ──
+            URL.revokeObjectURL(previewUrl)
+
             if (!res.ok) {
                 const data = await res.json()
                 setMessages(prev => prev.filter(m => m.id !== tempId))
@@ -432,19 +471,19 @@ function ChatContent() {
             } else {
                 const data = await res.json()
                 if (data.message) {
+                    // Replace with real server message (has public URL)
                     setMessages(prev => prev.map(m => m.id === tempId ? data.message : m))
                 } else {
                     setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: 'sent' } : m))
                 }
-                
-                // Update tag
                 setSelected(prev => prev ? {
                     ...prev,
                     contact: { ...prev.contact, ai_tag: 'HUMANO' }
                 } : prev)
             }
         } catch (err: any) {
-            setMessages(prev => prev.filter(m => m.id !== tempId))
+            URL.revokeObjectURL(previewUrl) // also revoke on network error
+            setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: 'failed' } : m))
             toast.error(err.message || 'Não foi possível enviar o arquivo')
         } finally {
             setSending(false)
@@ -595,11 +634,29 @@ function ChatContent() {
                                         </div>
                                     </div>
                                 ) : (
-                                    messages.map((msg, idx) => {
-                                        const prev = idx > 0 ? messages[idx - 1] : null
-                                        const showDate = !prev || new Date(msg.created_at).toDateString() !== new Date(prev.created_at).toDateString()
-                                        return <MessageBubble key={msg.id} msg={msg} showDate={showDate} prevMsg={prev} />
-                                    })
+                                    <>
+                                        {/* ── Load more (pagination) ── */}
+                                        {hasMoreMessages && (
+                                            <div className="flex justify-center mb-4">
+                                                <button
+                                                    onClick={loadMoreMessages}
+                                                    disabled={loadingOlder}
+                                                    className="flex items-center gap-2 text-xs text-muted-foreground/70 hover:text-foreground bg-secondary/60 hover:bg-secondary px-4 py-2 rounded-full transition-all disabled:opacity-50"
+                                                >
+                                                    {loadingOlder
+                                                        ? <><Loader2 className="w-3 h-3 animate-spin" /> Carregando...</>
+                                                        : '⬆ Carregar mensagens anteriores'
+                                                    }
+                                                </button>
+                                            </div>
+                                        )}
+
+                                        {messages.map((msg, idx) => {
+                                            const prev = idx > 0 ? messages[idx - 1] : null
+                                            const showDate = !prev || new Date(msg.created_at).toDateString() !== new Date(prev.created_at).toDateString()
+                                            return <MessageBubble key={msg.id} msg={msg} showDate={showDate} prevMsg={prev} />
+                                        })}
+                                    </>
                                 )}
                                 <div ref={bottomRef} className="h-2" />
                             </div>

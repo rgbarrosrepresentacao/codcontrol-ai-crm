@@ -2,8 +2,16 @@ export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
 import { evolutionApi } from '@/lib/evolution'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { createSupabaseServerClient } from '@/lib/supabase-server'
 
 export async function DELETE(req: NextRequest) {
+    const supabase = await createSupabaseServerClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
+
+    const { data: profile } = await supabase.from('profiles').select('is_admin').eq('id', user.id).single()
+    const isAdmin = profile?.is_admin || false
+
     const instance = req.nextUrl.searchParams.get('instance')
     if (!instance) return NextResponse.json({ error: 'Instance required' }, { status: 400 })
     
@@ -14,9 +22,17 @@ export async function DELETE(req: NextRequest) {
         // 1. Busca a instância para ter certeza que ela existe e pegar o ID interno
         const { data: instData } = await supabaseAdmin
             .from('whatsapp_instances')
-            .select('id')
+            .select('id, user_id')
             .eq('instance_name', instance)
             .single()
+
+        if (!instData) {
+            return NextResponse.json({ error: 'Instância não encontrada' }, { status: 404 })
+        }
+
+        if (instData.user_id !== user.id && !isAdmin) {
+            return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
+        }
 
         // 2. Tenta deletar na Evolution API primeiro
         try {

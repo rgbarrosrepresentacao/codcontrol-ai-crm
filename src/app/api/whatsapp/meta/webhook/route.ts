@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic'
  * POST → Recebimento de mensagens normalizadas e passagem para o motor de IA
  */
 import { NextRequest, NextResponse } from 'next/server'
-import { createHmac } from 'crypto'
+import crypto, { createHmac } from 'crypto'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { decrypt } from '@/lib/crypto'
@@ -127,147 +127,161 @@ export async function POST(request: NextRequest) {
 
         // Processa cada mensagem recebida
         for (const message of messages) {
-            // Ignora reações e status
             if (message.type === 'reaction' || message.type === 'status') continue
 
-            const messageId = message.id
+            // ── C2: Fallback obrigatório para provider_event_id ──
+            let providerEventId = message.id
+            if (!providerEventId) {
+                const remoteJid = `${message.from || ''}@s.whatsapp.net`
+                const timestamp = String(Date.now())
+                const payloadString = JSON.stringify(message)
+                const payloadHash = crypto.createHash('sha256').update(payloadString).digest('hex')
+
+                const rawString = `meta:${instance.instance_name}:messages.upsert:${remoteJid}:${timestamp}:${payloadHash}`
+                providerEventId = `FALLBACK_${crypto.createHash('sha256').update(rawString).digest('hex')}`
+                console.log(`[Meta Webhook] provider_event_id ausente. Gerado hash de fallback: ${providerEventId}`)
+            }
 
             let textContent = ''
+            let publicUrl = ''
 
-            // ── C4: Suporte a Áudio recebido pela Meta ────────────────────
+            // ── C4: Suporte a Áudio recebido pela Meta com Timeout de request ──
             if (message.type === 'audio' || message.type === 'voice') {
                 const mediaId = message.audio?.id || message.voice?.id
-                console.log(`[Meta Webhook] 🎙️ Áudio recebido (media_id: ${mediaId}). Transcrevendo...`)
+                console.log(`[Meta Webhook] 🎙️ Áudio recebido (media_id: ${mediaId}). Fazendo download e upload...`)
 
                 if (mediaId && instance.meta_access_token_encrypted) {
+                    // Passo 1: Obter URL temporária do arquivo de áudio com abort timeout curto (5s)
+                    const controller1 = new AbortController()
+                    const timeoutId1 = setTimeout(() => controller1.abort(), 5000)
+                    
                     try {
                         const accessToken = decrypt(instance.meta_access_token_encrypted)
 
-                        // Passo 1: Obter URL temporária do arquivo de áudio
                         const mediaInfoRes = await fetch(
                             `https://graph.facebook.com/v20.0/${mediaId}`,
-                            { headers: { 'Authorization': `Bearer ${accessToken}` } }
+                            { 
+                                headers: { 'Authorization': `Bearer ${accessToken}` },
+                                signal: controller1.signal
+                            }
                         )
                         const mediaInfo = await mediaInfoRes.json()
 
-                        if (!mediaInfoRes.ok || !mediaInfo.url) {
-                            console.error('[Meta Webhook] ❌ Falha ao obter URL de mídia:', mediaInfo?.error?.message)
-                            continue
+                        if (mediaInfoRes.ok && mediaInfo.url) {
+                            // Passo 2: Baixar o arquivo de áudio com abort timeout curto (8s)
+                            const controller2 = new AbortController()
+                            const timeoutId2 = setTimeout(() => controller2.abort(), 8000)
+
+                            try {
+                                const audioRes = await fetch(mediaInfo.url, {
+                                    headers: { 'Authorization': `Bearer ${accessToken}` },
+                                    signal: controller2.signal
+                                })
+
+                                if (audioRes.ok) {
+                                    const audioBuffer = await audioRes.arrayBuffer()
+                                    const fileBuffer = Buffer.from(audioBuffer)
+
+                                    // Passo 3: Upload para o Supabase Storage
+                                    const fileName = `received-audios/${instance.instance_name}/${crypto.randomUUID()}.${mediaInfo.mime_type?.split('/')[1] || 'ogg'}`
+                                    const { error: uploadError } = await supabaseAdmin.storage
+                                        .from('chat-media')
+                                        .upload(fileName, fileBuffer, { contentType: mediaInfo.mime_type || 'audio/ogg' })
+
+                                    if (!uploadError) {
+                                        const { data: storageData } = supabaseAdmin.storage
+                                            .from('chat-media')
+                                            .getPublicUrl(fileName)
+                                        publicUrl = storageData.publicUrl
+                                        console.log(`[Meta Webhook] Áudio salvo no Storage: ${publicUrl}`)
+                                    } else {
+                                        console.error('[Meta Webhook] Erro no upload para Supabase Storage:', uploadError)
+                                    }
+                                } else {
+                                    console.error('[Meta Webhook] Falha ao baixar áudio da Meta')
+                                }
+                            } finally {
+                                clearTimeout(timeoutId2)
+                            }
+                        } else {
+                            console.error('[Meta Webhook] Falha ao obter URL de mídia da Meta:', mediaInfo?.error?.message)
                         }
-
-                        // Passo 2: Baixar o arquivo de áudio usando o token
-                        const audioRes = await fetch(mediaInfo.url, {
-                            headers: { 'Authorization': `Bearer ${accessToken}` }
-                        })
-
-                        if (!audioRes.ok) {
-                            console.error('[Meta Webhook] ❌ Falha ao baixar áudio da Meta')
-                            continue
+                    } catch (audioErr: any) {
+                        if (audioErr.name === 'AbortError') {
+                            console.error('[Meta Webhook] ⏱️ Timeout ao baixar mídia da Meta (Abortado)')
+                        } else {
+                            console.error('[Meta Webhook] Exceção ao baixar/upload de áudio:', audioErr)
                         }
-
-                        const audioBuffer = await audioRes.arrayBuffer()
-                        const audioBlob = new Blob([audioBuffer], { type: mediaInfo.mime_type || 'audio/ogg' })
-
-                        // Passo 3: Transcrever com Whisper via OpenAI
-                        // Busca a chave da OpenAI do usuário dono da instância
-                        const { data: instData } = await supabaseAdmin
-                            .from('whatsapp_instances')
-                            .select('user_id')
-                            .eq('instance_name', instance.instance_name)
-                            .single()
-
-                        let openaiKey = process.env.OPENAI_API_KEY || ''
-                        if (instData?.user_id) {
-                            const { data: profileData } = await supabaseAdmin
-                                .from('profiles')
-                                .select('openai_api_key')
-                                .eq('id', instData.user_id)
-                                .single()
-                            if (profileData?.openai_api_key) openaiKey = profileData.openai_api_key
-                        }
-
-                        const formData = new FormData()
-                        formData.append('file', audioBlob, `audio.${mediaInfo.mime_type?.split('/')[1] || 'ogg'}`)
-                        formData.append('model', 'whisper-1')
-                        formData.append('language', 'pt')
-
-                        const whisperRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-                            method: 'POST',
-                            headers: { 'Authorization': `Bearer ${openaiKey}` },
-                            body: formData,
-                        })
-
-                        const whisperData = await whisperRes.json()
-
-                        if (!whisperRes.ok || !whisperData.text) {
-                            console.error('[Meta Webhook] ❌ Falha na transcrição Whisper:', whisperData?.error?.message)
-                            continue
-                        }
-
-                        textContent = whisperData.text.trim()
-                        console.log(`[Meta Webhook] 🎙️ Transcrição: "${textContent.slice(0, 80)}"`)
-
-                    } catch (audioErr) {
-                        console.error('[Meta Webhook] ❌ Exceção ao processar áudio:', audioErr)
-                        continue
+                    } finally {
+                        clearTimeout(timeoutId1)
                     }
                 } else {
-                    console.warn('[Meta Webhook] ⚠️ Áudio sem media_id ou sem token configurado. Ignorando.')
-                    continue
+                    console.warn('[Meta Webhook] ⚠️ Áudio sem media_id ou token. Ignorando download.')
                 }
             } else {
-                // Extrai o texto da mensagem (texto, botão interativo, etc.)
                 textContent = message.text?.body
                     || message.interactive?.button_reply?.title
                     || message.interactive?.list_reply?.title
                     || ''
             }
 
-            if (!textContent) {
-                console.log(`[Meta Webhook] Mensagem sem texto (tipo: ${message.type}). Ignorando.`)
+            const wasAudio = message.type === 'audio' || message.type === 'voice'
+            if (!textContent && !wasAudio) {
+                console.log(`[Meta Webhook] Mensagem sem texto e sem áudio (tipo: ${message.type}). Ignorando.`)
                 continue
             }
 
-            const remoteJid   = `${message.from}@s.whatsapp.net`
-            const pushName    = value?.contacts?.[0]?.profile?.name || message.from
-            const wasAudio    = message.type === 'audio' || message.type === 'voice'
+            const remoteJid = `${message.from}@s.whatsapp.net`
+            const pushName = value?.contacts?.[0]?.profile?.name || message.from
 
-            console.log('[Meta Webhook] 📩 Mensagem recebida:', {
-                from:   remoteJid,
-                text:   textContent.slice(0, 60),
-                msgId:  messageId,
-                type:   message.type,
-            })
-
-            // ──────────────────────────────────────────────────────────────────
-            // BRIDGE: Monta corpo sintético no formato Evolution e chama o motor
-            // de IA principal. Isso reutiliza 100% da lógica de funis, IA,
-            // base de conhecimento e envio híbrido — sem duplicar nada.
-            // ──────────────────────────────────────────────────────────────────
             const syntheticBody = {
-                event:    'messages.upsert',
+                event: 'messages.upsert',
                 instance: instance.instance_name,
+                provider: 'meta',
+                metaAudioUrl: publicUrl || undefined,
                 data: {
                     key: {
-                        fromMe:    false,
+                        fromMe: false,
                         remoteJid: remoteJid,
-                        id:        messageId,
+                        id: providerEventId,
                     },
                     message: {
-                        conversation: textContent,
-                        // ✅ FIX: Se o cliente enviou um áudio, sinaliza para o
-                        // processWebhook detectar isAudioMessage=true e responder
-                        // com áudio (pttMessage é o flag usado pela Evolution API).
-                        ...(wasAudio && { pttMessage: { url: '' } }),
+                        conversation: textContent || undefined,
+                        ...(wasAudio && {
+                            audioMessage: {
+                                url: publicUrl
+                            },
+                            pttMessage: { url: publicUrl }
+                        }),
                     },
                     pushName: pushName,
                 },
             }
 
-            // Dispara em background para responder 200 OK imediatamente à Meta
-            processWebhook(syntheticBody).catch(err =>
-                console.error('[Meta Webhook] Erro no motor de IA:', err)
-            )
+            const correlationId = crypto.randomUUID()
+            console.log(`[Meta Webhook] [${correlationId}] Registrando job para MsgID: ${providerEventId}`)
+
+            const { error: insertError } = await supabaseAdmin
+                .from('webhook_jobs')
+                .insert({
+                    correlation_id: correlationId,
+                    provider: 'meta',
+                    instance_name: instance.instance_name,
+                    event_type: 'messages.upsert',
+                    provider_event_id: providerEventId,
+                    payload: syntheticBody,
+                    status: 'pending'
+                })
+
+            if (insertError) {
+                if (insertError.code === '23505') {
+                    console.log(`[WEBHOOK_DEDUP] [${correlationId}] Evento duplicado ignorado. MsgID: ${providerEventId}`)
+                } else {
+                    console.error(`[WEBHOOK_JOB_FAILED_CREATE] [${correlationId}] Erro ao registrar job no DB:`, insertError)
+                }
+            } else {
+                console.log(`[WEBHOOK_JOB_CREATED] [${correlationId}] Job registrado com sucesso. MsgID: ${providerEventId}`)
+            }
         }
 
         return NextResponse.json({ status: 'ok' })

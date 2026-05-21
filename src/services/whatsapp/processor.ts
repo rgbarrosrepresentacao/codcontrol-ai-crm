@@ -1,6 +1,7 @@
 import { evolutionApi } from '@/lib/evolution';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import crypto from 'crypto';
+import { validateMediaBuffer, sanitizeStoragePath } from '@/lib/media-validator';
 
 export class ProcessorService {
     /**
@@ -42,35 +43,54 @@ export class ProcessorService {
 
     private static async transcribeAudio(body: any, instanceName: string, openaiKey: string): Promise<{ text: string | null, audioUrl?: string } | null> {
         try {
-            const EVOLUTION_URL = process.env.EVOLUTION_API_URL || 'https://api.codcontrolpro.bond';
-            const mediaRes = await fetch(`${EVOLUTION_URL}/chat/getBase64FromMediaMessage/${instanceName}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'apikey': process.env.EVOLUTION_API_KEY || '' },
-                body: JSON.stringify({ message: body.data, convertToMp4: false })
-            });
+            let audioBuffer: Buffer;
+            let audioUrl = body.metaAudioUrl || body.data?.message?.audioMessage?.url || '';
 
-            if (!mediaRes.ok) return null;
-            const mediaData = await mediaRes.json();
-            const base64Audio = mediaData.base64 || mediaData.base64Data || mediaData.data;
-            if (!base64Audio) return null;
-
-            const audioBuffer = Buffer.from(base64Audio, 'base64');
-            
-            // Upload para Supabase Storage
-            const supabase = getSupabaseAdmin();
-            const fileName = `received-audios/${instanceName}/${crypto.randomUUID()}.ogg`;
-            const { error: uploadError } = await supabase.storage
-                .from('chat-media')
-                .upload(fileName, audioBuffer, { contentType: 'audio/ogg' });
-
-            let audioUrl = '';
-            if (!uploadError) {
-                const { data: { publicUrl } } = supabase.storage
-                    .from('chat-media')
-                    .getPublicUrl(fileName);
-                audioUrl = publicUrl;
+            if (body.provider === 'meta' && audioUrl) {
+                console.log(`[ProcessorService] [META_AUDIO] Baixando áudio para transcrição: ${audioUrl}`);
+                const audioRes = await fetch(audioUrl);
+                if (!audioRes.ok) throw new Error(`Falha ao baixar áudio da URL: ${audioUrl}`);
+                audioBuffer = Buffer.from(await audioRes.arrayBuffer());
             } else {
-                console.error('[ProcessorService] Storage upload error:', uploadError);
+                const EVOLUTION_URL = process.env.EVOLUTION_API_URL || 'https://api.codcontrolpro.bond';
+                const mediaRes = await fetch(`${EVOLUTION_URL}/chat/getBase64FromMediaMessage/${instanceName}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'apikey': process.env.EVOLUTION_API_KEY || '' },
+                    body: JSON.stringify({ message: body.data, convertToMp4: false })
+                });
+
+                if (!mediaRes.ok) return null;
+                const mediaData = await mediaRes.json();
+                const base64Audio = mediaData.base64 || mediaData.base64Data || mediaData.data;
+                if (!base64Audio) return null;
+
+                audioBuffer = Buffer.from(base64Audio, 'base64');
+            }
+
+            // ── Validação de tamanho do áudio recebido ──
+            const audioValidation = validateMediaBuffer(audioBuffer, 'audio/ogg', 'audio', `processor/${instanceName}`);
+            if (!audioValidation.valid) {
+                console.warn(`[MEDIA_REJECTED] [processor/${instanceName}] Áudio recebido rejeitado: ${audioValidation.error}`);
+                return { text: '[Audio muito grande para transcrever]', audioUrl: undefined };
+            }
+
+            if (body.provider !== 'meta' || !audioUrl) {
+                // Upload para Supabase Storage com path sanitizado
+                const supabase = getSupabaseAdmin();
+                const fileName = sanitizeStoragePath('audio', 'audio/ogg', `received-audios/${instanceName}`);
+                const { error: uploadError } = await supabase.storage
+                    .from('chat-media')
+                    .upload(fileName, audioBuffer, { contentType: 'audio/ogg' });
+
+                if (!uploadError) {
+                    const { data: { publicUrl } } = supabase.storage
+                        .from('chat-media')
+                        .getPublicUrl(fileName);
+                    audioUrl = publicUrl;
+                    console.log(`[MEDIA_UPLOAD_DONE] [processor/${instanceName}] audio=${publicUrl}`);
+                } else {
+                    console.error('[ProcessorService] Storage upload error:', uploadError);
+                }
             }
 
             const formData = new FormData();
@@ -87,6 +107,9 @@ export class ProcessorService {
             if (whisperRes.ok) {
                 const whisperData = await whisperRes.json();
                 return { text: whisperData.text, audioUrl };
+            } else {
+                const errText = await whisperRes.text();
+                console.error('[ProcessorService] Whisper error response:', errText);
             }
         } catch (err) {
             console.error('[ProcessorService] Audio error:', err);
@@ -107,6 +130,22 @@ export class ProcessorService {
             const mediaData = await mediaRes.json();
             const base64Image = mediaData.base64 || mediaData.base64Data || mediaData.data;
             if (!base64Image) return null;
+
+            // ── Validação de tamanho de imagem recebida ──
+            // Estima tamanho do buffer: base64 aumenta tamanho em ~33%
+            const estimatedBytes = Math.ceil(base64Image.length * 0.75);
+            const imageValidation = validateMediaBuffer(
+                Buffer.alloc(estimatedBytes), // buffer falso só para checar tamanho
+                'image/jpeg',
+                'image',
+                `vision/${instanceName}`
+            );
+            // Substitui por verificação direta de tamanho
+            const IMG_LIMIT = 10 * 1024 * 1024; // 10 MB
+            if (estimatedBytes > IMG_LIMIT) {
+                console.warn(`[MEDIA_REJECTED] [vision/${instanceName}] Imagem muito grande (${(estimatedBytes / 1024 / 1024).toFixed(1)} MB) para Vision. Pulando.`);
+                return '[Imagem muito grande para análise]';
+            }
 
             const visionResponse = await fetch('https://api.openai.com/v1/chat/completions', {
                 method: 'POST',

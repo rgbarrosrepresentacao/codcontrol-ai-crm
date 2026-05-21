@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
         // Mostrar apenas as instâncias do usuário atual para organização pessoal
         const { data: instances, error } = await adminSupabase
             .from('whatsapp_instances')
-            .select('id, instance_name, status, phone_number, user_id')
+            .select('id, instance_name, status, phone_number, user_id, provider_type')
             .eq('user_id', user.id)
             .order('created_at', { ascending: false })
 

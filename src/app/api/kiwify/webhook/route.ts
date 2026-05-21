@@ -26,66 +26,49 @@ export async function POST(req: NextRequest) {
 
         let currentLogId: string | null = null
 
-        if (process.env.KIWIFY_WEBHOOK_SECRET) {
-            // Calcula a assinatura esperada (HMAC SHA1 do body bruto)
-            const expectedSignature = signature
-                ? crypto
-                      .createHmac('sha1', process.env.KIWIFY_WEBHOOK_SECRET)
-                      .update(rawBody)
-                      .digest('hex')
-                : null
-
-            validSignature = !!expectedSignature && signature === expectedSignature
-
-            // ── LOG DE AUDITORIA (sempre salvo, inclusive em caso de rejeição) ─
-            try {
-                const { data: logData } = await supabase.from('webhook_logs').insert({
-                    provider: 'kiwify',
-                    payload: body,
-                    user_email: email,
-                    event_type: eventType,
-                    status: body.order_status || body.OrderStatus || body.status || 'unknown',
-                    valid_signature: validSignature
-                }).select('id').single()
-                
-                currentLogId = logData?.id || null
-            } catch (logErr) {
-                console.error('[KIWIFY_WEBHOOK] Failed to save log:', logErr)
-            }
-            // ─────────────────────────────────────────────────────────────────
-
-            if (!signature) {
-                console.error('[KIWIFY_WEBHOOK] 🚫 BLOQUEADO — Request recebido sem assinatura.')
-                return NextResponse.json({ error: 'Missing signature' }, { status: 401 })
-            }
-
-            if (!validSignature) {
-                console.error('[KIWIFY_WEBHOOK] 🚫 BLOQUEADO — Assinatura inválida. Possível tentativa de fraude.')
-                return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
-            }
-
-            console.log('[KIWIFY_WEBHOOK] ✅ Assinatura verificada e válida. Prosseguindo...')
-        } else {
-            // KIWIFY_WEBHOOK_SECRET não configurado — aceita mas avisa (fail-safe)
-            console.warn('[KIWIFY_WEBHOOK] ⚠️ KIWIFY_WEBHOOK_SECRET não definido no ambiente. Validação de assinatura desativada.')
-            validSignature = true
-
-            // Log mesmo sem secret configurado
-            try {
-                const { data: logData } = await supabase.from('webhook_logs').insert({
-                    provider: 'kiwify',
-                    payload: body,
-                    user_email: email,
-                    event_type: eventType,
-                    status: body.order_status || body.OrderStatus || body.status || 'unknown',
-                    valid_signature: false
-                }).select('id').single()
-
-                currentLogId = logData?.id || null
-            } catch (logErr) {
-                console.error('[KIWIFY_WEBHOOK] Failed to save log:', logErr)
-            }
+        if (!process.env.KIWIFY_WEBHOOK_SECRET) {
+            console.error('[KIWIFY_WEBHOOK] 🚫 KIWIFY_WEBHOOK_SECRET não configurado no ambiente. Bloqueando acesso por segurança.')
+            return NextResponse.json({ error: 'Server misconfiguration' }, { status: 500 })
         }
+
+        // Calcula a assinatura esperada (HMAC SHA1 do body bruto)
+        const expectedSignature = signature
+            ? crypto
+                  .createHmac('sha1', process.env.KIWIFY_WEBHOOK_SECRET)
+                  .update(rawBody)
+                  .digest('hex')
+            : null
+
+        validSignature = !!expectedSignature && signature === expectedSignature
+
+        // ── LOG DE AUDITORIA (sempre salvo, inclusive em caso de rejeição) ─
+        try {
+            const { data: logData } = await supabase.from('webhook_logs').insert({
+                provider: 'kiwify',
+                payload: body,
+                user_email: email,
+                event_type: eventType,
+                status: body.order_status || body.OrderStatus || body.status || 'unknown',
+                valid_signature: validSignature
+            }).select('id').single()
+            
+            currentLogId = logData?.id || null
+        } catch (logErr) {
+            console.error('[KIWIFY_WEBHOOK] Failed to save log:', logErr)
+        }
+        // ─────────────────────────────────────────────────────────────────
+
+        if (!signature) {
+            console.error('[KIWIFY_WEBHOOK] 🚫 BLOQUEADO — Request recebido sem assinatura.')
+            return NextResponse.json({ error: 'Missing signature' }, { status: 401 })
+        }
+
+        if (!validSignature) {
+            console.error('[KIWIFY_WEBHOOK] 🚫 BLOQUEADO — Assinatura inválida. Possível tentativa de fraude.')
+            return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
+        }
+
+        console.log('[KIWIFY_WEBHOOK] ✅ Assinatura verificada e válida. Prosseguindo...')
         // ─────────────────────────────────────────────────────────────────────
 
         // ─── NORMALIZAÇÃO DO PAYLOAD ───────────────────────────────────────────

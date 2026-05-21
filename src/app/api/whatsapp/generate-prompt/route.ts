@@ -5,9 +5,9 @@ import { createSupabaseServerClient } from '@/lib/supabase-server'
 export async function POST(req: NextRequest) {
     try {
         const supabase = await createSupabaseServerClient()
-        const { data: { user } } = await supabase.auth.getSession().then(res => ({ data: { user: res.data.session?.user || null } }))
+        const { data: { user }, error: authError } = await supabase.auth.getUser()
 
-        if (!user) {
+        if (authError || !user) {
             return NextResponse.json({ error: 'Usuário não autenticado' }, { status: 401 })
         }
 

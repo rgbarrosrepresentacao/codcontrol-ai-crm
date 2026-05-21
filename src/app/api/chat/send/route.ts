@@ -10,8 +10,8 @@ export async function POST(req: NextRequest) {
     try {
         // Verifica autenticação
         const supabase = await createSupabaseServerClient()
-        const { data: { user } } = await supabase.auth.getSession().then(res => ({ data: { user: res.data.session?.user || null } }))
-        if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+        const { data: { user }, error: authError } = await supabase.auth.getUser()
+        if (authError || !user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
 
         const { conversationId, instanceId, contactWhatsappId, message } = await req.json()
 

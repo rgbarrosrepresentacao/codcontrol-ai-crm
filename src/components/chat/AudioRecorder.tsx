@@ -14,26 +14,65 @@ export default function AudioRecorder({ onSend, onCancel }: Props) {
     const [audioBlob, setAudioBlob] = useState<Blob | null>(null)
     const [isPlaying, setIsPlaying] = useState(false)
     const [isSending, setIsSending] = useState(false)
-    
+    // ── FIX: Store ObjectURL in state so it can be properly revoked ──
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+
     const mediaRecorderRef = useRef<MediaRecorder | null>(null)
     const chunksRef = useRef<Blob[]>([])
     const timerRef = useRef<NodeJS.Timeout | null>(null)
     const audioRef = useRef<HTMLAudioElement | null>(null)
 
-    // Start recording
+    // ── FIX: Create/revoke ObjectURL only when audioBlob changes ──
+    useEffect(() => {
+        if (!audioBlob) {
+            setPreviewUrl(null)
+            return
+        }
+        const url = URL.createObjectURL(audioBlob)
+        setPreviewUrl(url)
+        // Revoke on next blob change or unmount
+        return () => {
+            URL.revokeObjectURL(url)
+        }
+    }, [audioBlob])
+
+    // ── FIX: Cleanup on unmount ──
+    useEffect(() => {
+        return () => {
+            if (timerRef.current) clearInterval(timerRef.current)
+            if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+                mediaRecorderRef.current.stop()
+            }
+            // previewUrl cleanup handled by the audioBlob effect above
+        }
+    }, [])
+
+    // Start recording on mount
+    useEffect(() => {
+        startRecording()
+    }, []) // eslint-disable-line
+
+    // Sync audioRef.src when previewUrl changes
+    useEffect(() => {
+        if (audioRef.current && previewUrl) {
+            audioRef.current.src = previewUrl
+            audioRef.current.load()
+        }
+    }, [previewUrl])
+
     const startRecording = async () => {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-            const mimeType = MediaRecorder.isTypeSupported('audio/ogg; codecs=opus') 
-                ? 'audio/ogg; codecs=opus' 
+            const mimeType = MediaRecorder.isTypeSupported('audio/ogg; codecs=opus')
+                ? 'audio/ogg; codecs=opus'
                 : 'audio/webm'
 
             const recorder = new MediaRecorder(stream, { mimeType })
-            
+
             recorder.ondataavailable = (e) => {
                 if (e.data.size > 0) chunksRef.current.push(e.data)
             }
- 
+
             recorder.onstop = () => {
                 const blob = new Blob(chunksRef.current, { type: mimeType })
                 setAudioBlob(blob)
@@ -45,7 +84,7 @@ export default function AudioRecorder({ onSend, onCancel }: Props) {
             chunksRef.current = []
             recorder.start()
             setIsRecording(true)
-            
+
             setDuration(0)
             timerRef.current = setInterval(() => {
                 setDuration(prev => prev + 1)
@@ -56,7 +95,6 @@ export default function AudioRecorder({ onSend, onCancel }: Props) {
         }
     }
 
-    // Stop recording
     const stopRecording = () => {
         if (mediaRecorderRef.current && isRecording) {
             mediaRecorderRef.current.stop()
@@ -65,17 +103,6 @@ export default function AudioRecorder({ onSend, onCancel }: Props) {
         }
     }
 
-    // Effect to start recording on mount
-    useEffect(() => {
-        startRecording()
-        return () => {
-            if (timerRef.current) clearInterval(timerRef.current)
-            if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-                mediaRecorderRef.current.stop()
-            }
-        }
-    }, [])
-
     const formatTime = (seconds: number) => {
         const mins = Math.floor(seconds / 60)
         const secs = seconds % 60
@@ -83,11 +110,11 @@ export default function AudioRecorder({ onSend, onCancel }: Props) {
     }
 
     const togglePlayback = () => {
-        if (!audioRef.current || !audioBlob) return
+        if (!audioRef.current || !previewUrl) return
         if (isPlaying) {
             audioRef.current.pause()
         } else {
-            audioRef.current.play()
+            audioRef.current.play().catch(console.error)
         }
         setIsPlaying(!isPlaying)
     }
@@ -110,6 +137,13 @@ export default function AudioRecorder({ onSend, onCancel }: Props) {
 
     return (
         <div className="flex items-center gap-4 bg-secondary/30 rounded-2xl px-4 py-2 flex-1 animate-in fade-in slide-in-from-bottom-2">
+            {/* Hidden audio element — src set imperatively via ref/effect */}
+            <audio
+                ref={audioRef}
+                onEnded={() => setIsPlaying(false)}
+                className="hidden"
+            />
+
             {!audioBlob ? (
                 // Recording state
                 <div className="flex items-center justify-between w-full">
@@ -118,27 +152,27 @@ export default function AudioRecorder({ onSend, onCancel }: Props) {
                         <span className="text-sm font-medium tabular-nums">{formatTime(duration)}</span>
                         <div className="flex gap-1 items-end h-4">
                             {[1, 2, 3, 4, 5, 6].map(i => (
-                                <div 
-                                    key={i} 
-                                    className="w-0.5 bg-primary rounded-full animate-bounce" 
-                                    style={{ 
+                                <div
+                                    key={i}
+                                    className="w-0.5 bg-primary rounded-full animate-bounce"
+                                    style={{
                                         height: `${Math.random() * 100}%`,
                                         animationDuration: `${0.5 + Math.random()}s`,
                                         animationDelay: `${i * 0.1}s`
-                                    }} 
+                                    }}
                                 />
                             ))}
                         </div>
                     </div>
-                    
+
                     <div className="flex items-center gap-2">
-                        <button 
+                        <button
                             onClick={handleCancel}
                             className="p-2 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded-full transition-colors"
                         >
                             <Trash2 className="w-5 h-5" />
                         </button>
-                        <button 
+                        <button
                             onClick={stopRecording}
                             className="p-3 bg-red-500 text-white rounded-full hover:bg-red-600 transition-all shadow-lg"
                         >
@@ -150,9 +184,10 @@ export default function AudioRecorder({ onSend, onCancel }: Props) {
                 // Preview state
                 <div className="flex items-center justify-between w-full">
                     <div className="flex items-center gap-3 flex-1">
-                        <button 
+                        <button
                             onClick={togglePlayback}
-                            className="p-2 bg-primary/10 text-primary rounded-full hover:bg-primary/20 transition-colors"
+                            disabled={!previewUrl}
+                            className="p-2 bg-primary/10 text-primary rounded-full hover:bg-primary/20 transition-colors disabled:opacity-40"
                         >
                             {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
                         </button>
@@ -160,22 +195,16 @@ export default function AudioRecorder({ onSend, onCancel }: Props) {
                             <div className="h-full bg-primary w-0" />
                         </div>
                         <span className="text-xs text-muted-foreground tabular-nums">{formatTime(duration)}</span>
-                        <audio 
-                            ref={audioRef} 
-                            src={URL.createObjectURL(audioBlob)} 
-                            onEnded={() => setIsPlaying(false)}
-                            className="hidden" 
-                        />
                     </div>
 
                     <div className="flex items-center gap-2 ml-4">
-                        <button 
+                        <button
                             onClick={handleCancel}
                             className="p-2 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded-full transition-colors"
                         >
                             <Trash2 className="w-5 h-5" />
                         </button>
-                        <button 
+                        <button
                             onClick={handleSend}
                             disabled={isSending}
                             className="p-3 bg-primary text-white rounded-full hover:opacity-90 transition-all shadow-lg glow-primary disabled:opacity-50"

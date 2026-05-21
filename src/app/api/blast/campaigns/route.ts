@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
     const {
         name,
         description,
-        message_variants,
+        message_variants = [],
         media_url,
         media_type,
         media_caption,
@@ -66,12 +66,12 @@ export async function POST(req: NextRequest) {
         delay_min = 30,
         delay_max = 90,
         warming_enabled = false,
+        template_name,
+        template_language = 'pt_BR',
+        template_variable_mappings = []
     } = body
 
     if (!name) return NextResponse.json({ error: 'Nome da campanha obrigatório' }, { status: 400 })
-    if (!message_variants || message_variants.length === 0) {
-        return NextResponse.json({ error: 'Pelo menos uma variante de mensagem é obrigatória' }, { status: 400 })
-    }
     if (!instance_ids || instance_ids.length === 0) {
         return NextResponse.json({ error: 'Selecione pelo menos uma instância de WhatsApp' }, { status: 400 })
     }
@@ -81,13 +81,50 @@ export async function POST(req: NextRequest) {
 
     const adminSupabase = getSupabaseAdmin()
 
+    // ── VALIDAÇÃO DE SEGURANÇA BACKEND: Provedor META e Status APPROVED ──
+    const { data: instances, error: instError } = await adminSupabase
+        .from('whatsapp_instances')
+        .select('id, provider_type')
+        .in('id', instance_ids)
+
+    if (instError || !instances || instances.length === 0) {
+        return NextResponse.json({ error: 'Erro ao validar instâncias ou instâncias não encontradas' }, { status: 400 })
+    }
+
+    const hasEvolution = instances.some((inst: any) => inst.provider_type !== 'META')
+    if (hasEvolution) {
+        return NextResponse.json({ error: 'Disparo em massa não é permitido para instâncias Evolution. Use somente instâncias Meta.' }, { status: 400 })
+    }
+
+    if (!template_name) {
+        return NextResponse.json({ error: 'Campanhas via API Oficial da Meta exigem a seleção de um template aprovado.' }, { status: 400 })
+    }
+
+    // Valida se o template existe e está APPROVED
+    const { data: template, error: tempError } = await adminSupabase
+        .from('whatsapp_templates')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('name', template_name)
+        .single()
+
+    if (tempError || !template) {
+        return NextResponse.json({ error: `Template oficial '${template_name}' não encontrado no banco local. Sincronize seus templates primeiro.` }, { status: 404 })
+    }
+
+    if (template.status !== 'APPROVED') {
+        return NextResponse.json({ error: `O template selecionado está com status '${template.status}'. Apenas templates APPROVED são permitidos para disparos.` }, { status: 400 })
+    }
+
+    // ── FIM DA VALIDAÇÃO ──
+
     const { data: campaign, error } = await adminSupabase
         .from('blast_campaigns')
         .insert({
             user_id: user.id,
             name,
             description,
-            message_variants,
+            message_variants: message_variants || [],
             media_url: media_url || null,
             media_type: media_type || null,
             media_caption: media_caption || null,
@@ -96,6 +133,9 @@ export async function POST(req: NextRequest) {
             delay_max,
             warming_enabled,
             status: 'draft',
+            template_name,
+            template_language,
+            template_variable_mappings
         })
         .select()
         .single()

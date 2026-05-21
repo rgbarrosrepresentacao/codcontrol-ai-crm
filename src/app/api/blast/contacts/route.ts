@@ -87,18 +87,49 @@ export async function POST(req: NextRequest) {
 
     // Monta a fila de envio para cada contato com rotação de instâncias e delays escalonados
     const instanceIds: string[] = campaign.instance_ids
-    const variants: { text: string }[] = campaign.message_variants
 
     // Busca infos das instâncias para validar se estão conectadas
     const { data: instances } = await adminSupabase
         .from('whatsapp_instances')
-        .select('id, instance_name, status')
+        .select('id, instance_name, status, provider_type')
         .in('id', instanceIds)
         .eq('status', 'connected')
 
     if (!instances || instances.length === 0) {
         return NextResponse.json({ error: 'Nenhuma instância conectada encontrada' }, { status: 400 })
     }
+
+    // Backend validation: enforce META only
+    const hasEvolution = instances.some((inst: any) => inst.provider_type !== 'META')
+    if (hasEvolution) {
+        return NextResponse.json({ error: 'Disparo em massa não é permitido para instâncias Evolution. Use somente instâncias Meta.' }, { status: 400 })
+    }
+
+    // Enforces approved template Meta validation
+    if (!campaign.template_name) {
+        return NextResponse.json({ error: 'Campanhas Meta exigem a seleção de um template aprovado.' }, { status: 400 })
+    }
+
+    const { data: template } = await adminSupabase
+        .from('whatsapp_templates')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('name', campaign.template_name)
+        .single()
+
+    if (!template) {
+        return NextResponse.json({ error: `Template oficial '${campaign.template_name}' não encontrado no banco local.` }, { status: 404 })
+    }
+
+    if (template.status !== 'APPROVED') {
+        return NextResponse.json({ error: `O template selecionado está com status '${template.status}'. Apenas templates APPROVED são permitidos.` }, { status: 400 })
+    }
+
+    // Parse template components to count required body variables
+    const bodyComponent = template.components?.find((c: any) => c.type === 'BODY')
+    const bodyText = bodyComponent?.text || ''
+    const matches = bodyText.match(/\{\{(\d+)\}\}/g) || []
+    const requiredCount = matches.length
 
     // Limite de aquecimento (se habilitado)
     const warmingLimit = campaign.warming_enabled ? campaign.warming_limit : Infinity
@@ -114,8 +145,38 @@ export async function POST(req: NextRequest) {
             nome: contact.name || 'amigo',
             ...contact.variables,
         }
+
+        // Resolvendo as variáveis sequenciais do template oficiais
+        const variableMappings = campaign.template_variable_mappings || []
+        const contactVars: string[] = []
+        let hasMissingVar = false
         
-        const resolvedMessage = resolveVariables(pickVariant(variants), variables)
+        for (let i = 1; i <= requiredCount; i++) {
+            const mapping = variableMappings.find((m: any) => m.paramIndex === i)
+            const csvCol = mapping?.csvColumn
+            
+            // Check if contact has the value
+            let val = ''
+            if (csvCol) {
+                val = contact.variables?.[csvCol] || contact.variables?.[csvCol.toLowerCase()] || ''
+            }
+            if (!val && csvCol?.toLowerCase() === 'nome') {
+                val = contact.name || ''
+            }
+            const finalVal = String(val || '').trim()
+            
+            if (!finalVal) {
+                hasMissingVar = true
+            }
+            contactVars.push(finalVal)
+        }
+
+        // Format resolved message for local preview/log
+        let resolvedMessage = bodyText
+        contactVars.forEach((v, index) => {
+            resolvedMessage = resolvedMessage.replace(`{{${index + 1}}}`, v)
+        })
+
         const resolvedCaption = campaign.media_caption
             ? resolveVariables(campaign.media_caption, variables)
             : null
@@ -135,9 +196,13 @@ export async function POST(req: NextRequest) {
             media_url: campaign.media_url || null,
             media_type: campaign.media_type || null,
             media_caption: resolvedCaption,
-            status: 'pending',
-            attempts: 0,
+            status: hasMissingVar ? 'failed' : 'pending',
+            attempts: hasMissingVar ? 1 : 0,
+            last_error: hasMissingVar ? 'Variável obrigatória ausente no CSV' : null,
             scheduled_at: scheduledAt,
+            template_name: campaign.template_name,
+            template_language: campaign.template_language || 'pt_BR',
+            template_variables: contactVars,
         }
     })
 
@@ -147,10 +212,14 @@ export async function POST(req: NextRequest) {
 
     if (queueError) return NextResponse.json({ error: queueError.message }, { status: 500 })
 
-    // Atualiza total de contatos na campanha
+    // Atualiza total de contatos na campanha e falhas imediatas se houver
+    const immediateFailedCount = queueItems.filter(q => q.status === 'failed').length
     await adminSupabase
         .from('blast_campaigns')
-        .update({ total_contacts: insertedContacts!.length })
+        .update({ 
+            total_contacts: insertedContacts!.length,
+            failed_count: immediateFailedCount
+        })
         .eq('id', campaign_id)
 
     const estimatedMinutes = Math.round(cumulativeDelaySec / 60)

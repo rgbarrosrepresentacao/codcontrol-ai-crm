@@ -1,17 +1,23 @@
 export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { createSupabaseServerClient } from '@/lib/supabase-server'
 
 export async function POST(req: NextRequest) {
-    // Usar o mesmo padrão do cron para garantir conexão
+    const supabaseSession = await createSupabaseServerClient()
+    const { data: { user } } = await supabaseSession.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
+
+    // Usar o mesmo padrão do cron para garantir conexão (admin)
     const supabase = getSupabaseAdmin()
 
     try {
         const body = await req.json().catch(() => ({}))
-        const { phone, userId, vapiPhoneId, vapiAssistantId } = body
+        const { phone, vapiPhoneId, vapiAssistantId } = body
+        const userId = user.id
 
-        if (!phone || !userId) {
-            return NextResponse.json({ error: 'phone e userId são obrigatórios' }, { status: 400 })
+        if (!phone) {
+            return NextResponse.json({ error: 'phone é obrigatório' }, { status: 400 })
         }
 
         // Busca perfil e valida que é admin
