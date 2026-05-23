@@ -689,6 +689,7 @@ function ChatContent() {
             {selected && leadPanelOpen && (
                 <LeadPanel
                     contact={selected.contact}
+                    conversationId={selected.id}
                     onClose={() => setLeadPanelOpen(false)}
                     onUpdate={handleContactUpdate}
                     onInsertSnippet={(text) => {

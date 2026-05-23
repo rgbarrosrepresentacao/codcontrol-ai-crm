@@ -3,7 +3,8 @@ import { useState, useEffect } from 'react'
 import {
     X, User, Phone, Tag, FileText, Save, Loader2, MessageSquare,
     Info, Flame, Snowflake, Eye, CheckCircle, XCircle, Zap,
-    Link, Clock, Star, Copy, ExternalLink
+    Link, Clock, Star, Copy, ExternalLink, DollarSign, ShoppingBag,
+    CreditCard, Package, Facebook
 } from 'lucide-react'
 import React from 'react'
 import { Contact } from '@/app/dashboard/chat/page'
@@ -17,8 +18,14 @@ interface QuickReply {
     content: string
 }
 
+interface Campaign {
+    id: string
+    name: string
+}
+
 interface Props {
     contact: Contact
+    conversationId?: string
     onClose: () => void
     onUpdate?: (updated: Partial<Contact>) => void
     onInsertSnippet?: (text: string) => void
@@ -58,6 +65,7 @@ function getAiTagDisplay(tag: string | null) {
         INTERESSADO:        { label: 'Interesse', icon: <Eye className="w-3.5 h-3.5" />,           color: 'text-blue-400',   bg: 'bg-blue-500/10'   },
         LEAD_FRIO:          { label: 'Frio',      icon: <Snowflake className="w-3.5 h-3.5" />,     color: 'text-slate-400',  bg: 'bg-slate-500/10'  },
         PEDIDO_FECHADO:     { label: 'Fechado',   icon: <CheckCircle className="w-3.5 h-3.5" />,   color: 'text-emerald-400',bg: 'bg-emerald-500/10'},
+        COMPRADOR:          { label: 'Comprador', icon: <ShoppingBag className="w-3.5 h-3.5" />,   color: 'text-emerald-400',bg: 'bg-emerald-500/10'},
         CANCELADO:          { label: 'Cancelado', icon: <XCircle className="w-3.5 h-3.5" />,       color: 'text-red-400',    bg: 'bg-red-500/10'    },
         HUMANO:             { label: 'Humano',    icon: <User className="w-3.5 h-3.5" />,          color: 'text-violet-400', bg: 'bg-violet-500/10' },
     }
@@ -66,7 +74,275 @@ function getAiTagDisplay(tag: string | null) {
 
 type PanelTab = 'info' | 'activity' | 'history'
 
-export default function LeadPanel({ contact, onClose, onUpdate, onInsertSnippet }: Props) {
+// ─── Sale Modal ──────────────────────────────────────────────────────────────
+
+interface SaleModalProps {
+    contact: Contact
+    conversationId?: string
+    onClose: () => void
+    onSuccess: (updatedContact: Partial<Contact>) => void
+}
+
+function SaleModal({ contact, conversationId, onClose, onSuccess }: SaleModalProps) {
+    const [campaigns, setCampaigns] = useState<Campaign[]>([])
+    const [productName, setProductName] = useState('')
+    const [selectedCampaignId, setSelectedCampaignId] = useState('')
+    const [value, setValue] = useState('')
+    const [paymentMethod, setPaymentMethod] = useState<'pix' | 'cartao' | 'entrega' | 'boleto'>('pix')
+    const [saleStatus, setSaleStatus] = useState<'confirmed' | 'created' | 'waiting_delivery'>('confirmed')
+    const [sendToFacebook, setSendToFacebook] = useState(true)
+    const [saving, setSaving] = useState(false)
+
+    useEffect(() => {
+        async function loadCampaigns() {
+            const { data: { user } } = await supabase.auth.getUser()
+            if (!user) return
+            const { data } = await supabase
+                .from('campaigns')
+                .select('id, name')
+                .eq('is_active', true)
+                .limit(20)
+            setCampaigns(data || [])
+        }
+        loadCampaigns()
+    }, [])
+
+    async function handleSave() {
+        if (!productName && !selectedCampaignId) {
+            toast.error('Informe o produto ou selecione uma campanha')
+            return
+        }
+        const numValue = parseFloat(value.replace(',', '.'))
+        if (!value || isNaN(numValue) || numValue <= 0) {
+            toast.error('Informe um valor de venda válido')
+            return
+        }
+
+        setSaving(true)
+        try {
+            const finalProductName = selectedCampaignId
+                ? (campaigns.find(c => c.id === selectedCampaignId)?.name || productName)
+                : productName
+
+            const res = await fetch('/api/chat/close-sale', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contactId: contact.id,
+                    conversationId: conversationId || null,
+                    campaignId: selectedCampaignId || null,
+                    productName: finalProductName,
+                    value: numValue,
+                    currency: 'BRL',
+                    paymentMethod,
+                    status: saleStatus,
+                    sendToFacebook,
+                }),
+            })
+
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error || 'Erro ao registrar venda')
+
+            if (sendToFacebook && data.sentToFacebook) {
+                if (data.facebookSuccess) {
+                    toast.success('✅ Venda marcada e enviada para o Facebook!')
+                } else {
+                    toast.warning('⚠️ Venda salva, mas houve erro no Facebook. Verifique os logs.')
+                }
+            } else {
+                toast.success('✅ Venda marcada com sucesso!')
+            }
+
+            onSuccess({ ai_tag: 'COMPRADOR', status: 'customer' })
+            onClose()
+        } catch (err: any) {
+            toast.error(err.message || 'Erro ao salvar venda')
+        } finally {
+            setSaving(false)
+        }
+    }
+
+    const paymentOptions = [
+        { value: 'pix',     label: 'PIX',              icon: '⚡' },
+        { value: 'cartao',  label: 'Cartão',            icon: '💳' },
+        { value: 'entrega', label: 'Pag. na Entrega',   icon: '🏠' },
+        { value: 'boleto',  label: 'Boleto',            icon: '📄' },
+    ]
+
+    const statusOptions = [
+        { value: 'confirmed',       label: 'Venda confirmada',  color: 'text-emerald-400' },
+        { value: 'created',         label: 'Pedido criado',     color: 'text-blue-400'    },
+        { value: 'waiting_delivery',label: 'Aguard. entrega',   color: 'text-amber-400'   },
+    ]
+
+    return (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+
+            {/* Modal */}
+            <div className="relative w-full max-w-md bg-[#0f1117] border border-border/60 rounded-2xl shadow-2xl shadow-black/50 overflow-hidden animate-in zoom-in-95 duration-200">
+                {/* Header */}
+                <div className="px-6 py-4 border-b border-border/40 flex items-center justify-between bg-gradient-to-r from-emerald-500/10 via-transparent to-transparent">
+                    <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-emerald-500/20 flex items-center justify-center border border-emerald-500/30">
+                            <ShoppingBag className="w-5 h-5 text-emerald-400" />
+                        </div>
+                        <div>
+                            <h2 className="font-bold text-sm text-foreground">Marcar Venda</h2>
+                            <p className="text-[11px] text-muted-foreground truncate max-w-[200px]">
+                                {contact.name || contact.push_name || contact.phone}
+                            </p>
+                        </div>
+                    </div>
+                    <button onClick={onClose} className="p-1.5 hover:bg-secondary rounded-lg transition-colors text-muted-foreground hover:text-foreground">
+                        <X className="w-4 h-4" />
+                    </button>
+                </div>
+
+                {/* Body */}
+                <div className="p-6 space-y-5">
+                    {/* Campanha ou Produto */}
+                    <div className="space-y-2">
+                        <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                            Produto / Campanha
+                        </label>
+                        {campaigns.length > 0 && (
+                            <select
+                                value={selectedCampaignId}
+                                onChange={e => setSelectedCampaignId(e.target.value)}
+                                className="w-full bg-background border border-border/60 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-foreground"
+                            >
+                                <option value="">— Selecionar campanha —</option>
+                                {campaigns.map(c => (
+                                    <option key={c.id} value={c.id}>{c.name}</option>
+                                ))}
+                            </select>
+                        )}
+                        <div className="relative">
+                            <Package className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                            <input
+                                value={productName}
+                                onChange={e => setProductName(e.target.value)}
+                                placeholder={selectedCampaignId ? 'Ou digitar produto manualmente' : 'Nome do produto vendido'}
+                                className="w-full bg-background border border-border/60 rounded-xl pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all placeholder:text-muted-foreground/50"
+                            />
+                        </div>
+                    </div>
+
+                    {/* Valor */}
+                    <div className="space-y-2">
+                        <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                            Valor da Venda
+                        </label>
+                        <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-muted-foreground">R$</span>
+                            <input
+                                value={value}
+                                onChange={e => setValue(e.target.value.replace(/[^0-9,\.]/g, ''))}
+                                placeholder="0,00"
+                                inputMode="decimal"
+                                className="w-full bg-background border border-border/60 rounded-xl pl-10 pr-4 py-2.5 text-sm font-mono font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/40 transition-all placeholder:text-muted-foreground/50"
+                            />
+                        </div>
+                    </div>
+
+                    {/* Forma de pagamento */}
+                    <div className="space-y-2">
+                        <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                            Forma de Pagamento
+                        </label>
+                        <div className="grid grid-cols-2 gap-1.5">
+                            {paymentOptions.map(opt => (
+                                <button
+                                    key={opt.value}
+                                    onClick={() => setPaymentMethod(opt.value as any)}
+                                    className={cn(
+                                        'flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all border',
+                                        paymentMethod === opt.value
+                                            ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-400 ring-1 ring-emerald-500/20'
+                                            : 'bg-background border-border/50 text-muted-foreground hover:border-muted-foreground/30'
+                                    )}
+                                >
+                                    <span>{opt.icon}</span>
+                                    <span>{opt.label}</span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Status */}
+                    <div className="space-y-2">
+                        <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                            Status da Venda
+                        </label>
+                        <div className="flex flex-col gap-1">
+                            {statusOptions.map(opt => (
+                                <button
+                                    key={opt.value}
+                                    onClick={() => setSaleStatus(opt.value as any)}
+                                    className={cn(
+                                        'flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium transition-all border text-left',
+                                        saleStatus === opt.value
+                                            ? `bg-secondary border-border ${opt.color}`
+                                            : 'bg-background border-border/40 text-muted-foreground hover:border-muted-foreground/30'
+                                    )}
+                                >
+                                    <div className={cn('w-2 h-2 rounded-full flex-shrink-0', saleStatus === opt.value ? 'bg-current' : 'bg-muted-foreground/30')} />
+                                    {opt.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Enviar para Facebook */}
+                    <div className={cn(
+                        'flex items-center gap-3 px-4 py-3 rounded-xl border transition-all cursor-pointer',
+                        sendToFacebook
+                            ? 'bg-blue-500/10 border-blue-500/30'
+                            : 'bg-background border-border/50'
+                    )} onClick={() => setSendToFacebook(v => !v)}>
+                        <div className={cn(
+                            'w-5 h-5 rounded-lg flex items-center justify-center flex-shrink-0 transition-all',
+                            sendToFacebook ? 'bg-blue-500 text-white' : 'bg-secondary border border-border'
+                        )}>
+                            {sendToFacebook && <CheckCircle className="w-3.5 h-3.5" />}
+                        </div>
+                        <div className="flex items-center gap-2 flex-1">
+                            <Facebook className="w-4 h-4 text-blue-400" />
+                            <span className="text-sm font-semibold text-foreground">Enviar evento para Facebook</span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Footer */}
+                <div className="px-6 py-4 border-t border-border/40 flex gap-3">
+                    <button
+                        onClick={onClose}
+                        className="flex-1 py-2.5 rounded-xl border border-border/60 text-sm font-semibold text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
+                    >
+                        Cancelar
+                    </button>
+                    <button
+                        onClick={handleSave}
+                        disabled={saving}
+                        className="flex-1 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black text-sm font-bold transition-all flex items-center justify-center gap-2 disabled:opacity-60 shadow-lg shadow-emerald-500/20"
+                    >
+                        {saving ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                            <><CheckCircle className="w-4 h-4" /> Confirmar Venda</>
+                        )}
+                    </button>
+                </div>
+            </div>
+        </div>
+    )
+}
+
+// ─── Main LeadPanel ───────────────────────────────────────────────────────────
+
+export default function LeadPanel({ contact, conversationId, onClose, onUpdate, onInsertSnippet }: Props) {
     const [activeTab, setActiveTab] = useState<PanelTab>('info')
     const [name, setName] = useState(contact.name || contact.push_name || '')
     const [notes, setNotes] = useState(contact.notes || '')
@@ -74,6 +350,7 @@ export default function LeadPanel({ contact, onClose, onUpdate, onInsertSnippet 
     const [saving, setSaving] = useState(false)
     const [snippets, setSnippets] = useState<QuickReply[]>([])
     const [copiedId, setCopiedId] = useState<string | null>(null)
+    const [showSaleModal, setShowSaleModal] = useState(false)
 
     const score = getScoreFromTag(contact.ai_tag)
     const scoreMeta = getScoreLabel(score)
@@ -132,298 +409,317 @@ export default function LeadPanel({ contact, onClose, onUpdate, onInsertSnippet 
     }
 
     return (
-        <aside className="w-[320px] xl:w-[360px] border-l border-border bg-sidebar flex flex-col h-full animate-in slide-in-from-right duration-300 shadow-2xl shadow-black/20 z-50 flex-shrink-0">
-            {/* ── Header ── */}
-            <div className="h-14 border-b border-border px-4 flex items-center justify-between bg-background/60 backdrop-blur-sm flex-shrink-0">
-                <div className="flex items-center gap-2">
-                    <Info className="w-4 h-4 text-primary" />
-                    <h3 className="font-bold text-sm">Informações</h3>
-                </div>
-                <button
-                    onClick={onClose}
-                    className="p-1.5 hover:bg-secondary rounded-lg transition-colors text-muted-foreground hover:text-foreground"
-                >
-                    <X className="w-4 h-4" />
-                </button>
-            </div>
+        <>
+            {showSaleModal && (
+                <SaleModal
+                    contact={contact}
+                    conversationId={conversationId}
+                    onClose={() => setShowSaleModal(false)}
+                    onSuccess={(updated) => {
+                        if (onUpdate) onUpdate(updated)
+                        setStatus('customer')
+                    }}
+                />
+            )}
 
-            {/* ── Tabs ── */}
-            <div className="flex border-b border-border flex-shrink-0">
-                {(['info', 'activity', 'history'] as PanelTab[]).map(tab => (
+            <aside className="w-[320px] xl:w-[360px] border-l border-border bg-sidebar flex flex-col h-full animate-in slide-in-from-right duration-300 shadow-2xl shadow-black/20 z-50 flex-shrink-0">
+                {/* ── Header ── */}
+                <div className="h-14 border-b border-border px-4 flex items-center justify-between bg-background/60 backdrop-blur-sm flex-shrink-0">
+                    <div className="flex items-center gap-2">
+                        <Info className="w-4 h-4 text-primary" />
+                        <h3 className="font-bold text-sm">Informações</h3>
+                    </div>
                     <button
-                        key={tab}
-                        onClick={() => setActiveTab(tab)}
-                        className={cn(
-                            'flex-1 py-2.5 text-[11px] font-semibold transition-all border-b-2',
-                            activeTab === tab
-                                ? 'text-primary border-primary'
-                                : 'text-muted-foreground border-transparent hover:text-foreground/70'
-                        )}
+                        onClick={onClose}
+                        className="p-1.5 hover:bg-secondary rounded-lg transition-colors text-muted-foreground hover:text-foreground"
                     >
-                        {tab === 'info' ? 'Informações' : tab === 'activity' ? 'Atividades' : 'Histórico'}
+                        <X className="w-4 h-4" />
                     </button>
-                ))}
-            </div>
+                </div>
 
-            {/* ── Content ── */}
-            <div className="flex-1 overflow-y-auto">
-                {activeTab === 'info' && (
-                    <div className="p-5 space-y-5">
-                        {/* Profile Card */}
-                        <div className="text-center">
-                            <div className="relative inline-block">
-                                {contact.profile_picture ? (
-                                    <img
-                                        src={contact.profile_picture}
-                                        alt={name}
-                                        className="w-20 h-20 rounded-full border-4 border-background shadow-xl object-cover mx-auto"
-                                    />
-                                ) : (
-                                    <div className="w-20 h-20 rounded-full bg-gradient-to-br from-primary/20 via-primary/10 to-transparent flex items-center justify-center border-4 border-background shadow-xl mx-auto ring-2 ring-primary/10">
-                                        <User className="w-9 h-9 text-primary" />
+                {/* ── Tabs ── */}
+                <div className="flex border-b border-border flex-shrink-0">
+                    {(['info', 'activity', 'history'] as PanelTab[]).map(tab => (
+                        <button
+                            key={tab}
+                            onClick={() => setActiveTab(tab)}
+                            className={cn(
+                                'flex-1 py-2.5 text-[11px] font-semibold transition-all border-b-2',
+                                activeTab === tab
+                                    ? 'text-primary border-primary'
+                                    : 'text-muted-foreground border-transparent hover:text-foreground/70'
+                            )}
+                        >
+                            {tab === 'info' ? 'Informações' : tab === 'activity' ? 'Atividades' : 'Histórico'}
+                        </button>
+                    ))}
+                </div>
+
+                {/* ── Content ── */}
+                <div className="flex-1 overflow-y-auto">
+                    {activeTab === 'info' && (
+                        <div className="p-5 space-y-5">
+                            {/* Profile Card */}
+                            <div className="text-center">
+                                <div className="relative inline-block">
+                                    {contact.profile_picture ? (
+                                        <img
+                                            src={contact.profile_picture}
+                                            alt={name}
+                                            className="w-20 h-20 rounded-full border-4 border-background shadow-xl object-cover mx-auto"
+                                        />
+                                    ) : (
+                                        <div className="w-20 h-20 rounded-full bg-gradient-to-br from-primary/20 via-primary/10 to-transparent flex items-center justify-center border-4 border-background shadow-xl mx-auto ring-2 ring-primary/10">
+                                            <User className="w-9 h-9 text-primary" />
+                                        </div>
+                                    )}
+                                    <div className={cn(
+                                        "absolute bottom-0 right-0 w-5 h-5 rounded-full border-2 border-background shadow-sm",
+                                        statusCfg.color
+                                    )} />
+                                </div>
+                                <h2 className="mt-3 font-bold text-base tracking-tight truncate px-4">{name || 'Sem nome'}</h2>
+                                <p className="text-muted-foreground text-xs flex items-center justify-center gap-1.5 mt-0.5">
+                                    <Phone className="w-3 h-3" />
+                                    {contact.phone || 'Sem telefone'}
+                                </p>
+                                {/* AI Tag badge */}
+                                {aiTagDisplay && (
+                                    <div className="mt-2 flex justify-center">
+                                        <span className={cn(
+                                            'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border',
+                                            aiTagDisplay.color, aiTagDisplay.bg,
+                                            'border-current/20'
+                                        )}>
+                                            {aiTagDisplay.icon}
+                                            {aiTagDisplay.label}
+                                        </span>
                                     </div>
                                 )}
-                                <div className={cn(
-                                    "absolute bottom-0 right-0 w-5 h-5 rounded-full border-2 border-background shadow-sm",
-                                    statusCfg.color
-                                )} />
                             </div>
-                            <h2 className="mt-3 font-bold text-base tracking-tight truncate px-4">{name || 'Sem nome'}</h2>
-                            <p className="text-muted-foreground text-xs flex items-center justify-center gap-1.5 mt-0.5">
-                                <Phone className="w-3 h-3" />
-                                {contact.phone || 'Sem telefone'}
-                            </p>
-                            {/* AI Tag badge */}
-                            {aiTagDisplay && (
-                                <div className="mt-2 flex justify-center">
-                                    <span className={cn(
-                                        'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border',
-                                        aiTagDisplay.color, aiTagDisplay.bg,
-                                        'border-current/20'
-                                    )}>
-                                        {aiTagDisplay.icon}
-                                        {aiTagDisplay.label}
-                                    </span>
+
+                            {/* Score Bar */}
+                            <div className="bg-secondary/40 rounded-2xl p-4 border border-border/50 space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <Star className="w-4 h-4 text-primary" />
+                                        <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Score do Lead</span>
+                                    </div>
+                                    <span className={cn('text-sm font-black', scoreMeta.color)}>{score}</span>
                                 </div>
-                            )}
-                        </div>
-
-                        {/* Score Bar */}
-                        <div className="bg-secondary/40 rounded-2xl p-4 border border-border/50 space-y-3">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                    <Star className="w-4 h-4 text-primary" />
-                                    <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Score do Lead</span>
+                                <div className="h-2 bg-background rounded-full overflow-hidden">
+                                    <div
+                                        className={cn('h-full rounded-full transition-all duration-700', scoreMeta.bar)}
+                                        style={{ width: `${score}%` }}
+                                    />
                                 </div>
-                                <span className={cn('text-sm font-black', scoreMeta.color)}>{score}</span>
+                                <p className={cn('text-[11px] font-semibold', scoreMeta.color)}>{scoreMeta.label}</p>
                             </div>
-                            <div className="h-2 bg-background rounded-full overflow-hidden">
-                                <div
-                                    className={cn('h-full rounded-full transition-all duration-700', scoreMeta.bar)}
-                                    style={{ width: `${score}%` }}
-                                />
-                            </div>
-                            <p className={cn('text-[11px] font-semibold', scoreMeta.color)}>{scoreMeta.label}</p>
-                        </div>
 
-                        {/* Lead Data */}
-                        <div className="space-y-3">
-                            <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Dados do Lead</label>
+                            {/* Lead Data */}
+                            <div className="space-y-3">
+                                <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Dados do Lead</label>
 
-                            <div className="grid grid-cols-1 gap-2">
-                                <div className="bg-secondary/30 rounded-xl p-3 border border-border/40">
-                                    <div className="flex items-center justify-between">
+                                <div className="grid grid-cols-1 gap-2">
+                                    <div className="bg-secondary/30 rounded-xl p-3 border border-border/40">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <Tag className="w-3.5 h-3.5 text-primary" />
+                                                <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Campanha</span>
+                                            </div>
+                                        </div>
+                                        <p className="text-sm font-semibold mt-1.5 truncate">
+                                            {contact.campaigns?.name || '—'}
+                                        </p>
+                                    </div>
+
+                                    <div className="bg-secondary/30 rounded-xl p-3 border border-border/40">
                                         <div className="flex items-center gap-2">
-                                            <Tag className="w-3.5 h-3.5 text-primary" />
-                                            <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Campanha</span>
+                                            <MessageSquare className="w-3.5 h-3.5 text-primary" />
+                                            <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Status IA</span>
+                                        </div>
+                                        <div className={cn(
+                                            'mt-1.5 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold',
+                                            contact.ai_tag === 'HUMANO'
+                                                ? 'bg-orange-500/10 text-orange-400'
+                                                : 'bg-emerald-500/10 text-emerald-400'
+                                        )}>
+                                            <div className="w-1.5 h-1.5 rounded-full bg-current" />
+                                            {contact.ai_tag === 'HUMANO' ? 'IA Pausada' : 'IA Ativa'}
                                         </div>
                                     </div>
-                                    <p className="text-sm font-semibold mt-1.5 truncate">
-                                        {contact.campaigns?.name || '—'}
-                                    </p>
-                                </div>
 
-                                <div className="bg-secondary/30 rounded-xl p-3 border border-border/40">
-                                    <div className="flex items-center gap-2">
-                                        <MessageSquare className="w-3.5 h-3.5 text-primary" />
-                                        <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Status IA</span>
-                                    </div>
-                                    <div className={cn(
-                                        'mt-1.5 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold',
-                                        contact.ai_tag === 'HUMANO'
-                                            ? 'bg-orange-500/10 text-orange-400'
-                                            : 'bg-emerald-500/10 text-emerald-400'
-                                    )}>
-                                        <div className="w-1.5 h-1.5 rounded-full bg-current" />
-                                        {contact.ai_tag === 'HUMANO' ? 'IA Pausada' : 'IA Ativa'}
+                                    <div className="bg-secondary/30 rounded-xl p-3 border border-border/40">
+                                        <div className="flex items-center gap-2">
+                                            <Clock className="w-3.5 h-3.5 text-primary" />
+                                            <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Origem</span>
+                                        </div>
+                                        <p className="text-sm font-semibold mt-1.5">WhatsApp</p>
                                     </div>
                                 </div>
-
-                                <div className="bg-secondary/30 rounded-xl p-3 border border-border/40">
-                                    <div className="flex items-center gap-2">
-                                        <Clock className="w-3.5 h-3.5 text-primary" />
-                                        <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Origem</span>
-                                    </div>
-                                    <p className="text-sm font-semibold mt-1.5">WhatsApp</p>
-                                </div>
                             </div>
-                        </div>
 
-                        {/* Status Selector */}
-                        <div className="space-y-2">
-                            <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Status do Funil</label>
-                            <div className="grid grid-cols-2 gap-1.5">
-                                {STATUS_OPTIONS.map(opt => (
-                                    <button
-                                        key={opt.value}
-                                        onClick={() => setStatus(opt.value)}
-                                        className={cn(
-                                            'px-3 py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-2 border',
-                                            status === opt.value
-                                                ? `ring-2 ${opt.ring} bg-primary/5 border-primary/30 text-foreground`
-                                                : 'bg-background border-border/50 hover:border-muted-foreground/30 text-muted-foreground'
-                                        )}
-                                    >
-                                        <div className={cn('w-2 h-2 rounded-full', opt.color)} />
-                                        {opt.label}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* Name Edit */}
-                        <div className="space-y-2">
-                            <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Nome</label>
-                            <div className="relative group">
-                                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground group-focus-within:text-primary transition-colors" />
-                                <input
-                                    value={name}
-                                    onChange={e => setName(e.target.value)}
-                                    className="w-full bg-background border border-border/60 rounded-xl pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
-                                    placeholder="Nome Completo"
-                                />
-                            </div>
-                        </div>
-
-                        {/* Notes */}
-                        <div className="space-y-2">
-                            <div className="flex items-center justify-between">
-                                <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Anotações</label>
-                                <FileText className="w-3 h-3 text-muted-foreground" />
-                            </div>
-                            <textarea
-                                value={notes}
-                                onChange={e => setNotes(e.target.value)}
-                                className="w-full bg-background border border-border/60 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all resize-none h-28 placeholder:italic placeholder:text-muted-foreground/60"
-                                placeholder="Observações importantes sobre este lead..."
-                            />
-                        </div>
-
-                        {/* Ações Rápidas */}
-                        <div className="space-y-2">
-                            <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Ações Rápidas</label>
-                            <div className="grid grid-cols-2 gap-2">
-                                <button className="flex items-center gap-2 px-3 py-2.5 bg-secondary/50 hover:bg-secondary/80 border border-border/40 rounded-xl text-xs font-medium transition-all text-left group">
-                                    <Link className="w-3.5 h-3.5 text-primary group-hover:scale-110 transition-transform" />
-                                    <span>Enviar Link</span>
-                                </button>
-                                <button className="flex items-center gap-2 px-3 py-2.5 bg-secondary/50 hover:bg-secondary/80 border border-border/40 rounded-xl text-xs font-medium transition-all text-left group">
-                                    <Clock className="w-3.5 h-3.5 text-blue-400 group-hover:scale-110 transition-transform" />
-                                    <span>Agendar</span>
-                                </button>
-                                <button className="flex items-center gap-2 px-3 py-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-xl text-xs font-medium transition-all text-emerald-400 text-left group">
-                                    <CheckCircle className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
-                                    <span>Marcar Fechado</span>
-                                </button>
-                                <button
-                                    disabled
-                                    title="Em breve"
-                                    className="flex items-center gap-2 px-3 py-2.5 bg-secondary/30 border border-border/30 rounded-xl text-xs font-medium text-muted-foreground/50 cursor-not-allowed text-left"
-                                >
-                                    <ExternalLink className="w-3.5 h-3.5" />
-                                    <span>Transferir</span>
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Snippets */}
-                        {snippets.length > 0 && (
+                            {/* Status Selector */}
                             <div className="space-y-2">
-                                <div className="flex items-center justify-between">
-                                    <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Snippets</label>
-                                    <span className="text-[10px] text-muted-foreground/60">Clique para inserir</span>
-                                </div>
-                                <div className="space-y-1.5">
-                                    {snippets.map(s => (
+                                <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Status do Funil</label>
+                                <div className="grid grid-cols-2 gap-1.5">
+                                    {STATUS_OPTIONS.map(opt => (
                                         <button
-                                            key={s.id}
-                                            onClick={() => copySnippet(s)}
+                                            key={opt.value}
+                                            onClick={() => setStatus(opt.value)}
                                             className={cn(
-                                                'w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-left transition-all group',
-                                                copiedId === s.id
-                                                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-                                                    : 'bg-background border-border/40 hover:border-primary/40 hover:bg-primary/5'
+                                                'px-3 py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-2 border',
+                                                status === opt.value
+                                                    ? `ring-2 ${opt.ring} bg-primary/5 border-primary/30 text-foreground`
+                                                    : 'bg-background border-border/50 hover:border-muted-foreground/30 text-muted-foreground'
                                             )}
                                         >
-                                            <Zap className={cn(
-                                                'w-3.5 h-3.5 flex-shrink-0',
-                                                copiedId === s.id ? 'text-emerald-400' : 'text-primary'
-                                            )} />
-                                            <div className="flex-1 min-w-0">
-                                                <p className="text-[10px] font-bold text-primary mb-0.5">/{s.shortcut}</p>
-                                                <p className="text-[11px] text-muted-foreground truncate">{s.content}</p>
-                                            </div>
-                                            <Copy className={cn(
-                                                'w-3 h-3 flex-shrink-0 transition-all',
-                                                copiedId === s.id ? 'text-emerald-400' : 'text-muted-foreground/40 group-hover:text-primary'
-                                            )} />
+                                            <div className={cn('w-2 h-2 rounded-full', opt.color)} />
+                                            {opt.label}
                                         </button>
                                     ))}
                                 </div>
                             </div>
-                        )}
-                    </div>
-                )}
 
-                {activeTab === 'activity' && (
-                    <div className="p-5 flex flex-col items-center justify-center h-48 text-center text-muted-foreground gap-3">
-                        <div className="w-12 h-12 rounded-2xl bg-secondary/50 flex items-center justify-center">
-                            <Clock className="w-6 h-6 opacity-30" />
-                        </div>
-                        <div>
-                            <p className="text-sm font-medium text-foreground/60">Timeline de Atividades</p>
-                            <p className="text-xs text-muted-foreground/60 mt-1">Em breve — histórico de interações</p>
-                        </div>
-                    </div>
-                )}
+                            {/* Name Edit */}
+                            <div className="space-y-2">
+                                <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Nome</label>
+                                <div className="relative group">
+                                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground group-focus-within:text-primary transition-colors" />
+                                    <input
+                                        value={name}
+                                        onChange={e => setName(e.target.value)}
+                                        className="w-full bg-background border border-border/60 rounded-xl pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                                        placeholder="Nome Completo"
+                                    />
+                                </div>
+                            </div>
 
-                {activeTab === 'history' && (
-                    <div className="p-5 flex flex-col items-center justify-center h-48 text-center text-muted-foreground gap-3">
-                        <div className="w-12 h-12 rounded-2xl bg-secondary/50 flex items-center justify-center">
-                            <FileText className="w-6 h-6 opacity-30" />
-                        </div>
-                        <div>
-                            <p className="text-sm font-medium text-foreground/60">Histórico Completo</p>
-                            <p className="text-xs text-muted-foreground/60 mt-1">Em breve — logs de atendimento</p>
-                        </div>
-                    </div>
-                )}
-            </div>
+                            {/* Notes */}
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Anotações</label>
+                                    <FileText className="w-3 h-3 text-muted-foreground" />
+                                </div>
+                                <textarea
+                                    value={notes}
+                                    onChange={e => setNotes(e.target.value)}
+                                    className="w-full bg-background border border-border/60 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all resize-none h-28 placeholder:italic placeholder:text-muted-foreground/60"
+                                    placeholder="Observações importantes sobre este lead..."
+                                />
+                            </div>
 
-            {/* ── Footer ── */}
-            <div className="p-4 border-t border-border bg-background/50 backdrop-blur-sm flex-shrink-0">
-                <button
-                    onClick={handleSave}
-                    disabled={saving}
-                    className="w-full gradient-primary glow-primary text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-50 text-sm"
-                >
-                    {saving ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                        <><Save className="w-4 h-4" /> Salvar Alterações</>
+                            {/* Ações Rápidas */}
+                            <div className="space-y-2">
+                                <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Ações Rápidas</label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <button className="flex items-center gap-2 px-3 py-2.5 bg-secondary/50 hover:bg-secondary/80 border border-border/40 rounded-xl text-xs font-medium transition-all text-left group">
+                                        <Link className="w-3.5 h-3.5 text-primary group-hover:scale-110 transition-transform" />
+                                        <span>Enviar Link</span>
+                                    </button>
+                                    <button className="flex items-center gap-2 px-3 py-2.5 bg-secondary/50 hover:bg-secondary/80 border border-border/40 rounded-xl text-xs font-medium transition-all text-left group">
+                                        <Clock className="w-3.5 h-3.5 text-blue-400 group-hover:scale-110 transition-transform" />
+                                        <span>Agendar</span>
+                                    </button>
+                                    {/* BOTÃO MARCAR VENDA — integrado ao modal de venda */}
+                                    <button
+                                        onClick={() => setShowSaleModal(true)}
+                                        className="col-span-2 flex items-center justify-center gap-2 px-3 py-3 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 hover:border-emerald-500/50 rounded-xl text-sm font-bold transition-all text-emerald-400 group shadow-sm hover:shadow-emerald-500/10"
+                                    >
+                                        <ShoppingBag className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                                        <span>Marcar Venda / Fechado</span>
+                                        <DollarSign className="w-3.5 h-3.5 opacity-60" />
+                                    </button>
+                                    <button
+                                        disabled
+                                        title="Em breve"
+                                        className="flex items-center gap-2 px-3 py-2.5 bg-secondary/30 border border-border/30 rounded-xl text-xs font-medium text-muted-foreground/50 cursor-not-allowed text-left col-span-2"
+                                    >
+                                        <ExternalLink className="w-3.5 h-3.5" />
+                                        <span>Transferir — em breve</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Snippets */}
+                            {snippets.length > 0 && (
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Snippets</label>
+                                        <span className="text-[10px] text-muted-foreground/60">Clique para inserir</span>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        {snippets.map(s => (
+                                            <button
+                                                key={s.id}
+                                                onClick={() => copySnippet(s)}
+                                                className={cn(
+                                                    'w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-left transition-all group',
+                                                    copiedId === s.id
+                                                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                                                        : 'bg-background border-border/40 hover:border-primary/40 hover:bg-primary/5'
+                                                )}
+                                            >
+                                                <Zap className={cn(
+                                                    'w-3.5 h-3.5 flex-shrink-0',
+                                                    copiedId === s.id ? 'text-emerald-400' : 'text-primary'
+                                                )} />
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-[10px] font-bold text-primary mb-0.5">/{s.shortcut}</p>
+                                                    <p className="text-[11px] text-muted-foreground truncate">{s.content}</p>
+                                                </div>
+                                                <Copy className={cn(
+                                                    'w-3 h-3 flex-shrink-0 transition-all',
+                                                    copiedId === s.id ? 'text-emerald-400' : 'text-muted-foreground/40 group-hover:text-primary'
+                                                )} />
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                     )}
-                </button>
-            </div>
-        </aside>
+
+                    {activeTab === 'activity' && (
+                        <div className="p-5 flex flex-col items-center justify-center h-48 text-center text-muted-foreground gap-3">
+                            <div className="w-12 h-12 rounded-2xl bg-secondary/50 flex items-center justify-center">
+                                <Clock className="w-6 h-6 opacity-30" />
+                            </div>
+                            <div>
+                                <p className="text-sm font-medium text-foreground/60">Timeline de Atividades</p>
+                                <p className="text-xs text-muted-foreground/60 mt-1">Em breve — histórico de interações</p>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'history' && (
+                        <div className="p-5 flex flex-col items-center justify-center h-48 text-center text-muted-foreground gap-3">
+                            <div className="w-12 h-12 rounded-2xl bg-secondary/50 flex items-center justify-center">
+                                <FileText className="w-6 h-6 opacity-30" />
+                            </div>
+                            <div>
+                                <p className="text-sm font-medium text-foreground/60">Histórico Completo</p>
+                                <p className="text-xs text-muted-foreground/60 mt-1">Em breve — logs de atendimento</p>
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* ── Footer ── */}
+                <div className="p-4 border-t border-border bg-background/50 backdrop-blur-sm flex-shrink-0">
+                    <button
+                        onClick={handleSave}
+                        disabled={saving}
+                        className="w-full gradient-primary glow-primary text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-50 text-sm"
+                    >
+                        {saving ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                            <><Save className="w-4 h-4" /> Salvar Alterações</>
+                        )}
+                    </button>
+                </div>
+            </aside>
+        </>
     )
 }

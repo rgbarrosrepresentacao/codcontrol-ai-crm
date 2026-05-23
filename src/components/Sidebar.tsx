@@ -7,7 +7,8 @@ import { supabase } from '@/lib/supabase'
 import {
     Bot, LayoutDashboard, Smartphone, Brain, Users,
     Settings, LogOut, ChevronRight, Shield, X, Menu, CreditCard, MessageCircle, MessageSquare,
-    Filter, Truck, PlayCircle, BookOpen, Megaphone, Phone, Rocket, MessageCircleCode, Building2
+    Filter, Truck, PlayCircle, BookOpen, Megaphone, Phone, Rocket, MessageCircleCode, Building2,
+    BarChart3
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { canUseMetaAPI } from '@/lib/plan-features'
@@ -20,6 +21,7 @@ const navItems = [
     { href: '/dashboard/crm', label: 'CRM', icon: Users },
     { href: '/dashboard/chat', label: 'Chat ao Vivo', icon: MessageSquare },
     { href: '/dashboard/funis', label: 'Funis de Venda', icon: Filter },
+    { href: '/dashboard/pixel', label: 'Pixel & Conversões', icon: BarChart3 },
     { href: '/dashboard/logistica', label: 'Logística', icon: Truck },
     { href: '/dashboard/conhecimento', label: 'Conhecimento da IA', icon: BookOpen },
     { href: '/dashboard/planos', label: 'Planos', icon: CreditCard },
