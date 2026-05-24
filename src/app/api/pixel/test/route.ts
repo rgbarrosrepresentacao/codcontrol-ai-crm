@@ -44,6 +44,10 @@ export async function POST(req: NextRequest) {
                 user_data: {
                     em: ['309a0aad27b98bc8c6c87f3e23f4b9f4dd3adfc60f5a5e7ef7700823a5f960d3'], // hashed 'test@example.com'
                     ph: ['1ef06bb70e6b14e0c18e69b0db4ede25c7e44f8e4e8e3a1c3d16f3a0d3d81b10'],  // hashed placeholder
+                },
+                custom_data: {
+                    currency: 'BRL',
+                    value: 100.00
                 }
             }],
             ...(settings.test_event_code ? { test_event_code: settings.test_event_code } : {})
