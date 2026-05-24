@@ -28,6 +28,8 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Campos obrigatórios: contactId, productName, value, paymentMethod' }, { status: 400 })
         }
 
+        console.log('[close-sale] Debug request payload:', { contactId, user_id: user.id });
+
         // 1) Load contact info for CAPI user data
         const { data: contact, error: contactError } = await supabase
             .from('contacts')
@@ -37,6 +39,12 @@ export async function POST(req: NextRequest) {
             .single()
 
         if (contactError || !contact) {
+            console.error('[close-sale] Contact search error or not found:', {
+                contactError,
+                contactExists: !!contact,
+                contactId,
+                userId: user.id
+            });
             return NextResponse.json({ error: 'Contato não encontrado' }, { status: 404 })
         }
 
