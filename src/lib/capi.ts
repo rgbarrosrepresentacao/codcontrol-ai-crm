@@ -108,7 +108,6 @@ export async function sendMetaCapiEvent(params: MetaCapiParams) {
     const eventPayload: any = {
         event_name: params.eventName,
         event_time: Math.floor(Date.now() / 1000),
-        event_source: 'chat',
         action_source: 'chat',
         event_id: eventId,
         user_data: userData
