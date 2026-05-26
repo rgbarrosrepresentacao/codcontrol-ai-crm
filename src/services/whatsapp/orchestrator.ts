@@ -470,7 +470,7 @@ async function handleWebhookLogic(body: any, correlationId: string) {
         if (!profile.openai_api_key) return;
         if (!aiConfig) return;
 
-        const waitTime = 4000; // Reduzido para 4s para ser mais ágil e evitar reenvios de webhook
+        const waitTime = 500; // P1.1: Reduzido para 500ms para menor latência
         await new Promise(r => setTimeout(r, waitTime));
 
         const { data: lockResult, error: lockError } = await supabase
@@ -481,7 +481,10 @@ async function handleWebhookLogic(body: any, correlationId: string) {
             .select('id')
             .single();
 
-        if (lockError || !lockResult) return;
+        if (lockError || !lockResult) {
+            console.warn(`[ORCHESTRATOR] CAS lock falhou para ${key.id}. Possível duplicata ou race condition.`);
+            return;
+        }
 
         const { context: knowledgeContext, items: knowledgeItems } = await KnowledgeService.buildContext(profile.id, campaignId);
         const { data: history } = await supabase.from('messages').select('content, from_me').eq('conversation_id', conversationId).order('created_at', { ascending: false }).limit(50);
@@ -501,6 +504,7 @@ async function handleWebhookLogic(body: any, correlationId: string) {
             funnelSummary = await FunnelService.getFunnelSummary(contact.current_funnel_id, contact.id) || '';
         }
 
+        const startResponseGen = Date.now();
         let reply = await AIService.generateResponse(
             formattedHistory,
             aiConfig,
@@ -512,6 +516,8 @@ async function handleWebhookLogic(body: any, correlationId: string) {
             catalogueContext,
             contact.lead_intelligence
         );
+        const responseGenDuration = Date.now() - startResponseGen;
+        console.log(`[AI_PERF] [OPENAI_LATENCY] [${correlationId}] generateResponse completou em ${responseGenDuration}ms`);
         if (!reply) return;
 
         // Auto-heal OpenAI Key status if successful
@@ -530,17 +536,17 @@ async function handleWebhookLogic(body: any, correlationId: string) {
 
         if (canSendAudio) {
             try {
-                const typingTime = Math.min(Math.max(reply.length * 50, 2000), 10000);
+                const typingTime = Math.min(Math.max(reply.length * 20, 1000), 4000); // Reduzido delay do áudio
                 const hasLink = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi.test(reply);
                 if (hasLink) {
                     await MessageService.send(instance.id, remoteJid, reply);
-                    await new Promise(r => setTimeout(r, 1500));
+                    await new Promise(r => setTimeout(r, 800)); // Reduzido delay pós link
                 }
                 if (!isMetaProvider) {
                     await evolutionApi.sendPresence(instanceName, remoteJid, 'recording');
-                    await new Promise(r => setTimeout(r, Math.max(typingTime - 3000, 1500)));
+                    await new Promise(r => setTimeout(r, Math.max(typingTime - 1000, 800)));
                 } else {
-                    await new Promise(r => setTimeout(r, Math.max(typingTime - 1000, 2000)));
+                    await new Promise(r => setTimeout(r, Math.max(typingTime - 500, 1000)));
                 }
                 const audioFormat = isMetaProvider ? 'opus' : 'mp3';
                 const audioExt = isMetaProvider ? 'ogg' : 'mp3';
@@ -593,7 +599,7 @@ async function handleWebhookLogic(body: any, correlationId: string) {
         } else {
             const messageBlocks = reply.split('\n\n').filter(block => block.trim().length > 0);
             for (const [index, block] of messageBlocks.entries()) {
-                const chunkTypingTime = Math.min(Math.max(block.length * 40, 1500), 6000);
+                const chunkTypingTime = Math.min(Math.max(block.length * 20, 800), 3000); // P2.3: Reduzido delay de digitação
                 if (!isMetaProvider) {
                     await evolutionApi.sendPresence(instanceName, remoteJid, 'composing');
                 }
@@ -613,7 +619,7 @@ async function handleWebhookLogic(body: any, correlationId: string) {
                     message_id: txtResult?.messageId
                 });
                 if (index < messageBlocks.length - 1) {
-                    await new Promise(r => setTimeout(r, 800));
+                    await new Promise(r => setTimeout(r, 400)); // P2.3: Reduzido delay entre blocos
                 }
             }
         }
@@ -697,56 +703,71 @@ async function handleWebhookLogic(body: any, correlationId: string) {
             console.log(`[AI_SKIP_INTELLIGENCE] [${correlationId}] Motivo: ${intelligenceDecision.reason} | tipo: ${intelligenceDecision.msgType} | msg: "${textMessage.slice(0, 40)}"`);
         }
 
-        // ── Execução Paralela das Análises Secundárias (Promise.allSettled) ──
-        // classifyContact e analyzeIntelligence rodam em paralelo APÓS o envio da resposta ao cliente.
-        // Usando allSettled: falha em uma não quebra a outra nem o job principal.
-
+        // ── Execução Paralela das Análises Secundárias (Background - Fire-and-forget) ──
+        // classifyContact, analyzeIntelligence e notificações de venda rodam em paralelo em background após resposta enviada
         const secondaryStart = Date.now();
-        console.log(`[AI_SECONDARY_START] [${correlationId}] Iniciando análises secundárias | classify_skip=${classifyDecision.skip} | intelligence_skip=${intelligenceDecision.skip}`);
+        console.log(`[AI_SECONDARY_START] [${correlationId}] Iniciando análises secundárias em background | classify_skip=${classifyDecision.skip} | intelligence_skip=${intelligenceDecision.skip}`);
 
-        const classifyTask = classifyDecision.skip
-            ? Promise.resolve(null)
-            : AIService.classifyContact(formattedHistory, profile.openai_api_key);
+        const runSecondaryTasks = async () => {
+            try {
+                let newTag: string | null = null;
 
-        const intelligenceTask = intelligenceDecision.skip
-            ? Promise.resolve(null)
-            : AIService.analyzeIntelligence(
-                [...formattedHistory, { role: 'assistant', content: reply }],
-                profile.openai_api_key,
-                contact.lead_intelligence
-            );
+                // 1. Classificação de Contato (Background)
+                if (!classifyDecision.skip) {
+                    try {
+                        const start = Date.now();
+                        newTag = await AIService.classifyContact(formattedHistory, profile.openai_api_key);
+                        const duration = Date.now() - start;
+                        console.log(`[AI_PERF] [OPENAI_LATENCY] [${correlationId}] classifyContact completou em ${duration}ms`);
+                        if (newTag) {
+                            await supabase.from('contacts').update({ ai_tag: newTag }).eq('id', contact.id);
+                        }
+                    } catch (classifyErr: any) {
+                        console.error(`[AI_SECONDARY_FAILED] [${correlationId}] classifyContact falhou:`, classifyErr.message || classifyErr);
+                    }
+                }
 
-        const [classifyResult, intelligenceResult] = await Promise.allSettled([classifyTask, intelligenceTask]);
+                // 2. Análise de Inteligência Estratégica (Background)
+                if (!intelligenceDecision.skip) {
+                    try {
+                        const start = Date.now();
+                        const intel = await AIService.analyzeIntelligence(
+                            [...formattedHistory, { role: 'assistant', content: reply }],
+                            profile.openai_api_key,
+                            contact.lead_intelligence
+                        );
+                        const duration = Date.now() - start;
+                        console.log(`[AI_PERF] [OPENAI_LATENCY] [${correlationId}] analyzeIntelligence completou em ${duration}ms`);
+                        if (intel) {
+                            await supabase.from('contacts').update({ lead_intelligence: intel }).eq('id', contact.id);
+                        }
+                    } catch (intelErr: any) {
+                        console.error(`[AI_SECONDARY_FAILED] [${correlationId}] analyzeIntelligence falhou:`, intelErr.message || intelErr);
+                    }
+                }
 
-        const secondaryMs = Date.now() - secondaryStart;
-        console.log(`[AI_SECONDARY_DONE] [${correlationId}] Análises secundárias concluídas em ${secondaryMs}ms`);
-
-        // ── Processa resultado da Classificação ──
-        let newTag: string | null = null;
-        if (classifyResult.status === 'fulfilled' && classifyResult.value) {
-            newTag = classifyResult.value;
-            await supabase.from('contacts').update({ ai_tag: newTag }).eq('id', contact.id);
-        } else if (classifyResult.status === 'rejected') {
-            console.error(`[AI_SECONDARY_FAILED] [${correlationId}] classifyContact falhou: ${classifyResult.reason?.message || classifyResult.reason}`);
-        }
-
-        // ── Processa resultado da Inteligência Estratégica ──
-        if (intelligenceResult.status === 'fulfilled' && intelligenceResult.value) {
-            await supabase.from('contacts').update({ lead_intelligence: intelligenceResult.value }).eq('id', contact.id);
-        } else if (intelligenceResult.status === 'rejected') {
-            console.error(`[AI_SECONDARY_FAILED] [${correlationId}] analyzeIntelligence falhou: ${intelligenceResult.reason?.message || intelligenceResult.reason}`);
-        }
-
-        // ── Notificação de Venda e Fechamento (somente se tag for COMPRADOR) ──
-        // Este bloco permanece síncrono pois depende de newTag e de enviar msg adicional ao cliente.
-        if ((newTag === 'COMPRADOR' || contact.ai_tag === 'COMPRADOR') && profile.sale_notifications_enabled && profile.notification_whatsapp) {
-            const orderData = await AIService.extractOrderData([...formattedHistory, { role: 'assistant', content: reply }], profile.openai_api_key);
-            if (orderData) {
-                await NotificationService.sendSaleNotification(instanceName, orderData, phone, profile.notification_whatsapp);
-                const closingMsg = await AIService.generateClosingMessage(formattedHistory, aiConfig, profile.openai_api_key);
-                await MessageService.send(instance.id, remoteJid, closingMsg);
+                // 3. Notificação de Venda e Fechamento (Background)
+                if ((newTag === 'COMPRADOR' || contact.ai_tag === 'COMPRADOR') && profile.sale_notifications_enabled && profile.notification_whatsapp) {
+                    try {
+                        const orderData = await AIService.extractOrderData([...formattedHistory, { role: 'assistant', content: reply }], profile.openai_api_key);
+                        if (orderData) {
+                            await NotificationService.sendSaleNotification(instanceName, orderData, phone, profile.notification_whatsapp);
+                            const closingMsg = await AIService.generateClosingMessage(formattedHistory, aiConfig, profile.openai_api_key);
+                            await MessageService.send(instance.id, remoteJid, closingMsg);
+                        }
+                    } catch (saleErr: any) {
+                        console.error(`[AI_SECONDARY_FAILED] [${correlationId}] Processamento de venda/fechamento falhou:`, saleErr.message || saleErr);
+                    }
+                }
+            } catch (err: any) {
+                console.error(`[AI_SECONDARY_FAILED] [${correlationId}] Erro global na execução de background:`, err.message || err);
             }
-        }
+        };
+
+        // Dispara em background
+        runSecondaryTasks().catch(err => {
+            console.error(`[AI_SECONDARY_FAILED] [${correlationId}] Erro não tratado no runSecondaryTasks:`, err);
+        });
     } catch (err: any) {
         console.error(`[WEBHOOK_JOB_FAILED] [${correlationId}] Erro no webhook:`, err);
         try {

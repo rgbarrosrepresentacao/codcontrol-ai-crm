@@ -98,11 +98,11 @@ export class ProcessorService {
             formData.append('model', 'whisper-1');
             formData.append('language', 'pt');
 
-            const whisperRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+            const whisperRes = await this.fetchWithTimeout('https://api.openai.com/v1/audio/transcriptions', {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${openaiKey}` },
                 body: formData
-            });
+            }, 45000); // 45s timeout
 
             if (whisperRes.ok) {
                 const whisperData = await whisperRes.json();
@@ -111,7 +111,10 @@ export class ProcessorService {
                 const errText = await whisperRes.text();
                 console.error('[ProcessorService] Whisper error response:', errText);
             }
-        } catch (err) {
+        } catch (err: any) {
+            if (err?.message === 'OPENAI_TIMEOUT') {
+                console.error('[ProcessorService] [OPENAI_TIMEOUT] Whisper request timed out.');
+            }
             console.error('[ProcessorService] Audio error:', err);
         }
         return null;
@@ -147,7 +150,7 @@ export class ProcessorService {
                 return '[Imagem muito grande para análise]';
             }
 
-            const visionResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+            const visionResponse = await this.fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openaiKey}` },
                 body: JSON.stringify({
@@ -158,15 +161,38 @@ export class ProcessorService {
                     ],
                     max_tokens: 300
                 })
-            });
+            }, 30000); // 30s timeout
 
             if (visionResponse.ok) {
                 const visionData = await visionResponse.json();
                 return `[VISION: ${visionData.choices[0].message.content}]`;
             }
-        } catch (err) {
+        } catch (err: any) {
+            if (err?.message === 'OPENAI_TIMEOUT') {
+                console.error('[ProcessorService] [OPENAI_TIMEOUT] Vision request timed out.');
+            }
             console.error('[ProcessorService] Vision error:', err);
         }
         return null;
+    }
+
+    private static async fetchWithTimeout(url: string, options: any, timeoutMs: number): Promise<Response> {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+            const response = await fetch(url, {
+                ...options,
+                signal: controller.signal
+            });
+            return response;
+        } catch (error: any) {
+            if (error.name === 'AbortError') {
+                console.error(`[OPENAI_TIMEOUT] Request to ${url} timed out after ${timeoutMs}ms`);
+                throw new Error('OPENAI_TIMEOUT');
+            }
+            throw error;
+        } finally {
+            clearTimeout(timeoutId);
+        }
     }
 }

@@ -26,7 +26,7 @@ export class AIService {
     static async extractOrderData(messages: any[], openaiKey: string): Promise<any> {
         try {
             const conversationText = messages.map(m => `${m.role === 'assistant' ? 'IA' : 'Cliente'}: ${m.content}`).join('\n');
-            const response = await fetch('https://api.openai.com/v1/chat/completions', {
+            const response = await AIService.fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openaiKey}` },
                 body: JSON.stringify({
@@ -46,7 +46,7 @@ export class AIService {
                     temperature: 0,
                     response_format: { type: 'json_object' }
                 })
-            });
+            }, 15000); // 15s timeout
             await AIService.handleResponseStatus(response);
             const data = await response.json();
             const content = data.choices?.[0]?.message?.content;
@@ -54,7 +54,7 @@ export class AIService {
             const cleanContent = content.replace(/```json/g, '').replace(/```/g, '').trim();
             return JSON.parse(cleanContent);
         } catch (err: any) {
-            if (err?.message === 'OPENAI_QUOTA_EXCEEDED' || err?.message === 'OPENAI_INVALID_KEY') {
+            if (err?.message === 'OPENAI_QUOTA_EXCEEDED' || err?.message === 'OPENAI_INVALID_KEY' || err?.message === 'OPENAI_TIMEOUT') {
                 throw err;
             }
             console.error('[AIService] Extraction error:', err);
@@ -68,7 +68,7 @@ export class AIService {
     static async classifyContact(messages: any[], openaiKey: string): Promise<AiTag | null> {
         try {
             const conversationText = messages.slice(-20).map(m => `${m.role === 'user' ? 'Cliente' : 'IA'}: ${m.content}`).join('\n');
-            const response = await fetch('https://api.openai.com/v1/chat/completions', {
+            const response = await AIService.fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openaiKey}` },
                 body: JSON.stringify({
@@ -83,13 +83,13 @@ export class AIService {
                     temperature: 0.1,
                     max_tokens: 20
                 })
-            });
+            }, 15000); // 15s timeout
             await AIService.handleResponseStatus(response);
             const data = await response.json();
             const tag = data.choices[0].message.content.trim().toUpperCase() as AiTag;
             return tag;
         } catch (err: any) {
-            if (err?.message === 'OPENAI_QUOTA_EXCEEDED' || err?.message === 'OPENAI_INVALID_KEY') {
+            if (err?.message === 'OPENAI_QUOTA_EXCEEDED' || err?.message === 'OPENAI_INVALID_KEY' || err?.message === 'OPENAI_TIMEOUT') {
                 throw err;
             }
             return null;
@@ -101,7 +101,7 @@ export class AIService {
      */
     static async generateClosingMessage(messages: any[], aiConfig: any, openaiKey: string): Promise<string> {
         try {
-            const response = await fetch('https://api.openai.com/v1/chat/completions', {
+            const response = await AIService.fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openaiKey}` },
                 body: JSON.stringify({
@@ -116,12 +116,12 @@ export class AIService {
                     temperature: 0.7,
                     max_tokens: 200
                 })
-            });
+            }, 15000); // 15s timeout
             await AIService.handleResponseStatus(response);
             const data = await response.json();
             return data.choices[0].message.content;
         } catch (err: any) {
-            if (err?.message === 'OPENAI_QUOTA_EXCEEDED' || err?.message === 'OPENAI_INVALID_KEY') {
+            if (err?.message === 'OPENAI_QUOTA_EXCEEDED' || err?.message === 'OPENAI_INVALID_KEY' || err?.message === 'OPENAI_TIMEOUT') {
                 throw err;
             }
             return 'Obrigada pelo seu pedido! 🎉 Em breve nossa equipe entrará em contato.';
@@ -208,7 +208,7 @@ ${leadContext}
 - FOCO EM CONVERSÃO: Use os dados do manual ativo para direcionar o cliente ao fechamento da venda.
 `.trim();
 
-            const response = await fetch('https://api.openai.com/v1/chat/completions', {
+            const response = await AIService.fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openaiKey}` },
                 body: JSON.stringify({
@@ -220,13 +220,13 @@ ${leadContext}
                     temperature: 0.6,
                     max_tokens: 500
                 })
-            });
+            }, 30000); // 30s timeout
 
             await AIService.handleResponseStatus(response);
             const data = await response.json();
             return data.choices?.[0]?.message?.content || null;
         } catch (err: any) {
-            if (err?.message === 'OPENAI_QUOTA_EXCEEDED' || err?.message === 'OPENAI_INVALID_KEY') {
+            if (err?.message === 'OPENAI_QUOTA_EXCEEDED' || err?.message === 'OPENAI_INVALID_KEY' || err?.message === 'OPENAI_TIMEOUT') {
                 throw err;
             }
             console.error('[AIService] Error generating response:', err);
@@ -241,7 +241,7 @@ ${leadContext}
         try {
             const conversationText = messages.slice(-10).map(m => `${m.role === 'assistant' ? 'IA' : 'Cliente'}: ${m.content}`).join('\n');
 
-            const response = await fetch('https://api.openai.com/v1/chat/completions', {
+            const response = await AIService.fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openaiKey}` },
                 body: JSON.stringify({
@@ -270,7 +270,7 @@ ${leadContext}
                     temperature: 0,
                     response_format: { type: 'json_object' }
                 })
-            });
+            }, 15000); // 15s timeout
 
             await AIService.handleResponseStatus(response);
             const data = await response.json();
@@ -291,7 +291,7 @@ ${leadContext}
 
             return intelligence;
         } catch (err: any) {
-            if (err?.message === 'OPENAI_QUOTA_EXCEEDED' || err?.message === 'OPENAI_INVALID_KEY') {
+            if (err?.message === 'OPENAI_QUOTA_EXCEEDED' || err?.message === 'OPENAI_INVALID_KEY' || err?.message === 'OPENAI_TIMEOUT') {
                 throw err;
             }
             console.error('[AIService] Intelligence analysis error:', err);
@@ -309,7 +309,7 @@ ${leadContext}
     ): Promise<{ decision: 'yes' | 'no' | 'unclear' | 'human'; confidence: number; reason: string }> {
         try {
             const conversationText = messages.slice(-10).map(m => `${m.role === 'user' ? 'Cliente' : 'IA'}: ${m.content}`).join('\n');
-            const response = await fetch('https://api.openai.com/v1/chat/completions', {
+            const response = await AIService.fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openaiKey}` },
                 body: JSON.stringify({
@@ -340,7 +340,7 @@ ${leadContext}
                     temperature: 0,
                     response_format: { type: 'json_object' }
                 })
-            });
+            }, 15000); // 15s timeout
 
             await AIService.handleResponseStatus(response);
             const data = await response.json();
@@ -349,7 +349,7 @@ ${leadContext}
 
             return JSON.parse(content);
         } catch (err: any) {
-            if (err?.message === 'OPENAI_QUOTA_EXCEEDED' || err?.message === 'OPENAI_INVALID_KEY') {
+            if (err?.message === 'OPENAI_QUOTA_EXCEEDED' || err?.message === 'OPENAI_INVALID_KEY' || err?.message === 'OPENAI_TIMEOUT') {
                 throw err;
             }
             console.error('[AIService] Condition evaluation error:', err.message);
@@ -373,6 +373,26 @@ ${leadContext}
                 return { decision: 'human', confidence: 100, reason: 'Fallback manual: Pedido de humano detectado' };
             }
             return { decision: 'unclear', confidence: 0, reason: 'Erro na avaliação e sem palavras-chave claras' };
+        }
+    }
+
+    static async fetchWithTimeout(url: string, options: any, timeoutMs: number): Promise<Response> {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+            const response = await fetch(url, {
+                ...options,
+                signal: controller.signal
+            });
+            return response;
+        } catch (error: any) {
+            if (error.name === 'AbortError') {
+                console.error(`[OPENAI_TIMEOUT] Request to ${url} timed out after ${timeoutMs}ms`);
+                throw new Error('OPENAI_TIMEOUT');
+            }
+            throw error;
+        } finally {
+            clearTimeout(timeoutId);
         }
     }
 }
