@@ -201,25 +201,41 @@ async function handleWebhookLogic(body: any, correlationId: string) {
         }
 
         let conversationId: string | null = null;
-        const { data: existingConv } = await supabase
+        console.log(`[CONVERSATION_UPSERT] [${correlationId}] Tentando upsert de conversa para o contato ${contact.id}`);
+        const { data: conv, error: convErr } = await supabase
             .from('conversations')
+            .upsert({
+                user_id: profile.id,
+                instance_id: instance.id,
+                contact_id: contact.id,
+                status: 'open',
+                updated_at: new Date().toISOString()
+            }, { onConflict: 'user_id,contact_id' })
             .select('id')
-            .eq('user_id', profile.id)
-            .eq('contact_id', contact.id)
             .maybeSingle();
 
-        if (existingConv) {
-            conversationId = existingConv.id;
-            await supabase.from('conversations').update({ status: 'open', updated_at: new Date().toISOString() }).eq('id', conversationId);
-        } else {
-            const { data: newConv } = await supabase
+        if (convErr) {
+            console.error(`[CONVERSATION_UPSERT_FAILED] [${correlationId}] Erro no upsert de conversa para o contato ${contact.id}:`, convErr.message || convErr);
+            // Fallback: Tenta buscar a conversa existente
+            const { data: retryConv } = await supabase
                 .from('conversations')
-                .insert({ user_id: profile.id, instance_id: instance.id, contact_id: contact.id, status: 'open' })
                 .select('id')
-                .single();
-            conversationId = newConv?.id || null;
+                .eq('user_id', profile.id)
+                .eq('contact_id', contact.id)
+                .maybeSingle();
+            
+            if (retryConv) {
+                console.log(`[CONVERSATION_EXISTS_RECOVERED] [${correlationId}] Conversa existente recuperada via fallback após erro de upsert: ${retryConv.id}`);
+                conversationId = retryConv.id;
+            }
+        } else {
+            conversationId = conv?.id || null;
         }
-        if (!conversationId) return;
+
+        if (!conversationId) {
+            console.error(`[JOB_SKIPPED_NO_REPLY] [${correlationId}] Abortando job pois não foi possível obter ou criar a conversa para o contato ${contact.id}`);
+            return;
+        }
 
         await MessageService.save({
             user_id: profile.id,
@@ -478,11 +494,12 @@ async function handleWebhookLogic(body: any, correlationId: string) {
             .update({ last_message_id: `HANDLED_${key.id}` })
             .eq('id', contact.id)
             .eq('last_message_id', key.id)
-            .select('id')
-            .single();
+            .select('id, last_message_id')
+            .maybeSingle();
 
         if (lockError || !lockResult) {
-            console.warn(`[ORCHESTRATOR] CAS lock falhou para ${key.id}. Possível duplicata ou race condition.`);
+            console.warn(`[CAS_LOCK_FAILED] [${correlationId}] CAS lock falhou para key: ${key.id} | ContactID: ${contact.id} | RemoteJid: ${remoteJid} | lockError: ${JSON.stringify(lockError)}`);
+            console.log(`[JOB_SKIPPED_NO_REPLY] [${correlationId}] Job ignorado e sem resposta enviada por falha de concorrência/lock no contato ${contact.id}.`);
             return;
         }
 

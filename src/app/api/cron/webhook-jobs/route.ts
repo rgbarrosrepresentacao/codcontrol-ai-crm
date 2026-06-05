@@ -37,14 +37,42 @@ export async function GET(req: NextRequest) {
             return NextResponse.json({ success: true, processed: 0, message: 'No pending jobs found' });
         }
 
-        console.log(`[JOB_PARALLEL] [WEBHOOK_JOBS_CRON] [${workerId}] Adquiridos ${jobs.length} jobs para processamento em paralelo.`);
+        // Função auxiliar para extrair chave de agrupamento por contato
+        function getContactKey(job: any): string {
+            const payload = job.payload;
+            const remoteJid = payload?.data?.key?.remoteJid;
+            if (remoteJid) return remoteJid;
+            
+            const from = payload?.data?.message?.from;
+            if (from) return `${from}@s.whatsapp.net`;
+            
+            return job.provider_event_id || `unknown-${crypto.randomUUID()}`;
+        }
+
+        // Agrupa jobs pelo contato
+        const groupsMap = new Map<string, any[]>();
+        for (const job of jobs) {
+            const key = getContactKey(job);
+            if (!groupsMap.has(key)) {
+                groupsMap.set(key, []);
+            }
+            groupsMap.get(key)!.push(job);
+        }
+
+        console.log(`[RACE_GUARD] [WEBHOOK_JOBS_CRON] [${workerId}] Agrupados ${jobs.length} jobs em ${groupsMap.size} contatos distintos.`);
 
         const startBatchTime = Date.now();
-        const results = await Promise.allSettled(
-            jobs.map(async (job: any) => {
+        
+        // Mapeia cada grupo para uma Promise de execução sequencial FIFO
+        const groupPromises = Array.from(groupsMap.entries()).map(async ([contactKey, groupJobs]) => {
+            // Ordena o grupo de forma FIFO (do mais antigo para o mais novo) por created_at
+            groupJobs.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+            
+            const groupResults = [];
+            for (const job of groupJobs) {
                 const startTime = Date.now();
                 const correlationId = job.correlation_id;
-                console.log(`[WEBHOOK_JOBS_CRON] [${workerId}] [${correlationId}] Iniciando processamento do job: ${job.id} | Provedor: ${job.provider} | Tentativa: ${job.attempts}`);
+                console.log(`[RACE_GUARD] [WEBHOOK_JOBS_CRON] [${workerId}] [${correlationId}] Processando job sequencial do contato ${contactKey}. Job ID: ${job.id} | Provedor: ${job.provider} | Tentativa: ${job.attempts}`);
 
                 try {
                     // Executa a lógica da mensagem do webhook (inclui transcrição Whisper de áudio Meta, se aplicável, e IA)
@@ -67,7 +95,7 @@ export async function GET(req: NextRequest) {
 
                     const duration = Date.now() - startTime;
                     console.log(`[JOB_PERF] [WEBHOOK_JOBS_CRON] [${workerId}] [${correlationId}] Job concluído com sucesso em ${duration}ms. MsgID: ${job.provider_event_id}`);
-                    return { jobId: job.id, status: 'done', duration };
+                    groupResults.push({ jobId: job.id, status: 'done', duration });
 
                 } catch (err: any) {
                     const duration = Date.now() - startTime;
@@ -92,15 +120,23 @@ export async function GET(req: NextRequest) {
                         console.error(`[WEBHOOK_JOBS_CRON] [${workerId}] [${correlationId}] Erro ao atualizar status de falha do job:`, failError);
                     }
 
-                    return { jobId: job.id, status: nextStatus, error: errorMessage, duration };
+                    groupResults.push({ jobId: job.id, status: nextStatus, error: errorMessage, duration });
                 }
-            })
-        );
+            }
+            return groupResults;
+        });
+
+        // Executa todos os grupos em paralelo
+        const results = await Promise.allSettled(groupPromises);
 
         const totalBatchDuration = Date.now() - startBatchTime;
         console.log(`[JOB_PARALLEL] [WEBHOOK_JOBS_CRON] [${workerId}] Lote finalizado em ${totalBatchDuration}ms.`);
 
-        const resultsArray = results.map(r => r.status === 'fulfilled' ? r.value : null).filter(Boolean);
+        const resultsArray = results
+            .map(r => r.status === 'fulfilled' ? r.value : null)
+            .filter(Boolean)
+            .flat();
+
 
         return NextResponse.json({
             success: true,
