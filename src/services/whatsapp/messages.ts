@@ -127,6 +127,51 @@ export class MessageService {
                 return { success: false, error: 'Token da Meta ausente' };
             }
 
+            // ── Validação defensiva de vídeo remoto para a Meta ────────────────────
+            if (type === 'video') {
+                try {
+                    console.log(`[MessageService.sendMedia] [META_VALIDATION_REMOTE] Validando vídeo remoto: ${url}`);
+                    const response = await fetch(url, { method: 'HEAD' });
+                    
+                    let mimeReal = response.headers.get('content-type') || '';
+                    let sizeReal = parseInt(response.headers.get('content-length') || '0', 10);
+
+                    // Se HEAD falhar ou retornar dados incompletos, tenta GET parcial
+                    if (!response.ok || !mimeReal || !sizeReal) {
+                        console.warn(`[MessageService.sendMedia] [META_VALIDATION_REMOTE] HEAD falhou ou retornou incompleto. Tentando GET parcial para cabeçalhos...`);
+                        const getResponse = await fetch(url, {
+                            headers: { 'Range': 'bytes=0-0' }
+                        });
+                        mimeReal = getResponse.headers.get('content-type') || mimeReal;
+                        sizeReal = parseInt(getResponse.headers.get('content-range')?.split('/')?.[1] || getResponse.headers.get('content-length') || '0', 10);
+                    }
+
+                    console.log(`[MessageService.sendMedia] [META_VALIDATION_REMOTE] MIME real: "${mimeReal}" | Tamanho real: ${sizeReal} bytes`);
+
+                    if (!mimeReal || !sizeReal) {
+                        console.error(`[MessageService.sendMedia] [META_VALIDATION_REMOTE] Falha ao obter metadados do vídeo remoto.`);
+                        return { success: false, error: 'Não foi possível validar o vídeo remotamente com segurança. Para envio pela API Oficial da Meta, envie vídeos em MP4 ou 3GP com até 16 MB.' };
+                    }
+
+                    const cleanMime = mimeReal.split(';')[0].trim().toLowerCase();
+                    const allowedMetaVideoMimes = ['video/mp4', 'video/3gpp'];
+                    const maxMetaVideoSize = 16 * 1024 * 1024; // 16 MB
+
+                    if (!allowedMetaVideoMimes.includes(cleanMime)) {
+                        console.error(`[MessageService.sendMedia] [META_VALIDATION_REMOTE] Formato de vídeo incompatível com Meta: "${cleanMime}"`);
+                        return { success: false, error: 'Para envio pela API Oficial da Meta, envie vídeos em MP4 ou 3GP com até 16 MB.' };
+                    }
+
+                    if (sizeReal > maxMetaVideoSize) {
+                        console.error(`[MessageService.sendMedia] [META_VALIDATION_REMOTE] Vídeo remoto excede 16 MB: ${sizeReal} bytes`);
+                        return { success: false, error: 'Para envio pela API Oficial da Meta, envie vídeos em MP4 ou 3GP com até 16 MB.' };
+                    }
+                } catch (fetchErr: any) {
+                    console.error(`[MessageService.sendMedia] [META_VALIDATION_REMOTE] Erro de rede ao buscar arquivo remoto:`, fetchErr.message);
+                    return { success: false, error: 'Erro ao validar vídeo remoto. Para envio pela API Oficial da Meta, envie vídeos em MP4 ou 3GP com até 16 MB.' };
+                }
+            }
+
             console.log(`[MessageService.sendMedia] 📤 META: Enviando ${type} para ${remoteJid} | URL: ${url.slice(0, 80)}...`);
             
             try {

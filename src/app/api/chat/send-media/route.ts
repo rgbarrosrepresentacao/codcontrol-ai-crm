@@ -58,6 +58,26 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Instância não encontrada' }, { status: 404 })
         }
 
+        // ── 2.5 Validação específica para o provedor META (Vídeo) ──────────────
+        let actualMediaType = mediaCategory
+        if (file.type.includes('webm') && actualMediaType === 'video') {
+            actualMediaType = 'audio'
+        }
+
+        if (instance.provider_type === 'META' && actualMediaType === 'video') {
+            const cleanMime = file.type.split(';')[0].trim().toLowerCase()
+            const allowedMetaVideoMimes = ['video/mp4', 'video/3gpp']
+            const maxMetaVideoSize = 16 * 1024 * 1024 // 16 MB
+
+            if (!allowedMetaVideoMimes.includes(cleanMime) || file.size > maxMetaVideoSize) {
+                console.warn(`[MEDIA_REJECTED] [${logCtx}] Vídeo incompatível com Meta | mime=${file.type} | size=${file.size}`)
+                return NextResponse.json(
+                    { error: 'Para envio pela API Oficial da Meta, envie vídeos em MP4 ou 3GP com até 16 MB.' },
+                    { status: 422 }
+                )
+            }
+        }
+
         // ── 3. Detecta tipo de mídia para o WhatsApp ──────────────────────────
         // Usa a categoria validada como fonte de verdade, não o MIME raw.
         let mediaType: 'image' | 'video' | 'audio' | 'document' = mediaCategory

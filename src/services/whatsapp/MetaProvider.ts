@@ -29,12 +29,7 @@ export class MetaProvider {
     constructor(config: MetaConfig, encryptedToken: string) {
         this.phoneNumberId = config.phone_number_id
         this.wabaId = config.waba_id
-        try {
-            this.accessToken = decrypt(encryptedToken)
-        } catch (err: any) {
-            console.warn('[MetaProvider] Decryption failed, using mock token for testing:', err.message);
-            this.accessToken = 'mock-access-token';
-        }
+        this.accessToken = decrypt(encryptedToken)
     }
 
     /**
@@ -80,12 +75,37 @@ export class MetaProvider {
      * Retorna o media_id.
      */
     async uploadMedia(fileBuffer: Buffer, mimeType: string): Promise<string | null> {
+        const getFilename = (mime: string): string => {
+            const mimeToExt: Record<string, string> = {
+                'video/mp4': 'mp4',
+                'video/3gpp': '3gp',
+                'image/jpeg': 'jpg',
+                'image/jpg': 'jpg',
+                'image/png': 'png',
+                'audio/ogg': 'ogg',
+                'audio/ogg; codecs=opus': 'ogg',
+                'audio/webm': 'webm',
+                'audio/webm; codecs=opus': 'webm',
+                'audio/mpeg': 'mp3',
+                'audio/mp3': 'mp3',
+                'application/pdf': 'pdf'
+            }
+            const cleanMime = mime.split(';')[0].trim().toLowerCase()
+            const ext = mimeToExt[cleanMime] || 'bin'
+            return `media_${Date.now()}.${ext}`
+        }
+
+        const filename = getFilename(mimeType)
+        const sizeBytes = fileBuffer.length
+
+        console.log(`[META_MEDIA_UPLOAD_START] Iniciando upload para Meta | mimeType="${mimeType}" | filename="${filename}" | size=${sizeBytes} bytes`)
+
         try {
             const url = `${GRAPH_API_BASE}/${this.phoneNumberId}/media`
             
             const formData = new FormData()
             const blob = new Blob([new Uint8Array(fileBuffer)], { type: mimeType })
-            formData.append('file', blob)
+            formData.append('file', blob, filename)
             formData.append('messaging_product', 'whatsapp')
             formData.append('type', mimeType)
 
@@ -99,13 +119,14 @@ export class MetaProvider {
 
             const data = await response.json()
             if (!response.ok) {
-                console.error('[MetaProvider] Erro no upload de media:', data)
+                console.error(`[META_MEDIA_UPLOAD_FAILED] Falha no upload para Meta | HTTP Status: ${response.status} | Response:`, JSON.stringify(data))
                 return null
             }
 
+            console.log(`[META_MEDIA_UPLOAD_SUCCESS] Upload concluído com sucesso | mediaId="${data.id}"`)
             return data.id
-        } catch (error) {
-            console.error('[MetaProvider] Exceção no upload de media:', error)
+        } catch (error: any) {
+            console.error(`[META_MEDIA_UPLOAD_FAILED] Exceção no upload para Meta | Error: ${error.message}`)
             return null
         }
     }

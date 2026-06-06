@@ -79,26 +79,47 @@ ${items.map(k => `- ID:${k.id} | Tipo:${k.media_type} | Nome:"${k.name}" | Descr
             await new Promise(r => setTimeout(r, 1500));
             
             const mType = item.media_type as 'image' | 'video' | 'document' | 'audio';
-            await MessageService.sendMedia(instanceId, remoteJid, item.media_url, mType);
+            const result = await MessageService.sendMedia(instanceId, remoteJid, item.media_url, mType);
             
-            console.log(`[Knowledge] ✅ Mídia enviada: ${item.name}`);
+            if (result && result.success) {
+                console.log(`[Knowledge] ✅ Mídia enviada com sucesso: ${item.name}`);
 
-            // Salva o registro da mídia no histórico para evitar repetições
-            await supabase.from('messages').insert({
-                user_id: userId,
-                conversation_id: conversationId,
-                instance_id: instanceId,
-                contact_id: contactId,
-                from_me: true,
-                content: `[MÍDIA ENVIADA: ${item.id} | ${item.name}]`,
-                type: mType,
-                ai_generated: true,
-                status: 'sent'
-            });
+                // Salva o registro da mídia no histórico para evitar repetições
+                await supabase.from('messages').insert({
+                    user_id: userId,
+                    conversation_id: conversationId,
+                    instance_id: instanceId,
+                    contact_id: contactId,
+                    from_me: true,
+                    content: `[MÍDIA ENVIADA: ${item.id} | ${item.name}]`,
+                    type: mType,
+                    ai_generated: true,
+                    status: 'sent'
+                });
 
-            return true;
-        } catch (err) {
-            console.error('[Knowledge] ❌ Erro ao enviar mídia:', err);
+                return true;
+            } else {
+                const errMsg = result?.error || 'Erro desconhecido';
+                console.error(`[KNOWLEDGE_MEDIA_SEND_FAILED] Falha ao enviar mídia da base de conhecimento | Mídia: ${item.name} | Erro: ${errMsg}`);
+                
+                // Salva o histórico de falha no banco de dados para auditoria
+                await supabase.from('messages').insert({
+                    user_id: userId,
+                    conversation_id: conversationId,
+                    instance_id: instanceId,
+                    contact_id: contactId,
+                    from_me: true,
+                    content: `[MÍDIA ENVIADA: ${item.id} | ${item.name}]`,
+                    type: mType,
+                    ai_generated: true,
+                    status: 'failed',
+                    error_message: errMsg
+                });
+
+                return false;
+            }
+        } catch (err: any) {
+            console.error('[Knowledge] ❌ Exceção ao enviar mídia:', err);
             return false;
         }
     }
