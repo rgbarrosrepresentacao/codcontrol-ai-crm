@@ -27,12 +27,18 @@ export async function POST(req: NextRequest) {
         }
 
         if (!INSTANCE_NAME || !INSTANCE_API_KEY || !EVOLUTION_API_URL) {
-            console.error('[VERIFY_CODE] Configurações de AUTH_INSTANCE_NAME ou AUTH_INSTANCE_API_KEY não encontradas no .env')
+            console.error('[OTP_VERIFY_FAILED] Variáveis ausentes:', {
+                EVOLUTION_API_URL: !!EVOLUTION_API_URL,
+                AUTH_INSTANCE_NAME: !!INSTANCE_NAME,
+                AUTH_INSTANCE_API_KEY: !!INSTANCE_API_KEY,
+            })
             return NextResponse.json({ error: 'Serviço indisponível por falta de configuração interna.' }, { status: 503 })
         }
 
         const formattedWA = formatWhatsApp(whatsapp)
         const emailNorm = email.toLowerCase().trim()
+
+        console.log(`[OTP_VERIFY_START] whatsapp=${formattedWA} | code=${code.slice(0, 2)}****`)
 
         // ─── VALIDAR CÓDIGO ───────────────────────────────────────────────────
         const { data: activation, error: fetchError } = await supabase
@@ -47,6 +53,7 @@ export async function POST(req: NextRequest) {
             .single()
 
         if (fetchError || !activation) {
+            console.warn(`[OTP_VERIFY_FAILED] whatsapp=${formattedWA} | reason=invalid_or_expired`)
             return NextResponse.json(
                 { error: 'Código inválido ou expirado. Solicite um novo código.' },
                 { status: 400 }
@@ -127,7 +134,7 @@ export async function POST(req: NextRequest) {
             // Silencia erro — mensagem de boas-vindas não é crítica
         })
 
-        console.log(`[VERIFY_CODE] ✅ Trial ativado para: ${emailNorm} | WhatsApp: ${formattedWA}`)
+        console.log(`[OTP_VERIFY_SUCCESS] email=${emailNorm} | whatsapp=${formattedWA} | userId=${userId} | trialEnds=${trialEndsAt.toISOString()}`)
         return NextResponse.json({ success: true, message: 'Conta criada e trial ativado com sucesso!' })
 
     } catch (err: any) {

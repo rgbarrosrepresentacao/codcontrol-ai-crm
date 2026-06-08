@@ -36,7 +36,11 @@ export async function POST(req: NextRequest) {
         }
 
         if (!INSTANCE_NAME || !INSTANCE_API_KEY || !EVOLUTION_API_URL) {
-            console.error('[SEND_CODE] Configurações de AUTH_INSTANCE_NAME ou AUTH_INSTANCE_API_KEY não encontradas no .env')
+            console.error('[OTP_SEND_FAILED] Variáveis ausentes:', {
+                EVOLUTION_API_URL: !!EVOLUTION_API_URL,
+                AUTH_INSTANCE_NAME: !!INSTANCE_NAME,
+                AUTH_INSTANCE_API_KEY: !!INSTANCE_API_KEY,
+            })
             return NextResponse.json({ error: 'Serviço de verificação indisponível por falta de configuração.' }, { status: 503 })
         }
 
@@ -96,6 +100,8 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Erro interno ao gerar código.' }, { status: 500 })
         }
 
+        console.log(`[OTP_SEND_START] whatsapp=${formattedWA} | instance=${INSTANCE_NAME}`)
+
         // ─── ENVIAR VIA EVOLUTION API ─────────────────────────────────────────
         const message = `🔐 *CodControl AI CRM*\n\nSeu código de ativação é: *${code}*\n\nEle expira em 10 minutos.\nNão compartilhe este código com ninguém.`
 
@@ -113,15 +119,14 @@ export async function POST(req: NextRequest) {
 
         if (!evoRes.ok) {
             const evoErr = await evoRes.text()
-            console.error('[SEND_CODE] Evolution API falhou:', evoErr)
-            // Não bloqueia o fluxo se a API falhar — código ainda está no banco
+            console.error(`[OTP_SEND_FAILED] whatsapp=${formattedWA} | status=${evoRes.status} | instance=${INSTANCE_NAME} | error=${evoErr}`)
             return NextResponse.json({ error: 'Falha ao enviar WhatsApp. Verifique o número e tente novamente.' }, { status: 502 })
         }
 
         // Atualizar rate limit
         rateLimitMap.set(formattedWA, Date.now())
 
-        console.log(`[SEND_CODE] ✅ Código enviado para ${formattedWA}`)
+        console.log(`[OTP_SEND_SUCCESS] whatsapp=${formattedWA} | instance=${INSTANCE_NAME}`)
         return NextResponse.json({ success: true, message: 'Código enviado com sucesso!' })
 
     } catch (err: any) {
