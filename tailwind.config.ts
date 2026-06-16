@@ -28,6 +28,10 @@ const config: Config = {
                 destructive: 'hsl(var(--destructive))',
                 sidebar: 'hsl(var(--sidebar))',
                 'sidebar-border': 'hsl(var(--sidebar-border))',
+                /* Tema Copa temporário — REMOVER APÓS COPA */
+                'copa-green': 'hsl(var(--copa-green))',
+                'copa-yellow': 'hsl(var(--copa-yellow))',
+                'copa-blue': 'hsl(var(--copa-blue))',
             },
             borderRadius: {
                 lg: 'var(--radius)',

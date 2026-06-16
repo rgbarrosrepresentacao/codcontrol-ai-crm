@@ -14,7 +14,7 @@ import { Footer } from '@/components/Footer'
 export default function HomePage() {
 
   return (
-    <div className="min-h-screen gradient-hero relative">
+    <div className="min-h-screen gradient-copa-hero relative">{/* Tema Copa temporário */}
       {/* Dynamic Background Effects */}
       <div className="fixed inset-0 pointer-events-none opacity-20 animate-pulse-glow z-[-1] bg-gradient-to-b from-primary/5 via-transparent to-transparent" />
 
@@ -31,10 +31,13 @@ export default function HomePage() {
             {/* ── ESQUERDA: COPY ── */}
             <div className="space-y-9 animate-slide-up relative z-10">
 
-              {/* Badge */}
-              <div className="inline-flex items-center gap-2.5 border border-white/8 rounded-full px-4 py-1.5 bg-white/[0.03]">
-                <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-                <span className="text-[11px] font-semibold text-muted-foreground tracking-wide">Sistema de vendas por WhatsApp</span>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="inline-flex items-center gap-2.5 border border-white/8 rounded-full px-4 py-1.5 bg-white/[0.03]">
+                  <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                  <span className="text-[11px] font-semibold text-muted-foreground tracking-wide">Sistema de vendas por WhatsApp</span>
+                </div>
+                {/* Tema Copa temporário */}
+                <span className="copa-badge">⚽ Clima de Copa</span>
               </div>
 
               {/* Headline Desktop */}
@@ -63,8 +66,8 @@ export default function HomePage() {
               <div className="flex flex-col sm:flex-row gap-3 pt-1">
                 <Link
                   href="/register?plan=basico"
-                  className="w-full sm:w-auto gradient-primary text-black font-bold text-[15px] px-7 py-4 rounded-xl hover:opacity-90 active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2 shadow-[0_0_24px_rgba(20,184,166,0.22)]"
-                >
+                  className="w-full sm:w-auto gradient-copa text-black font-bold text-[15px] px-7 py-4 rounded-xl hover:opacity-90 active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2 copa-glow"
+                >{/* Tema Copa temporário */}
                   Testar 7 dias grátis
                   <ArrowRight className="w-4 h-4" />
                 </Link>

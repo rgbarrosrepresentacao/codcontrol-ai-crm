@@ -191,8 +191,8 @@ function RegisterForm() {
                         <button
                             type="submit"
                             disabled={isVerifying}
-                            className="w-full gradient-primary text-black font-semibold py-3 rounded-lg hover:opacity-90 transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
-                        >
+                            className="w-full gradient-copa text-black font-semibold py-3 rounded-lg hover:opacity-90 transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed copa-glow"
+                        >{/* Tema Copa temporário */}
                             {isVerifying && <Loader2 className="w-4 h-4 animate-spin" />}
                             {isVerifying ? 'Verificando...' : 'Ativar meus 7 dias grátis'} <ArrowRight className="w-4 h-4" />
                         </button>
@@ -308,8 +308,8 @@ function RegisterForm() {
                     <button
                         type="submit"
                         disabled={isRegistering}
-                        className="w-full gradient-primary text-black font-semibold py-3 rounded-lg hover:opacity-90 transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed mt-2"
-                    >
+                        className="w-full gradient-copa text-black font-semibold py-3 rounded-lg hover:opacity-90 transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed mt-2 copa-glow"
+                    >{/* Tema Copa temporário */}
                         {isRegistering && <Loader2 className="w-4 h-4 animate-spin" />}
                         {isRegistering ? 'Enviando código...' : 'Receber código no WhatsApp'}
                     </button>
@@ -330,7 +330,7 @@ function RegisterForm() {
 
 export default function RegisterPage() {
     return (
-        <div className="min-h-screen gradient-hero flex items-center justify-center p-4">
+        <div className="min-h-screen gradient-copa-hero flex items-center justify-center p-4">{/* Tema Copa temporário */}
             <Suspense fallback={<Loader2 className="w-8 h-8 animate-spin text-primary" />}>
                 <RegisterForm />
             </Suspense>

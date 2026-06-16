@@ -38,7 +38,7 @@ export default function LoginPage() {
     }
 
     return (
-        <div className="min-h-screen gradient-hero flex items-center justify-center p-4">
+        <div className="min-h-screen gradient-copa-hero flex items-center justify-center p-4">{/* Tema Copa temporário */}
             <div className="w-full max-w-md animate-slide-up">
                 {/* Logo */}
                 <div className="text-center mb-8">
@@ -91,11 +91,11 @@ export default function LoginPage() {
                             {errors.password && <p className="text-destructive text-xs mt-1">{errors.password.message}</p>}
                         </div>
 
-                        {/* Submit */}
+                        {/* Submit — Tema Copa temporário: gradient-copa no lugar de gradient-primary */}
                         <button
                             type="submit"
                             disabled={isSubmitting}
-                            className="w-full gradient-primary text-black font-semibold py-3 rounded-lg hover:opacity-90 transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                            className="w-full gradient-copa text-black font-semibold py-3 rounded-lg hover:opacity-90 transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed copa-glow"
                         >
                             {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                             {isSubmitting ? 'Entrando...' : 'Entrar'}

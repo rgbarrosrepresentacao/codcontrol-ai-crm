@@ -320,3 +320,88 @@
   animation: reveal 0.18s ease-out forwards;
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   ═══ INÍCIO TEMA COPA TEMPORÁRIO — REMOVER APÓS COPA ═══
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Tema Copa temporário — variáveis de cor Brasil */
+:root {
+  --copa-green: 145 72% 40%;   /* Verde bandeira Brasil */
+  --copa-yellow: 48 100% 50%;  /* Amarelo ouro */
+  --copa-blue: 215 100% 35%;   /* Azul bandeira Brasil */
+}
+
+/* Tema Copa temporário — gradiente principal Copa */
+.gradient-copa {
+  background: linear-gradient(135deg, hsl(145 72% 40%) 0%, hsl(48 90% 45%) 100%);
+}
+
+/* Tema Copa temporário — hero background com clima Brasil */
+.gradient-copa-hero {
+  background:
+    radial-gradient(circle at 10% 20%, hsl(145 72% 40% / 0.07) 0%, transparent 45%),
+    radial-gradient(circle at 90% 80%, hsl(215 100% 35% / 0.07) 0%, transparent 45%),
+    radial-gradient(circle at 50% 50%, hsl(48 100% 50% / 0.04) 0%, transparent 55%),
+    hsl(var(--background));
+}
+
+/* Tema Copa temporário — borda gradiente Brasil */
+.copa-border {
+  border: 1px solid transparent;
+  background-clip: padding-box;
+  box-shadow: 0 0 0 1px hsl(145 72% 40% / 0.25), 0 0 0 2px hsl(48 100% 50% / 0.10);
+}
+
+/* Tema Copa temporário — badge Copa verde/amarelo */
+.copa-badge {
+  background: linear-gradient(135deg, hsl(145 72% 40% / 0.15), hsl(48 100% 50% / 0.12));
+  border: 1px solid hsl(145 72% 40% / 0.35);
+  color: hsl(145 72% 58%);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* Tema Copa temporário — glow verde Brasil */
+.copa-glow {
+  box-shadow: 0 0 28px hsl(145 72% 40% / 0.22);
+}
+
+/* Tema Copa temporário — estrelinhas animadas */
+@keyframes copa-float-star {
+  0%, 100% { transform: translateY(0px) rotate(0deg); opacity: 0.8; }
+  50% { transform: translateY(-8px) rotate(12deg); opacity: 1; }
+}
+.copa-star {
+  display: inline-block;
+  animation: copa-float-star 3s ease-in-out infinite;
+  color: hsl(var(--copa-yellow));
+}
+.copa-star:nth-child(2) { animation-delay: 0.5s; }
+.copa-star:nth-child(3) { animation-delay: 1s; }
+
+/* Tema Copa temporário — banner animado */
+@keyframes copa-shimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+.copa-banner {
+  background: linear-gradient(
+    90deg,
+    hsl(145 72% 30%) 0%,
+    hsl(145 72% 38%) 25%,
+    hsl(48 100% 40%) 50%,
+    hsl(215 100% 28%) 75%,
+    hsl(145 72% 30%) 100%
+  );
+  background-size: 200% auto;
+  animation: copa-shimmer 6s linear infinite;
+}
+
+/* ═══ FIM TEMA COPA TEMPORÁRIO ══════════════════════════════════════════════ */
+

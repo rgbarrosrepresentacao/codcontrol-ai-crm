@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { Sidebar } from '@/components/Sidebar'
 import { TrialWall } from '@/components/TrialWall'
 import { AnnouncementBanner } from '@/components/AnnouncementBanner'
+import { CopaBanner } from '@/components/CopaBanner' /* Tema Copa temporário */
 import { SubscriptionAlert } from '@/components/SubscriptionAlert'
 import { OpenAiKeyAlert } from '@/components/OpenAiKeyAlert'
 
@@ -34,6 +35,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
                 subscriptionStatus={profile?.stripe_subscription_status}
             />
             <main className="flex-1 overflow-y-auto relative">
+                <CopaBanner /> {/* Tema Copa temporário */}
                 <AnnouncementBanner />
                 {/* Alerta de vencimento de mensalidade — aparece quando faltam ≤7 dias */}
                 <SubscriptionAlert
