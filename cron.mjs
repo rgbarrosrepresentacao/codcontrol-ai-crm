@@ -43,22 +43,23 @@ cron.schedule('*/2 * * * *', async () => {
 });
 
 // ── Follow-up (IA de resgate) — roda a cada 5 minutos ────────────────────────
-cron.schedule('*/5 * * * *', async () => {
-    console.log(`[CRON-FOLLOWUP] Triggering at ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`);
-    try {
-        const port = process.env.PORT || 3000;
-        const res = await fetch(`http://127.0.0.1:${port}/api/cron/followup`, {
-            headers: { 
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${process.env.CRON_SECRET}`
-            }
-        });
-        const data = await res.text();
-        console.log(`[CRON-FOLLOWUP] Response (${res.status}):`, data);
-    } catch (error) {
-        console.error('[CRON-FOLLOWUP] Error:', error.message);
-    }
-});
+// DESATIVADO: O módulo de follow-up automático antigo foi desativado.
+// cron.schedule('*/5 * * * *', async () => {
+//     console.log(`[CRON-FOLLOWUP] Triggering at ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`);
+//     try {
+//         const port = process.env.PORT || 3000;
+//         const res = await fetch(`http://127.0.0.1:${port}/api/cron/followup`, {
+//             headers: { 
+//                 'Content-Type': 'application/json',
+//                 'Authorization': `Bearer ${process.env.CRON_SECRET}`
+//             }
+//         });
+//         const data = await res.text();
+//         console.log(`[CRON-FOLLOWUP] Response (${res.status}):`, data);
+//     } catch (error) {
+//         console.error('[CRON-FOLLOWUP] Error:', error.message);
+//     }
+// });
 
 // ── Cleanup de mídias antigas — roda 1 vez por dia às 3h da manhã ────────────
 // Remove do Supabase Storage mídias com mais de 60 dias para economizar espaço.

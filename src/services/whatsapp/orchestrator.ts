@@ -110,6 +110,7 @@ export async function processWebhook(body: any, correlationId?: string) {
 
 async function handleWebhookLogic(body: any, correlationId: string) {
     const supabase = getSupabaseAdmin();
+    const correlationIdFinal = correlationId;
     const messageData = body.data?.message;
     const key = body.data?.key!;
     const messageId = key.id;
@@ -128,8 +129,11 @@ async function handleWebhookLogic(body: any, correlationId: string) {
             .eq('instance_name', instanceName)
             .single();
 
-        if (instanceErr || !instData) {
-            console.log(`[Webhook Debug] Instance not found: ${instanceName}`);
+        if (instanceErr) {
+            throw new Error(`Database error fetching instance: ${instanceErr.message}`);
+        }
+        if (!instData) {
+            console.log(`[CLIENT_WITHOUT_REPLY] [${correlationIdFinal}] Instance not found for name: ${instanceName}`);
             return;
         }
         instance = instData;
@@ -156,28 +160,42 @@ async function handleWebhookLogic(body: any, correlationId: string) {
             .eq('id', instance.user_id)
             .single();
 
-        if (profileErr || !profData) {
-            console.log(`[Webhook Debug] Profile not found for userId: ${instance.user_id}`);
+        if (profileErr) {
+            throw new Error(`Database error fetching profile: ${profileErr.message}`);
+        }
+        if (!profData) {
+            console.log(`[CLIENT_WITHOUT_REPLY] [${correlationIdFinal}] Profile not found for userId: ${instance.user_id}`);
             return;
         }
         profile = profData;
 
         const access = GuardService.checkAccess(profile);
-        if (!access.hasAccess) return;
+        if (!access.hasAccess) {
+            console.log(`[CLIENT_WITHOUT_REPLY] [${correlationIdFinal}] Access denied for user ${profile.id}: ${access.reason}`);
+            return;
+        }
 
         const result = await ProcessorService.extractMessageContent(body, instanceName, profile.openai_api_key);
-        if (!result || (!result.text && !result.audioUrl)) return;
+        if (!result || (!result.text && !result.audioUrl)) {
+            console.log(`[CLIENT_WITHOUT_REPLY] [${correlationIdFinal}] No text or audio content extracted from message.`);
+            return;
+        }
         const textMessage = result.text || '';
 
         const phone = remoteJid.replace(/\D/g, '');
         const contact = await ContactService.upsert(profile.id, instance.id, remoteJid, phone, body.data?.pushName);
-        if (!contact) return;
+        if (!contact) {
+            throw new Error(`Failed to upsert contact for JID: ${remoteJid}`);
+        }
 
         if ((contact as any).last_message_id === key.id) {
             console.log(`[WEBHOOK] ♻️ Mensagem ${key.id} já processada anteriormente para este contato. Ignorando.`);
             return;
         }
-        await supabase.from('contacts').update({ last_message_id: key.id }).eq('id', contact.id);
+        const { error: updateContactErr } = await supabase.from('contacts').update({ last_message_id: key.id }).eq('id', contact.id);
+        if (updateContactErr) {
+            throw new Error(`Database error updating contact last_message_id: ${updateContactErr.message}`);
+        }
 
         let wantsAudio = contact.wants_audio ?? false;
         if (isAudioMessage && !wantsAudio) {
@@ -185,7 +203,7 @@ async function handleWebhookLogic(body: any, correlationId: string) {
             await supabase.from('contacts').update({ wants_audio: true }).eq('id', contact.id);
         }
 
-        const { data: aiConfig } = await supabase
+        const { data: aiConfig, error: aiConfigErr } = await supabase
             .from('ai_configurations')
             .select('*')
             .eq('user_id', profile.id)
@@ -195,13 +213,16 @@ async function handleWebhookLogic(body: any, correlationId: string) {
             .limit(1)
             .maybeSingle();
 
+        if (aiConfigErr) {
+            throw new Error(`Database error fetching AI configuration: ${aiConfigErr.message}`);
+        }
         if (!aiConfig || !aiConfig.is_active) {
-            console.log('IA desativada ou não configurada para este usuário');
+            console.log(`[CLIENT_WITHOUT_REPLY] [${correlationIdFinal}] IA desativada ou não configurada para este usuário`);
             return;
         }
 
         let conversationId: string | null = null;
-        console.log(`[CONVERSATION_UPSERT] [${correlationId}] Tentando upsert de conversa para o contato ${contact.id}`);
+        console.log(`[CONVERSATION_UPSERT] [${correlationIdFinal}] Tentando upsert de conversa para o contato ${contact.id}`);
         const { data: conv, error: convErr } = await supabase
             .from('conversations')
             .upsert({
@@ -215,26 +236,30 @@ async function handleWebhookLogic(body: any, correlationId: string) {
             .maybeSingle();
 
         if (convErr) {
-            console.error(`[CONVERSATION_UPSERT_FAILED] [${correlationId}] Erro no upsert de conversa para o contato ${contact.id}:`, convErr.message || convErr);
+            console.error(`[CONVERSATION_UPSERT_FAILED] [${correlationIdFinal}] Erro no upsert de conversa para o contato ${contact.id}:`, convErr.message || convErr);
             // Fallback: Tenta buscar a conversa existente
-            const { data: retryConv } = await supabase
+            const { data: retryConv, error: retryErr } = await supabase
                 .from('conversations')
                 .select('id')
                 .eq('user_id', profile.id)
                 .eq('contact_id', contact.id)
                 .maybeSingle();
             
+            if (retryErr) {
+                throw new Error(`Database error during conversation recovery: ${retryErr.message}`);
+            }
             if (retryConv) {
-                console.log(`[CONVERSATION_EXISTS_RECOVERED] [${correlationId}] Conversa existente recuperada via fallback após erro de upsert: ${retryConv.id}`);
+                console.log(`[CONVERSATION_EXISTS_RECOVERED] [${correlationIdFinal}] Conversa existente recuperada via fallback após erro de upsert: ${retryConv.id}`);
                 conversationId = retryConv.id;
+            } else {
+                throw new Error(`Failed to upsert or retrieve conversation: ${convErr.message}`);
             }
         } else {
             conversationId = conv?.id || null;
         }
 
         if (!conversationId) {
-            console.error(`[JOB_SKIPPED_NO_REPLY] [${correlationId}] Abortando job pois não foi possível obter ou criar a conversa para o contato ${contact.id}`);
-            return;
+            throw new Error(`Failed to obtain conversation ID for contact ${contact.id}`);
         }
 
         await MessageService.save({
@@ -497,9 +522,12 @@ async function handleWebhookLogic(body: any, correlationId: string) {
             .select('id, last_message_id')
             .maybeSingle();
 
-        if (lockError || !lockResult) {
-            console.warn(`[CAS_LOCK_FAILED] [${correlationId}] CAS lock falhou para key: ${key.id} | ContactID: ${contact.id} | RemoteJid: ${remoteJid} | lockError: ${JSON.stringify(lockError)}`);
-            console.log(`[JOB_SKIPPED_NO_REPLY] [${correlationId}] Job ignorado e sem resposta enviada por falha de concorrência/lock no contato ${contact.id}.`);
+        if (lockError) {
+            throw new Error(`Database error acquiring CAS lock: ${lockError.message}`);
+        }
+        if (!lockResult) {
+            console.warn(`[CAS_LOCK_FAILED] [${correlationId}] CAS lock falhou para key: ${key.id} | ContactID: ${contact.id} | RemoteJid: ${remoteJid}`);
+            console.log(`[CLIENT_WITHOUT_REPLY] [${correlationId}] Concurrency lock failed, newer message exists. Skipping.`);
             return;
         }
 
@@ -535,7 +563,9 @@ async function handleWebhookLogic(body: any, correlationId: string) {
         );
         const responseGenDuration = Date.now() - startResponseGen;
         console.log(`[AI_PERF] [OPENAI_LATENCY] [${correlationId}] generateResponse completou em ${responseGenDuration}ms`);
-        if (!reply) return;
+        if (!reply) {
+            throw new Error(`AI generated an empty response (reply is null) for conversation ${conversationId}`);
+        }
 
         // Auto-heal OpenAI Key status if successful
         if (profile.openai_key_status !== 'active') {

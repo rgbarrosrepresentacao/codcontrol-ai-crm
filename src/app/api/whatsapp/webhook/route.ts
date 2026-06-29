@@ -68,6 +68,17 @@ export async function POST(req: NextRequest) {
         }
 
         console.log(`[WEBHOOK_JOB_CREATED] [${correlationId}] Job registrado com sucesso. MsgID: ${providerEventId}`);
+
+        // Trigger cron queue worker immediately in background (event-driven queue draining)
+        const origin = req.nextUrl.origin;
+        fetch(`${origin}/api/cron/webhook-jobs`, {
+            headers: {
+                'Authorization': `Bearer ${process.env.CRON_SECRET}`
+            }
+        }).catch(err => {
+            console.error('[WEBHOOK_TRIGGER_CRON_FAILED] Failed to trigger cron in background:', err.message);
+        });
+
         return NextResponse.json({ success: true, status: 'queued', correlationId });
 
     } catch (e: any) {

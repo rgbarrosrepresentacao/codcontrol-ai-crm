@@ -6,7 +6,7 @@ export class ContactService {
      */
     static async upsert(userId: string, instanceId: string, remoteJid: string, phone: string, pushName: string | null) {
         const supabase = getSupabaseAdmin();
-        const { data: contact } = await supabase.from('contacts').upsert({
+        const { data: contact, error } = await supabase.from('contacts').upsert({
             user_id: userId,
             instance_id: instanceId,
             whatsapp_id: remoteJid,
@@ -19,6 +19,10 @@ export class ContactService {
         }, { onConflict: 'user_id,whatsapp_id' })
         .select('*')
         .single();
+
+        if (error) {
+            throw new Error(`Database error upserting contact: ${error.message}`);
+        }
 
         return contact;
     }

@@ -1,3 +1,5 @@
+import { LANGUAGE_GUARD } from '@/lib/constants';
+
 export type AiTag = 'NOVO_LEAD' | 'EM_ATENDIMENTO' | 'QUALIFICADO' | 'INTERESSADO' | 'PROPOSTA_ENVIADA' | 'AGUARDANDO_RESPOSTA' | 'FECHADO' | 'PERDIDO' | 'FRIO' | 'MORNO' | 'QUENTE' | 'COMPRADOR' | 'LEAD_QUALIFICADO';
 
 export class AIService {
@@ -101,6 +103,7 @@ export class AIService {
      */
     static async generateClosingMessage(messages: any[], aiConfig: any, openaiKey: string): Promise<string> {
         try {
+            console.log('[LANGUAGE_GUARD] Idioma aplicado: pt-BR | Prompt: generateClosingMessage');
             const response = await AIService.fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openaiKey}` },
@@ -109,7 +112,7 @@ export class AIService {
                     messages: [
                         {
                             role: 'system',
-                            content: `Você é ${aiConfig.bot_name}. ${aiConfig.system_prompt}. TAREFA: O cliente fechou o pedido. Escreva uma mensagem FINAL calorosa (2-4 linhas).`
+                            content: `Você é ${aiConfig.bot_name}. ${aiConfig.system_prompt}. TAREFA: O cliente fechou o pedido. Escreva uma mensagem FINAL calorosa (2-4 linhas).\n${LANGUAGE_GUARD}`
                         },
                         ...messages.slice(-10)
                     ],
@@ -160,13 +163,12 @@ export class AIService {
                 : '';
 
             // ── MONTAGEM DA HIERARQUIA DO PROMPT (MODO ELITE MULTI-PRODUTO) ──
+            console.log('[LANGUAGE_GUARD] Idioma aplicado: pt-BR | Prompt: generateResponse');
             const systemContent = `
 Você é ${aiConfig.bot_name}.
 
-IDIOMA OBRIGATÓRIO: ${aiConfig.language || 'Português do Brasil (pt-BR)'}.
-REGRAS DE IDIOMA:
-- Responda OBRIGATORIAMENTE em ${aiConfig.language === 'pt-BR' || !aiConfig.language ? 'Português do Brasil (pt-BR)' : aiConfig.language}.
-- Jamais use inglês ou outro idioma, mesmo que o cliente fale em outra língua.
+${LANGUAGE_GUARD}
+
 - Mantenha o tom de voz e a personalidade definidos abaixo.
 
 ${catalogueContext ? `PRODUTOS QUE VOCÊ REPRESENTA (CATÁLOGO):\n${catalogueContext}\n` : ''}
@@ -226,11 +228,8 @@ ${leadContext}
             const data = await response.json();
             return data.choices?.[0]?.message?.content || null;
         } catch (err: any) {
-            if (err?.message === 'OPENAI_QUOTA_EXCEEDED' || err?.message === 'OPENAI_INVALID_KEY' || err?.message === 'OPENAI_TIMEOUT') {
-                throw err;
-            }
             console.error('[AIService] Error generating response:', err);
-            return null;
+            throw err; // Throw all errors to trigger worker retry
         }
     }
 
