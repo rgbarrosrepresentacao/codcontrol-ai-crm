@@ -229,17 +229,36 @@ export class FollowUpSender {
                         }
                     });
 
-                    // 10. Atualizar tentativa para 'sent' no banco de dados
-                    await supabase
+                    // 10. Buscar o UUID da mensagem salva no banco
+                    const { data: dbMsg, error: dbMsgErr } = await supabase
+                        .from('messages')
+                        .select('id')
+                        .eq('message_id', messageId)
+                        .eq('conversation_id', attempt.conversation_id)
+                        .limit(1)
+                        .maybeSingle();
+
+                    if (dbMsgErr) {
+                        console.warn(`[FOLLOWUP_SEND_WARN] [${correlationId}] Falha ao buscar UUID da mensagem salva: ${dbMsgErr.message}`);
+                    }
+
+                    const dbMessageUuid = dbMsg?.id || null;
+
+                    // 11. Atualizar tentativa para 'sent' no banco de dados
+                    const { error: updateErr } = await supabase
                         .from('followup_attempts')
                         .update({
                             status: 'sent',
                             sent_at: new Date().toISOString(),
-                            message_id: messageId,
+                            message_id: dbMessageUuid,
                             locked_at: null,
                             locked_by: null
                         })
                         .eq('id', attempt.id);
+
+                    if (updateErr) {
+                        throw new Error(`Erro ao atualizar status da tentativa para 'sent' no banco: ${updateErr.message}`);
+                    }
 
                     // Registrar evento de envio concluído
                     await supabase.from('followup_events').insert({

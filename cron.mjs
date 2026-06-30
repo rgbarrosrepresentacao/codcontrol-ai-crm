@@ -133,3 +133,21 @@ cron.schedule('0 3 * * *', async () => {
         console.error('[CRON-CLEANUP] Error:', error.message);
     }
 });
+
+// ── Novo Módulo de Follow-up (Aprendizado Contínuo) — roda 1 vez por dia às 4h da manhã ────
+cron.schedule('0 4 * * *', async () => {
+    console.log(`[CRON-FOLLOWUP-LEARN] Triggering at ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`);
+    try {
+        const port = process.env.PORT || 3000;
+        const res = await fetch(`http://127.0.0.1:${port}/api/cron/follow-up/learn`, {
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${process.env.CRON_SECRET}`
+            }
+        });
+        const data = await res.text();
+        console.log(`[CRON-FOLLOWUP-LEARN] Response (${res.status}):`, data);
+    } catch (error) {
+        console.error('[CRON-FOLLOWUP-LEARN] Error:', error.message);
+    }
+});

@@ -238,6 +238,13 @@ export class FollowUpProcessor {
                     const systemPrompt = aiConfig?.system_prompt || '';
                     const tone = aiConfig?.tone || 'professional';
 
+                    // 10.5 Buscar perfil de aprendizado do usuário se existir (IA Adaptativa)
+                    const { data: learningProfile } = await supabase
+                        .from('followup_learning_profiles')
+                        .select('*')
+                        .eq('user_id', attempt.user_id)
+                        .maybeSingle();
+
                     // 11. Chamar a IA para gerar a mensagem de follow-up
                     console.log(`[FOLLOWUP_AI_START] [${correlationId}] Gerando mensagem de follow-up via OpenAI...`);
                     
@@ -254,7 +261,8 @@ export class FollowUpProcessor {
                         objective: settings!.objective,
                         attemptNumber: attempt.attempt_number,
                         maxAttempts: settings!.max_attempts,
-                        customPrompt: settings!.custom_prompt || undefined
+                        customPrompt: settings!.custom_prompt || undefined,
+                        learningProfile
                     });
 
                     if (!aiResult) {
@@ -270,6 +278,8 @@ export class FollowUpProcessor {
                             status: 'ready',
                             generated_message: aiResult.message,
                             silence_reason: aiResult.silence_reason,
+                            strategy: settings!.strategy,
+                            objective: settings!.objective,
                             processed_at: new Date().toISOString(),
                             locked_at: null,
                             locked_by: null

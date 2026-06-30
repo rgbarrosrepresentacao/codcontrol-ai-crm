@@ -600,7 +600,27 @@ async function handleWebhookLogic(body: any, correlationId: string) {
                 const audioExt = isMetaProvider ? 'ogg' : 'mp3';
                 const audioContentType = isMetaProvider ? 'audio/ogg' : 'audio/mp3';
 
-                const audioB64 = await generateSpeech(cleanTextForAudio(reply), aiConfig.voice_id || 'nova', profile.openai_api_key, audioFormat);
+                let voiceToUse = aiConfig.voice_id || 'marin';
+                
+                // Lista de vozes suportadas
+                const VALID_VOICES = ['marin', 'nova', 'shimmer', 'coral', 'sage', 'cedar', 'echo', 'ash', 'alloy', 'onyx', 'fable'];
+                if (!VALID_VOICES.includes(voiceToUse.toLowerCase())) {
+                    voiceToUse = 'marin';
+                }
+
+                let audioB64: string;
+                try {
+                    audioB64 = await generateSpeech(cleanTextForAudio(reply), voiceToUse, profile.openai_api_key, audioFormat);
+                } catch (err: any) {
+                    const isNewVoice = ['marin', 'cedar', 'coral', 'sage', 'ash', 'alloy', 'fable'].includes(voiceToUse.toLowerCase());
+                    if (isNewVoice) {
+                        const fallbackVoice = ['cedar', 'echo', 'ash', 'alloy', 'onyx', 'fable'].includes(voiceToUse.toLowerCase()) ? 'echo' : 'nova';
+                        console.warn(`[TTS_VOICE_FALLBACK] Voz "${voiceToUse}" falhou. Tentando voz clássica "${fallbackVoice}". Erro: ${err.message}`);
+                        audioB64 = await generateSpeech(cleanTextForAudio(reply), fallbackVoice, profile.openai_api_key, audioFormat);
+                    } else {
+                        throw err;
+                    }
+                }
 
                 // Upload para Supabase Storage
                 const fileName = `sent-audios/${instance.id}/${crypto.randomUUID()}.${audioExt}`;

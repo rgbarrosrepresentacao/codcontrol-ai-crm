@@ -47,6 +47,7 @@ export default function IAPage() {
     const [showKey, setShowKey] = useState(false)
     const [saving, setSaving] = useState(false)
     const [savingKey, setSavingKey] = useState(false)
+    const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null)
     const [loading, setLoading] = useState(true)
     const [generating, setGenerating] = useState(false)
     const [isAdmin, setIsAdmin] = useState(false)
@@ -80,6 +81,33 @@ export default function IAPage() {
         load()
     }, [])
 
+    const playSample = async (voiceId: string) => {
+        if (playingVoiceId) return;
+        setPlayingVoiceId(voiceId);
+        const toastId = toast.loading('Gerando amostra de voz...');
+        try {
+            const res = await fetch('/api/whatsapp/voice-preview', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ voiceId })
+            });
+
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                throw new Error(data.error || 'Erro ao gerar amostra de voz');
+            }
+
+            toast.dismiss(toastId);
+            const audio = new Audio("data:audio/mp3;base64," + data.audioB64);
+            audio.play().catch(() => toast.error('Erro ao reproduzir amostra.'));
+        } catch (err: any) {
+            toast.dismiss(toastId);
+            toast.error(err.message || 'Erro ao reproduzir amostra.');
+        } finally {
+            setPlayingVoiceId(null);
+        }
+    }
+
     const getConfigForInstance = (instanceId: string | null): AiConfig => {
         const existing = configs.find(c => c.instance_id === instanceId)
         return existing || {
@@ -90,7 +118,7 @@ export default function IAPage() {
             language: 'pt-BR',
             is_active: true,
             audio_enabled: false,
-            voice_id: 'nova',
+            voice_id: 'marin',
         }
     }
 
@@ -383,9 +411,11 @@ export default function IAPage() {
                         <div className="space-y-2">
                             <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Vozes Femininas</span>
                             {[
+                                { id: 'marin', name: 'Marin ⭐ (Recomendada)', desc: 'Excelente sotaque e dicção natural' },
                                 { id: 'nova', name: 'Nova', desc: 'Energética e vibrante' },
                                 { id: 'shimmer', name: 'Shimmer', desc: 'Suave e profissional' },
-                                { id: 'coral', name: 'Coral', desc: 'Amigável e clara' }
+                                { id: 'coral', name: 'Coral', desc: 'Amigável e clara' },
+                                { id: 'sage', name: 'Sage', desc: 'Quente e atenciosa' }
                             ].map(v => (
                                 <div key={v.id} className={`flex items-center justify-between p-3 rounded-xl border transition-all ${currentConfig.voice_id === v.id ? 'border-primary bg-primary/5' : 'border-border'}`}>
                                     <div onClick={() => updateConfig('voice_id', v.id)} className="flex-1 cursor-pointer">
@@ -393,14 +423,16 @@ export default function IAPage() {
                                         <div className="text-[11px] text-muted-foreground">{v.desc}</div>
                                     </div>
                                     <button 
-                                        onClick={() => {
-                                            const audio = new Audio(`https://cdn.openai.com/API/docs/audio/${v.id}.wav`);
-                                            audio.play().catch(() => toast.error('Erro ao reproduzir amostra.'));
-                                        }}
-                                        className="p-2 hover:bg-primary/10 rounded-full text-primary transition-all"
+                                        onClick={() => playSample(v.id)}
+                                        disabled={playingVoiceId !== null}
+                                        className="p-2 hover:bg-primary/10 rounded-full text-primary transition-all disabled:opacity-55"
                                         title="Ouvir Amostra"
                                     >
-                                        <Eye className="w-4 h-4" />
+                                        {playingVoiceId === v.id ? (
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                        ) : (
+                                            <Eye className="w-4 h-4" />
+                                        )}
                                     </button>
                                 </div>
                             ))}
@@ -410,8 +442,12 @@ export default function IAPage() {
                         <div className="space-y-2">
                             <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Vozes Masculinas</span>
                             {[
+                                { id: 'cedar', name: 'Cedar ⭐ (Recomendada)', desc: 'Excelente sotaque e clareza natural' },
                                 { id: 'echo', name: 'Echo', desc: 'Confiante e maduro' },
-                                { id: 'ash', name: 'Ash', desc: 'Sério e direto' }
+                                { id: 'ash', name: 'Ash', desc: 'Sério e direto' },
+                                { id: 'alloy', name: 'Alloy', desc: 'Equilibrada e neutra' },
+                                { id: 'onyx', name: 'Onyx', desc: 'Robusta e confiante' },
+                                { id: 'fable', name: 'Fable', desc: 'Narrador expressivo' }
                             ].map(v => (
                                 <div key={v.id} className={`flex items-center justify-between p-3 rounded-xl border transition-all ${currentConfig.voice_id === v.id ? 'border-primary bg-primary/5' : 'border-border'}`}>
                                     <div onClick={() => updateConfig('voice_id', v.id)} className="flex-1 cursor-pointer">
@@ -419,14 +455,16 @@ export default function IAPage() {
                                         <div className="text-[11px] text-muted-foreground">{v.desc}</div>
                                     </div>
                                     <button 
-                                        onClick={() => {
-                                            const audio = new Audio(`https://cdn.openai.com/API/docs/audio/${v.id}.wav`);
-                                            audio.play().catch(() => toast.error('Erro ao reproduzir amostra.'));
-                                        }}
-                                        className="p-2 hover:bg-primary/10 rounded-full text-primary transition-all"
+                                        onClick={() => playSample(v.id)}
+                                        disabled={playingVoiceId !== null}
+                                        className="p-2 hover:bg-primary/10 rounded-full text-primary transition-all disabled:opacity-55"
                                         title="Ouvir Amostra"
                                     >
-                                        <Eye className="w-4 h-4" />
+                                        {playingVoiceId === v.id ? (
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                        ) : (
+                                            <Eye className="w-4 h-4" />
+                                        )}
                                     </button>
                                 </div>
                             ))}

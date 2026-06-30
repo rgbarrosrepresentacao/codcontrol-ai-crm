@@ -42,11 +42,31 @@ export class FollowUpAIService {
         attemptNumber: number;
         maxAttempts: number;
         customPrompt?: string;
+        learningProfile?: {
+            best_strategy: string | null;
+            best_hour: number | null;
+            dominant_silence_reason: string | null;
+            best_attempt_number: number | null;
+            learning_summary: string | null;
+        } | null;
     }): Promise<FollowUpAiResult | null> {
         try {
             const conversationText = params.history
                 .map(m => `${m.role === 'assistant' ? 'IA' : 'Cliente'}: ${m.content}`)
                 .join('\n');
+
+            let learningContext = '';
+            if (params.learningProfile) {
+                const lp = params.learningProfile;
+                learningContext = `
+APRENDIZADOS DO FOLLOW-UP DESTE USUÁRIO (HISTÓRICO):
+- Melhor estratégia de conversão: ${lp.best_strategy || 'não identificada'}
+- Melhor horário de conversão: ${lp.best_hour !== null ? `${lp.best_hour}h` : 'não identificado'}
+- Objeção/silêncio mais frequente: ${lp.dominant_silence_reason || 'não identificado'}
+- Resumo do aprendizado: ${lp.learning_summary || 'Nenhum resumo de aprendizado disponível.'}
+
+Use estes aprendizados como contexto para otimizar as nuances da abordagem (ex: se o motivo dominante for preço, apresente valor sutilmente). IMPORTANTE: NUNCA altere a estratégia de abordagem (${params.strategy}) ou qualquer configuração explicitamente configurada pelo usuário. O tom definido pelo usuário deve ser rigorosamente respeitado.`;
+            }
 
             const systemInstruction = `Você é uma inteligência artificial especialista em vendas e retenção de clientes integrada ao CRM. Seu objetivo é analisar o histórico de uma conversa e gerar uma mensagem de acompanhamento (follow-up) de forma humana, natural e persuasiva.
 
@@ -67,6 +87,7 @@ DIRETRIZES DO FOLLOW-UP:
 - Objetivo do Follow-up: ${params.objective}
 - Tentativa Atual: ${params.attemptNumber} de ${params.maxAttempts}
 - Instrução Personalizada do Usuário: ${params.customPrompt || 'Nenhuma'}
+${learningContext ? `\n${learningContext}` : ''}
 
 REGRAS DE TENTATIVA:
 - Tentativa 1: Deve ser muito leve, natural, apenas um lembrete ou check-in casual.
@@ -75,7 +96,7 @@ REGRAS DE TENTATIVA:
 
 DIRETRIZES DE ESCRITA DA MENSAGEM:
 1. CURTA: Deve ter entre 1 e 3 frases curtas. Máximo de 500 caracteres.
-2. NATURAL E HUMANA: Evite jargões robóticos, formatações excessivas de listas ou textos formais demais. Escreva como se fosse um atendente humano digitando no WhatsApp.
+2. NATURAL E HUMANA: Evite jargões robóticos, formatações excessivas de locais ou listas, ou textos formais demais. Escreva como se fosse um atendente humano digitando no WhatsApp.
 3. NÃO COBRE O CLIENTE: Nunca soe como cobrança ou reclamação de que ele não respondeu.
 4. NUNCA INVENTE informações falsas, descontos que não foram mencionados na conversa, prazos falsos de escassez ou links que não existem. Se precisar propor algo, seja sutil.
 5. SEM REPETIÇÕES: Não repita as mesmas palavras das mensagens anteriores.
@@ -161,5 +182,79 @@ O retorno deve ser estritamente um objeto JSON contendo as chaves "silence_reaso
             console.error('[FollowUpAIService] Erro na geração da mensagem de follow-up:', err.message || err);
             return null;
         }
+    }
+
+    /**
+     * Calcula o score de engajamento do lead (0 a 100)
+     */
+    static calculateLeadScore(params: {
+        attemptNumber: number;
+        silenceReason: string;
+        repliedAnyBefore: boolean;
+        contactTag: string;
+        lastAttemptCreatedAt?: string | Date;
+    }): number {
+        let score = 0;
+        
+        if (params.attemptNumber === 1) {
+            score += 30;
+        }
+        if (['pensando', 'duvida_nao_respondida', 'precisa_falar_com_alguem'].includes(params.silenceReason)) {
+            score += 20;
+        }
+        if (params.repliedAnyBefore) {
+            score += 20;
+        }
+        if (['INTERESSADO', 'PROPOSTA_ENVIADA', 'QUENTE'].includes(params.contactTag)) {
+            score += 15;
+        }
+        if (params.lastAttemptCreatedAt) {
+            const lastTime = new Date(params.lastAttemptCreatedAt).getTime();
+            const daysSince = (Date.now() - lastTime) / (1000 * 60 * 60 * 24);
+            if (daysSince <= 3) {
+                score += 10;
+            }
+            if (daysSince > 7) {
+                score -= 20;
+            }
+        }
+        
+        if (params.attemptNumber >= 3) {
+            score -= 20;
+        }
+        if (params.silenceReason === 'perdeu_interesse') {
+            score -= 30;
+        }
+        
+        return Math.max(0, Math.min(100, score));
+    }
+
+    /**
+     * Calcula o score de confiança da IA na mensagem gerada (0 a 100)
+     */
+    static calculateConfidenceScore(params: {
+        historyLength: number;
+        attemptNumber: number;
+        silenceReason: string;
+        repliedAnyBefore: boolean;
+        contactTag: string;
+    }): number {
+        let score = 0;
+        if (params.historyLength >= 5) {
+            score += 20;
+        }
+        if (params.attemptNumber === 1) {
+            score += 20;
+        }
+        if (params.silenceReason && params.silenceReason !== 'outro') {
+            score += 20;
+        }
+        if (params.repliedAnyBefore) {
+            score += 20;
+        }
+        if (['INTERESSADO', 'PROPOSTA_ENVIADA', 'QUENTE'].includes(params.contactTag)) {
+            score += 20;
+        }
+        return Math.max(0, Math.min(100, score));
     }
 }

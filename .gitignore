@@ -47,3 +47,4 @@ check_schema.js
 full_audit.js
 tmp_audit_users.js
 tmp_fix_users.js
+COOLIFY_ENV_VARS.txt
