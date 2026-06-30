@@ -203,24 +203,6 @@ async function handleWebhookLogic(body: any, correlationId: string) {
             await supabase.from('contacts').update({ wants_audio: true }).eq('id', contact.id);
         }
 
-        const { data: aiConfig, error: aiConfigErr } = await supabase
-            .from('ai_configurations')
-            .select('*')
-            .eq('user_id', profile.id)
-            .or(`instance_id.eq.${instance.id},instance_id.is.null`)
-            .order('instance_id', { ascending: false, nullsFirst: false })
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-
-        if (aiConfigErr) {
-            throw new Error(`Database error fetching AI configuration: ${aiConfigErr.message}`);
-        }
-        if (!aiConfig || !aiConfig.is_active) {
-            console.log(`[CLIENT_WITHOUT_REPLY] [${correlationIdFinal}] IA desativada ou não configurada para este usuário`);
-            return;
-        }
-
         let conversationId: string | null = null;
         console.log(`[CONVERSATION_UPSERT] [${correlationIdFinal}] Tentando upsert de conversa para o contato ${contact.id}`);
         const { data: conv, error: convErr } = await supabase
@@ -273,6 +255,25 @@ async function handleWebhookLogic(body: any, correlationId: string) {
             type: isAudioMessage ? 'audio' : 'text',
             payload: result.audioUrl ? { audioUrl: result.audioUrl } : undefined
         });
+
+        // ── VERIFICAÇÃO DA CONFIGURAÇÃO DA IA (Mapeada após a persistência da mensagem recebida) ──
+        const { data: aiConfig, error: aiConfigErr } = await supabase
+            .from('ai_configurations')
+            .select('*')
+            .eq('user_id', profile.id)
+            .or(`instance_id.eq.${instance.id},instance_id.is.null`)
+            .order('instance_id', { ascending: false, nullsFirst: false })
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+        if (aiConfigErr) {
+            throw new Error(`Database error fetching AI configuration: ${aiConfigErr.message}`);
+        }
+        if (!aiConfig || !aiConfig.is_active) {
+            console.log(`[CLIENT_WITHOUT_REPLY] [${correlationIdFinal}] IA desativada ou não configurada para este usuário. Mensagem recebida persistida no histórico.`);
+            return;
+        }
 
         const FunnelService = (await import('@/services/whatsapp/funnels')).FunnelService;
 
